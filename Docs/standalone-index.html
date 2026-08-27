@@ -1,0 +1,2097 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ระบบควบคุมสินค้าคงคลัง | การยางแห่งประเทศไทย</title>
+<meta name="description" content="ระบบควบคุมสินค้าคงคลัง (Inventory Control) — รับ / เบิก / โอน / ปรับปรุงสินค้า พร้อมรายงานและกราฟสรุป">
+<style>
+/* ============================================================
+   Design tokens — โทนสีเขียว การยางแห่งประเทศไทย (กยท.)
+   ============================================================ */
+:root{
+  --brand:#00693C;          /* เขียวหลัก กยท. */
+  --brand-d:#004F2D;        /* เขียวเข้ม */
+  --brand-l:#0F8A4D;        /* เขียวสว่าง */
+  --brand-50:#EAF5EF;       /* เขียวจาง (พื้นหลัง) */
+  --brand-100:#D2EADE;
+  --accent:#A8CF45;         /* เขียวอมเหลือง (ใบยาง) */
+
+  --bg:#F4F7F5;
+  --surface:#FFFFFF;
+  --surface-2:#FAFBFA;
+  --fg:#16211B;
+  --fg-muted:#5C6B62;
+  --fg-faint:#8A978F;
+  --border:#DDE5E0;
+  --border-strong:#C3CFC8;
+
+  --ok:#0F8A4D; --ok-bg:#E6F4EC;
+  --warn:#B26A00; --warn-bg:#FDF1E0;
+  --err:#B3261E; --err-bg:#FDECEA;
+  --info:#0B5FA5; --info-bg:#E7F0FA;
+
+  --radius:12px;
+  --shadow:0 1px 2px rgba(0,40,20,.05), 0 6px 20px -8px rgba(0,40,20,.14);
+  --shadow-lg:0 12px 40px -12px rgba(0,40,20,.28);
+  --sidebar-w:250px;
+  --sans:"Noto Sans Thai","Sarabun","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
+  --mono:ui-monospace,Consolas,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font-family:var(--sans);font-size:15px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{margin:0;line-height:1.25;font-weight:700;letter-spacing:-.01em}
+p{margin:0}
+a{color:var(--brand);text-decoration:none}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+table{border-collapse:collapse;width:100%}
+[hidden]{display:none !important}
+
+/* ---------- Form controls ---------- */
+.inp,.sel,.txa{
+  width:100%;padding:9px 11px;border:1px solid var(--border-strong);border-radius:9px;
+  background:var(--surface);transition:border-color .15s,box-shadow .15s;
+}
+.inp:focus,.sel:focus,.txa:focus{
+  outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-100);
+}
+.inp:disabled,.sel:disabled{background:var(--surface-2);color:var(--fg-muted)}
+.txa{resize:vertical;min-height:70px}
+.lbl{display:block;font-size:13px;font-weight:600;color:var(--fg-muted);margin-bottom:5px}
+.field{margin-bottom:0}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ---------- Buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:9px 16px;border-radius:9px;border:1px solid transparent;
+  font-size:14.5px;font-weight:600;cursor:pointer;white-space:nowrap;
+  transition:filter .15s,background .15s,border-color .15s,transform .1s;
+}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-p{background:var(--brand);color:#fff}
+.btn-p:hover:not(:disabled){background:var(--brand-d)}
+.btn-o{background:var(--surface);color:var(--brand);border-color:var(--brand)}
+.btn-o:hover:not(:disabled){background:var(--brand-50)}
+.btn-g{background:var(--surface);color:var(--fg);border-color:var(--border-strong)}
+.btn-g:hover:not(:disabled){background:var(--surface-2)}
+.btn-d{background:var(--surface);color:var(--err);border-color:#EBC4C1}
+.btn-d:hover:not(:disabled){background:var(--err-bg)}
+.btn-sm{padding:6px 11px;font-size:13.5px;border-radius:8px}
+.btn-icon{padding:6px;width:32px;height:32px}
+
+/* ---------- Login ---------- */
+#login{
+  min-height:100vh;display:grid;place-items:center;padding:20px;
+  background:
+    radial-gradient(ellipse 70% 60% at 15% 10%, rgba(168,207,69,.28), transparent 60%),
+    radial-gradient(ellipse 70% 70% at 90% 90%, rgba(15,138,77,.30), transparent 60%),
+    linear-gradient(160deg,#00512F,#00693C 55%,#0F8A4D);
+}
+.login-card{
+  width:100%;max-width:420px;background:var(--surface);border-radius:18px;
+  padding:36px 32px;box-shadow:var(--shadow-lg);
+}
+.login-logo{display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:26px;text-align:center}
+.login-logo h1{font-size:20px}
+.login-logo small{color:var(--fg-muted);font-size:13.5px;font-weight:500;line-height:1.5}
+.login-card .field{margin-bottom:16px}
+.hint{
+  margin-top:18px;padding:11px 13px;background:var(--brand-50);border:1px dashed var(--brand-100);
+  border-radius:9px;font-size:13px;color:var(--brand-d);
+}
+.hint code{font-family:var(--mono);font-weight:700}
+
+/* ---------- App shell ---------- */
+#app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh}
+aside{
+  background:linear-gradient(180deg,var(--brand-d),var(--brand) 45%,#00713F);
+  color:#fff;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+}
+.brand{display:flex;align-items:center;gap:11px;padding:18px 18px 16px;border-bottom:1px solid rgba(255,255,255,.14)}
+.brand-txt strong{display:block;font-size:14.5px;line-height:1.35}
+.brand-txt span{font-size:11.5px;opacity:.8}
+.side-nav{flex:1;overflow-y:auto;padding:12px 10px}
+.nav-group{
+  font-size:11px;letter-spacing:.09em;text-transform:uppercase;opacity:.6;
+  padding:14px 12px 6px;font-weight:700;
+}
+.nav-item{
+  display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+  padding:9.5px 12px;border-radius:9px;border:0;background:transparent;color:#fff;
+  font-size:14.5px;font-weight:500;cursor:pointer;transition:background .15s;
+}
+.nav-item:hover{background:rgba(255,255,255,.12)}
+.nav-item.active{background:rgba(255,255,255,.22);font-weight:700}
+.nav-item svg{flex:none;opacity:.92}
+.side-foot{padding:12px 14px;border-top:1px solid rgba(255,255,255,.14);font-size:12.5px;opacity:.82}
+
+main{min-width:0;display:flex;flex-direction:column}
+.topbar{
+  position:sticky;top:0;z-index:20;background:rgba(255,255,255,.9);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);padding:12px 22px;
+  display:flex;align-items:center;gap:14px;
+}
+.topbar h2{font-size:18px}
+.topbar .sub{font-size:12.5px;color:var(--fg-muted);font-weight:500}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.user-chip{
+  display:flex;align-items:center;gap:9px;padding:5px 12px 5px 5px;
+  background:var(--brand-50);border-radius:999px;font-size:13.5px;font-weight:600;color:var(--brand-d);
+}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:12.5px;font-weight:700}
+#burger{display:none}
+.content{padding:22px;flex:1;max-width:1500px;width:100%}
+
+/* ---------- Cards / layout ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-h{padding:15px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.card-h h3{font-size:15.5px}
+.card-h .sp{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.card-b{padding:18px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.span2{grid-column:span 2}
+.span4{grid-column:span 4}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* ---------- KPI ---------- */
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+.kpi .top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.kpi .ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--brand-50);color:var(--brand)}
+.kpi .lb{font-size:13px;color:var(--fg-muted);font-weight:600}
+.kpi b{font-size:26px;font-weight:750;letter-spacing:-.02em;display:block;line-height:1.15}
+.kpi .sub{font-size:12.5px;color:var(--fg-faint);margin-top:3px}
+.kpi.warn .ic{background:var(--warn-bg);color:var(--warn)}
+.kpi.err .ic{background:var(--err-bg);color:var(--err)}
+.kpi.info .ic{background:var(--info-bg);color:var(--info)}
+
+/* ---------- Tables ---------- */
+.tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table.tbl{font-size:14px;background:var(--surface)}
+table.tbl th{
+  background:var(--brand-50);color:var(--brand-d);text-align:left;font-weight:700;font-size:13px;
+  padding:10px 12px;white-space:nowrap;border-bottom:1px solid var(--border);position:sticky;top:0;
+}
+table.tbl td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.tbl tbody tr:last-child td{border-bottom:0}
+table.tbl tbody tr:hover{background:var(--surface-2)}
+table.tbl tfoot td{background:var(--brand-50);font-weight:700;border-top:2px solid var(--brand-100)}
+.empty{text-align:center;padding:34px 16px;color:var(--fg-faint);font-size:14px}
+
+/* ---------- Badges ---------- */
+.bdg{display:inline-flex;align-items:center;gap:5px;padding:2.5px 9px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.bdg-ok{background:var(--ok-bg);color:var(--ok)}
+.bdg-warn{background:var(--warn-bg);color:var(--warn)}
+.bdg-err{background:var(--err-bg);color:var(--err)}
+.bdg-info{background:var(--info-bg);color:var(--info)}
+.bdg-gray{background:#EEF1EF;color:var(--fg-muted)}
+
+/* ---------- Tabs ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:18px;overflow-x:auto}
+.tab{
+  padding:9px 15px;border:0;background:transparent;cursor:pointer;font-size:14.5px;font-weight:600;
+  color:var(--fg-muted);border-bottom:2.5px solid transparent;white-space:nowrap;
+}
+.tab:hover{color:var(--fg)}
+.tab[aria-selected="true"]{color:var(--brand);border-bottom-color:var(--brand)}
+
+/* ---------- Product cards ---------- */
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:15px}
+.prod{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.prod .ph{height:135px;background:var(--brand-50);display:grid;place-items:center;overflow:hidden;position:relative}
+.prod .ph img{width:100%;height:100%;object-fit:cover}
+.prod .ph .noimg{color:var(--brand);opacity:.35}
+.prod .bd{padding:13px;display:flex;flex-direction:column;gap:5px;flex:1}
+.prod .code{font-family:var(--mono);font-size:11.5px;color:var(--fg-faint)}
+.prod .nm{font-weight:700;font-size:14.5px;line-height:1.35}
+.prod .meta{font-size:12.5px;color:var(--fg-muted)}
+.prod .ft{padding:10px 13px;border-top:1px solid var(--border);display:flex;gap:7px;background:var(--surface-2)}
+.prod .ft .btn{flex:1}
+
+/* ---------- Image upload ---------- */
+.drop{
+  border:2px dashed var(--border-strong);border-radius:11px;padding:16px;text-align:center;
+  background:var(--surface-2);cursor:pointer;transition:.15s;
+}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand-50)}
+.drop img{max-height:140px;border-radius:8px;margin-bottom:8px}
+.drop .t{font-size:13.5px;color:var(--fg-muted)}
+
+/* ---------- Barcode ---------- */
+.bc-box{background:#fff;border:1px solid var(--border);border-radius:9px;padding:12px;text-align:center}
+.bc-box svg{max-width:100%;height:auto}
+.bc-txt{font-family:var(--mono);font-size:12.5px;letter-spacing:.16em;margin-top:5px}
+
+/* ---------- Map ---------- */
+.map-wrap{position:relative;border-radius:11px;overflow:hidden;border:1px solid var(--border);background:var(--brand-50)}
+.map-wrap iframe{width:100%;height:420px;border:0;display:block}
+.prov-list{max-height:470px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px}
+.prov{
+  display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--border);
+  border-radius:10px;background:var(--surface);cursor:pointer;text-align:left;width:100%;transition:.15s;
+}
+.prov:hover{border-color:var(--brand);background:var(--brand-50)}
+.prov.active{border-color:var(--brand);background:var(--brand-50);box-shadow:0 0 0 2px var(--brand-100)}
+.prov .pin{width:32px;height:32px;border-radius:9px;background:var(--brand);color:#fff;display:grid;place-items:center;flex:none}
+.prov .info{flex:1;min-width:0}
+.prov .info b{display:block;font-size:14px}
+.prov .info span{font-size:12px;color:var(--fg-muted)}
+.prov .qty{text-align:right;font-variant-numeric:tabular-nums}
+.prov .qty b{display:block;font-size:15px;color:var(--brand-d)}
+.prov .qty span{font-size:11.5px;color:var(--fg-faint)}
+
+/* ---------- Charts ---------- */
+.chart{width:100%;overflow-x:auto}
+.chart svg{display:block;min-width:520px;width:100%;height:auto}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--fg-muted);margin-top:10px}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block;margin-right:6px;vertical-align:-1px}
+
+/* ---------- Modal ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(10,30,20,.5);display:grid;place-items:center;padding:20px;z-index:100;overflow-y:auto}
+.modal{background:var(--surface);border-radius:15px;box-shadow:var(--shadow-lg);width:100%;max-width:720px;max-height:92vh;display:flex;flex-direction:column}
+.modal-h{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.modal-h h3{font-size:16.5px;flex:1}
+.modal-b{padding:20px;overflow-y:auto}
+.modal-f{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:9px;justify-content:flex-end;background:var(--surface-2);border-radius:0 0 15px 15px}
+
+/* ---------- Toast ---------- */
+#toasts{position:fixed;right:18px;bottom:18px;z-index:200;display:flex;flex-direction:column;gap:9px}
+.toast{
+  background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--brand);
+  border-radius:10px;padding:11px 15px;box-shadow:var(--shadow-lg);font-size:14px;
+  min-width:250px;max-width:380px;animation:slide .25s ease;
+}
+.toast.err{border-left-color:var(--err)}
+.toast.warn{border-left-color:var(--warn)}
+@keyframes slide{from{opacity:0;transform:translateX(24px)}}
+
+/* ---------- Print ---------- */
+#printRoot{display:none}
+@media print{
+  @page{size:A4;margin:12mm}
+  body{background:#fff;font-size:11.5pt}
+  .no-print{display:none !important}
+  #printRoot{display:block !important}
+  .pr-head{display:flex;align-items:flex-start;gap:14px;border-bottom:2.5px solid #00693C;padding-bottom:10px;margin-bottom:14px}
+  .pr-head .org b{display:block;font-size:14pt;color:#00693C}
+  .pr-head .org span{font-size:9.5pt;color:#444}
+  .pr-head .rt{margin-left:auto;text-align:right;font-size:9.5pt;color:#444}
+  .pr-title{text-align:center;font-size:13.5pt;font-weight:700;margin:6px 0 3px}
+  .pr-sub{text-align:center;font-size:10pt;color:#444;margin-bottom:12px}
+  #printRoot table{width:100%;border-collapse:collapse;font-size:10pt}
+  #printRoot th{background:#EAF5EF !important;border:1px solid #9BBFAB;padding:5px 7px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #printRoot td{border:1px solid #C3CFC8;padding:4.5px 7px}
+  #printRoot tfoot td{background:#EAF5EF !important;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pr-sign{display:flex;justify-content:space-around;margin-top:34px;font-size:10pt;text-align:center}
+  .pr-sign div{width:31%}
+  .pr-sign .line{border-bottom:1px dotted #333;height:34px;margin-bottom:5px}
+  .pr-note{margin-top:10px;font-size:9pt;color:#555}
+  .pg-break{page-break-after:always}
+  .lbl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm}
+  .lbl-card{border:1px dashed #888;padding:5px;text-align:center;break-inside:avoid}
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1180px){
+  .form-grid{grid-template-columns:repeat(2,1fr)}
+  .g4{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:900px){
+  #app{grid-template-columns:1fr}
+  aside{
+    position:fixed;left:0;top:0;bottom:0;width:var(--sidebar-w);z-index:60;
+    transform:translateX(-100%);transition:transform .22s ease;height:100vh;
+  }
+  aside.open{transform:translateX(0);box-shadow:var(--shadow-lg)}
+  #burger{display:grid}
+  #scrim{position:fixed;inset:0;background:rgba(10,30,20,.45);z-index:55}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .content{padding:15px}
+  .topbar{padding:11px 15px}
+  .span2,.span4{grid-column:span 2}
+}
+@media (max-width:560px){
+  .form-grid{grid-template-columns:1fr}
+  .span2,.span4{grid-column:span 1}
+  .topbar h2{font-size:16px}
+  .user-chip span{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ LOGIN ══════════════════ -->
+<div id="login" class="no-print">
+  <form class="login-card" id="loginForm" novalidate>
+    <div class="login-logo">
+      <svg width="62" height="62" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="30" fill="#00693C"/>
+        <path d="M32 13c-9 6-14 13-14 21a14 14 0 0 0 28 0c0-8-5-15-14-21z" fill="#A8CF45"/>
+        <path d="M32 18v30M32 30l7-6M32 38l-7-6" stroke="#00693C" stroke-width="2.6" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <h1>ระบบควบคุมสินค้าคงคลัง</h1>
+        <small>การยางแห่งประเทศไทย<br>Rubber Authority of Thailand</small>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="u">ชื่อผู้ใช้งาน</label>
+      <input class="inp" id="u" autocomplete="username" placeholder="admin" required>
+    </div>
+    <div class="field">
+      <label class="lbl" for="p">รหัสผ่าน</label>
+      <input class="inp" id="p" type="password" autocomplete="current-password" placeholder="••••••••" required>
+    </div>
+    <div id="loginErr" class="bdg bdg-err" style="margin-bottom:14px;display:none"></div>
+    <button class="btn btn-p" type="submit" style="width:100%;padding:11px">เข้าสู่ระบบ</button>
+
+    <div class="hint">
+      บัญชีสำหรับทดสอบ (ไม่ใช้ฐานข้อมูล) — ชื่อผู้ใช้ <code>admin</code> · รหัสผ่าน <code>admin888</code>
+    </div>
+  </form>
+</div>
+
+<!-- ══════════════════ APP ══════════════════ -->
+<div id="app" class="no-print" hidden>
+  <aside id="sidebar">
+    <div class="brand">
+      <svg width="36" height="36" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="30" fill="#fff" opacity=".16"/>
+        <path d="M32 13c-9 6-14 13-14 21a14 14 0 0 0 28 0c0-8-5-15-14-21z" fill="#A8CF45"/>
+        <path d="M32 18v30M32 30l7-6M32 38l-7-6" stroke="#00512F" stroke-width="2.6" stroke-linecap="round"/>
+      </svg>
+      <div class="brand-txt">
+        <strong>สินค้าคงคลัง กยท.</strong>
+        <span>Inventory Control</span>
+      </div>
+    </div>
+    <nav class="side-nav" id="sideNav"></nav>
+    <div class="side-foot">
+      <div>คลังที่ใช้งาน: <b id="footWh">—</b></div>
+      <div style="margin-top:4px;opacity:.75">เวอร์ชัน 1.0 · ข้อมูลเก็บในเครื่อง</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <button class="btn btn-g btn-icon" id="burger" aria-label="เปิดเมนู">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <div>
+        <h2 id="pgTitle">แดชบอร์ด</h2>
+        <div class="sub" id="pgSub">ภาพรวมสินค้าคงคลัง</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-g btn-sm" id="btnBackup" title="สำรอง / กู้คืนข้อมูล">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+          ข้อมูล
+        </button>
+        <div class="user-chip"><span class="avatar">AD</span><span>admin</span></div>
+        <button class="btn btn-g btn-sm" id="btnLogout">ออกจากระบบ</button>
+      </div>
+    </div>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+
+<div id="modalRoot" class="no-print"></div>
+<div id="toasts" class="no-print"></div>
+<div id="printRoot"></div>
+
+<script>
+"use strict";
+/* ============================================================================
+   ระบบควบคุมสินค้าคงคลัง — การยางแห่งประเทศไทย
+   ไฟล์เดียว ไม่มี dependency ภายนอก · เก็บข้อมูลด้วย localStorage (ไม่ใช้ Database)
+   ============================================================================ */
+
+/* ---------------------------------------------------------------- config */
+const AUTH = { username: "admin", password: "admin888" };
+const KEY  = "raot-inv-v1";
+const SESS = "raot-inv-session";
+
+const TYPES = {
+  RECEIVE:  { code:"RC", name:"รับสินค้า",       sign:+1, color:"#0F8A4D", badge:"bdg-ok"   },
+  ISSUE:    { code:"IS", name:"เบิกสินค้า",      sign:-1, color:"#B3261E", badge:"bdg-err"  },
+  TRANSFER: { code:"TF", name:"โอนสินค้า",       sign: 0, color:"#0B5FA5", badge:"bdg-info" },
+  ADJUST:   { code:"AD", name:"ปรับปรุงสินค้า",  sign: 0, color:"#B26A00", badge:"bdg-warn" }
+};
+
+/* ---------------------------------------------------------------- helpers */
+const $  = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const num = (n, d) => Number(n || 0).toLocaleString("th-TH", {
+  minimumFractionDigits: d || 0, maximumFractionDigits: d == null ? 2 : d });
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const thDate = iso => iso ? new Date(iso + "T00:00:00").toLocaleDateString("th-TH",
+  { day:"2-digit", month:"short", year:"numeric" }) : "—";
+const thDateTime = ts => new Date(ts).toLocaleString("th-TH",
+  { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+const uid = () => "x" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+
+function toast(msg, kind) {
+  const el = document.createElement("div");
+  el.className = "toast" + (kind ? " " + kind : "");
+  el.textContent = msg;
+  $("#toasts").appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 250); }, 2800);
+}
+
+/* PRNG แบบกำหนด seed — ให้ข้อมูลตัวอย่างเหมือนกันทุกครั้ง */
+function rng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ============================================================ CODE 128 (B) */
+const C128 = ["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+"221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
+"221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
+"212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
+"231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
+"231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+"314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+"112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
+"111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
+"214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
+"114131","311141","411131","211412","211214","211232","2331112"];
+
+/** สร้างบาร์โค้ด Code128-B เป็น SVG (ไม่ต้องใช้ไลบรารีภายนอก) */
+function barcodeSVG(text, opt) {
+  opt = opt || {};
+  const mw = opt.module || 2, h = opt.height || 54, showTxt = opt.text !== false;
+  const s = String(text || "").replace(/[^\x20-\x7E]/g, "");
+  if (!s) return '<div style="color:#8A978F;font-size:13px;padding:12px">— ยังไม่กำหนดบาร์โค๊ด —</div>';
+
+  const vals = [104];                                   // START B
+  for (let i = 0; i < s.length; i++) vals.push(s.charCodeAt(i) - 32);
+  let sum = 104;
+  for (let i = 1; i < vals.length; i++) sum += vals[i] * i;
+  vals.push(sum % 103);                                 // check digit
+  vals.push(106);                                       // STOP
+
+  let x = 0, rects = "";
+  vals.forEach(v => {
+    const pat = C128[v];
+    for (let i = 0; i < pat.length; i++) {
+      const w = parseInt(pat[i], 10) * mw;
+      if (i % 2 === 0) rects += '<rect x="' + x + '" y="0" width="' + w + '" height="' + h + '"/>';
+      x += w;
+    }
+  });
+  const total = x, th = showTxt ? 16 : 0;
+  return '<svg viewBox="0 0 ' + total + ' ' + (h + th) + '" width="' + total + '" height="' + (h + th) +
+    '" role="img" aria-label="บาร์โค๊ด ' + esc(s) + '"><rect width="' + total + '" height="' + (h + th) +
+    '" fill="#fff"/><g fill="#111">' + rects + '</g>' +
+    (showTxt ? '<text x="' + (total / 2) + '" y="' + (h + 13) +
+      '" text-anchor="middle" font-family="monospace" font-size="13" letter-spacing="2" fill="#111">' +
+      esc(s) + '</text>' : '') + '</svg>';
+}
+
+/* ============================================================ ข้อมูลตั้งต้น */
+const SEED_WH = [
+  { id:"W01", code:"BKK", name:"คลังสำนักงานใหญ่ บางขุนนนท์", province:"กรุงเทพมหานคร",  lat:13.7719, lng:100.4735 },
+  { id:"W02", code:"SNI", name:"คลังสุราษฎร์ธานี",             province:"สุราษฎร์ธานี",   lat:9.1382,  lng:99.3215  },
+  { id:"W03", code:"SKA", name:"คลังหาดใหญ่",                  province:"สงขลา",          lat:7.0086,  lng:100.4747 },
+  { id:"W04", code:"NRT", name:"คลังนครศรีธรรมราช",            province:"นครศรีธรรมราช",  lat:8.4304,  lng:99.9631  },
+  { id:"W05", code:"TRG", name:"คลังตรัง",                     province:"ตรัง",           lat:7.5563,  lng:99.6114  },
+  { id:"W06", code:"YLA", name:"คลังยะลา",                     province:"ยะลา",           lat:6.5410,  lng:101.2803 },
+  { id:"W07", code:"RYG", name:"คลังระยอง",                    province:"ระยอง",          lat:12.6814, lng:101.2816 },
+  { id:"W08", code:"BKN", name:"คลังบึงกาฬ",                   province:"บึงกาฬ",         lat:18.3609, lng:103.0645 },
+  { id:"W09", code:"UBN", name:"คลังอุบลราชธานี",              province:"อุบลราชธานี",    lat:15.2448, lng:104.8473 },
+  { id:"W10", code:"CRI", name:"คลังเชียงราย",                 province:"เชียงราย",       lat:19.9105, lng:99.8406  }
+];
+
+const SEED_PROD = [
+  { code:"P001", name:"น้ำยางข้นชนิดครีม 60%",      unit:"ถัง (200 กก.)", cat:"วัตถุดิบยาง",     price:11500, min:40,  barcode:"8850001000017" },
+  { code:"P002", name:"ยางแผ่นรมควันชั้น 3 (RSS3)",  unit:"กิโลกรัม",      cat:"วัตถุดิบยาง",     price:62.5,  min:2000,barcode:"8850001000024" },
+  { code:"P003", name:"ยางแท่ง STR 20",              unit:"กิโลกรัม",      cat:"วัตถุดิบยาง",     price:58.75, min:2500,barcode:"8850001000031" },
+  { code:"P004", name:"ยางเครพขาว (White Crepe)",    unit:"กิโลกรัม",      cat:"วัตถุดิบยาง",     price:71.0,  min:800, barcode:"8850001000048" },
+  { code:"P005", name:"ถุงมือยางธรรมชาติ",           unit:"กล่อง (100 คู่)",cat:"ผลิตภัณฑ์ยาง",   price:340,   min:150, barcode:"8850001000055" },
+  { code:"P006", name:"หมอนยางพารา",                 unit:"ใบ",            cat:"ผลิตภัณฑ์ยาง",   price:890,   min:60,  barcode:"8850001000062" },
+  { code:"P007", name:"แผ่นยางปูพื้นสนามกีฬา",       unit:"แผ่น",          cat:"ผลิตภัณฑ์ยาง",   price:520,   min:100, barcode:"8850001000079" },
+  { code:"P008", name:"กรดฟอร์มิก 94%",              unit:"ถัง (35 กก.)",  cat:"เคมีภัณฑ์",       price:2650,  min:25,  barcode:"8850001000086" },
+  { code:"P009", name:"ปุ๋ยเคมีสูตร 20-8-20",        unit:"กระสอบ (50 กก.)",cat:"ปัจจัยการผลิต",  price:1180,  min:120, barcode:"8850001000093" },
+  { code:"P010", name:"ถ้วยรองน้ำยาง",               unit:"ใบ",            cat:"ปัจจัยการผลิต",   price:9.5,   min:3000,barcode:"8850001000109" },
+  { code:"P011", name:"มีดกรีดยางเจ๊ะบง",            unit:"ด้าม",          cat:"อุปกรณ์",         price:185,   min:200, barcode:"8850001000116" },
+  { code:"P012", name:"ถังเก็บน้ำยาง 20 ลิตร",       unit:"ใบ",            cat:"อุปกรณ์",         price:245,   min:180, barcode:"8850001000123" }
+];
+
+/* ============================================================ Data layer */
+let DB = null;
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) { DB = JSON.parse(raw); if (DB && DB.products && DB.warehouses && DB.txns) return; }
+  } catch (e) { /* ข้อมูลเสียหาย → สร้างใหม่ */ }
+  DB = seed();
+  save();
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(DB)); }
+  catch (e) { toast("บันทึกข้อมูลไม่สำเร็จ — พื้นที่จัดเก็บของเบราว์เซอร์เต็ม", "err"); }
+}
+
+function seed() {
+  const db = {
+    warehouses: SEED_WH.map(w => Object.assign({}, w)),
+    products: SEED_PROD.map((p, i) => Object.assign({ id: "PR" + (i + 1), img: "", note: "" }, p)),
+    txns: [],
+    counters: {}
+  };
+
+  const r = rng(20260827);
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 7, 1);
+  const days = Math.floor((now - start) / 86400000);
+  const users = ["admin", "somchai.k", "nipa.s", "wichai.p"];
+
+  // ยอดยกมาต้นงวด
+  db.products.forEach(p => {
+    db.warehouses.forEach(w => {
+      const base = Math.round(p.min * (1.2 + r() * 2.2));
+      db.txns.push({
+        id: uid(), type: "RECEIVE", docNo: "RC-OPEN-" + p.code + "-" + w.code,
+        date: start.toISOString().slice(0, 10), productId: p.id, qty: base,
+        whId: w.id, whTo: "", note: "ยอดยกมาต้นงวด", user: "admin",
+        ts: start.getTime(), ref: "ยกมา"
+      });
+    });
+  });
+
+  // รายการเคลื่อนไหวย้อนหลัง
+  const kinds = ["RECEIVE", "ISSUE", "ISSUE", "ISSUE", "TRANSFER", "ADJUST"];
+  for (let i = 0; i < 320; i++) {
+    const d = new Date(start.getTime() + Math.floor(r() * days) * 86400000 + 7 * 86400000);
+    if (d > now) continue;
+    const iso = d.toISOString().slice(0, 10);
+    const p = db.products[Math.floor(r() * db.products.length)];
+    const w = db.warehouses[Math.floor(r() * db.warehouses.length)];
+    const type = kinds[Math.floor(r() * kinds.length)];
+    let qty = Math.max(1, Math.round(p.min * (0.05 + r() * 0.35)));
+    let whTo = "";
+    if (type === "TRANSFER") {
+      let t = db.warehouses[Math.floor(r() * db.warehouses.length)];
+      if (t.id === w.id) t = db.warehouses[(db.warehouses.indexOf(w) + 3) % db.warehouses.length];
+      whTo = t.id;
+    }
+    if (type === "ADJUST") qty = (r() < 0.5 ? -1 : 1) * Math.max(1, Math.round(p.min * r() * 0.06));
+    db.txns.push({
+      id: uid(), type: type, docNo: "", date: iso, productId: p.id, qty: qty,
+      whId: w.id, whTo: whTo, user: users[Math.floor(r() * users.length)],
+      note: type === "ADJUST" ? "ปรับปรุงจากการตรวจนับ" : "", ts: d.getTime(), ref: ""
+    });
+  }
+
+  db.txns.sort((a, b) => a.ts - b.ts);
+  // ออกเลขที่เอกสารตามลำดับเวลา
+  const seq = {};
+  db.txns.forEach(t => {
+    if (t.docNo) return;
+    const ym = t.date.slice(0, 7).replace("-", "");
+    const k = TYPES[t.type].code + ym;
+    seq[k] = (seq[k] || 0) + 1;
+    t.docNo = TYPES[t.type].code + "-" + ym + "-" + String(seq[k]).padStart(4, "0");
+  });
+  db.counters = seq;
+  return db;
+}
+
+/* ---------------------------------------------------------- lookups */
+const prodById = id => DB.products.find(p => p.id === id);
+const whById   = id => DB.warehouses.find(w => w.id === id);
+const prodName = id => { const p = prodById(id); return p ? p.name : "(ถูกลบ)"; };
+const whName   = id => { const w = whById(id); return w ? w.name : "—"; };
+
+function nextDocNo(type, dateISO) {
+  const ym = (dateISO || todayISO()).slice(0, 7).replace("-", "");
+  const k = TYPES[type].code + ym;
+  const n = (DB.counters[k] || 0) + 1;
+  return TYPES[type].code + "-" + ym + "-" + String(n).padStart(4, "0");
+}
+function commitDocNo(type, dateISO) {
+  const ym = (dateISO || todayISO()).slice(0, 7).replace("-", "");
+  const k = TYPES[type].code + ym;
+  DB.counters[k] = (DB.counters[k] || 0) + 1;
+}
+
+/** คำนวณยอดคงเหลือทั้งหมด → { "productId|whId": qty } */
+function stockMap(untilTs) {
+  const m = Object.create(null);
+  const add = (pid, wid, q) => {
+    const k = pid + "|" + wid;
+    m[k] = (m[k] || 0) + q;
+  };
+  DB.txns.forEach(t => {
+    if (untilTs != null && t.ts > untilTs) return;
+    if (t.type === "RECEIVE") add(t.productId, t.whId, t.qty);
+    else if (t.type === "ISSUE") add(t.productId, t.whId, -t.qty);
+    else if (t.type === "ADJUST") add(t.productId, t.whId, t.qty);
+    else if (t.type === "TRANSFER") { add(t.productId, t.whId, -t.qty); add(t.productId, t.whTo, t.qty); }
+  });
+  return m;
+}
+const stockOf = (pid, wid, m) => (m || stockMap())[pid + "|" + wid] || 0;
+function stockTotal(pid, m) {
+  m = m || stockMap();
+  return DB.warehouses.reduce((s, w) => s + (m[pid + "|" + w.id] || 0), 0);
+}
+function whTotal(wid, m) {
+  m = m || stockMap();
+  return DB.products.reduce((s, p) => s + (m[p.id + "|" + wid] || 0), 0);
+}
+
+/* ============================================================ Charts (SVG) */
+function chartBars(series, labels, opts) {
+  opts = opts || {};
+  const W = 760, H = opts.height || 260, PL = 62, PR = 14, PT = 14, PB = 34;
+  const iw = W - PL - PR, ih = H - PT - PB;
+  const max = Math.max(1, ...series.flatMap(s => s.data));
+  const step = iw / Math.max(1, labels.length);
+  const gw = step * 0.68, bw = gw / series.length;
+  let g = "";
+
+  for (let i = 0; i <= 4; i++) {
+    const y = PT + ih - (ih * i / 4);
+    g += '<line x1="' + PL + '" y1="' + y + '" x2="' + (W - PR) + '" y2="' + y +
+         '" stroke="#DDE5E0" stroke-width="1"/>' +
+         '<text x="' + (PL - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#8A978F">' +
+         num(Math.round(max * i / 4), 0) + '</text>';
+  }
+  labels.forEach((lb, i) => {
+    const cx = PL + step * i + step / 2;
+    series.forEach((s, si) => {
+      const h = (s.data[i] || 0) / max * ih;
+      const x = cx - gw / 2 + bw * si;
+      g += '<rect x="' + x.toFixed(1) + '" y="' + (PT + ih - h).toFixed(1) + '" width="' + (bw - 2).toFixed(1) +
+           '" height="' + Math.max(0, h).toFixed(1) + '" fill="' + s.color + '" rx="2.5"><title>' +
+           esc(lb) + ' · ' + esc(s.name) + ': ' + num(s.data[i] || 0, 0) + '</title></rect>';
+    });
+    g += '<text x="' + cx + '" y="' + (H - 12) + '" text-anchor="middle" font-size="11" fill="#5C6B62">' + esc(lb) + '</text>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">' + g + '</svg>';
+}
+
+function chartLine(data, labels, opts) {
+  opts = opts || {};
+  const W = 760, H = opts.height || 250, PL = 66, PR = 14, PT = 14, PB = 34;
+  const iw = W - PL - PR, ih = H - PT - PB;
+  const max = Math.max(1, ...data), min = Math.min(0, ...data);
+  const span = Math.max(1, max - min);
+  const px = i => PL + (labels.length < 2 ? iw / 2 : iw * i / (labels.length - 1));
+  const py = v => PT + ih - ((v - min) / span) * ih;
+  const color = opts.color || "#00693C";
+  let g = "", pts = [];
+
+  for (let i = 0; i <= 4; i++) {
+    const y = PT + ih - (ih * i / 4);
+    g += '<line x1="' + PL + '" y1="' + y + '" x2="' + (W - PR) + '" y2="' + y + '" stroke="#DDE5E0"/>' +
+         '<text x="' + (PL - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="#8A978F">' +
+         num(Math.round(min + span * i / 4), 0) + '</text>';
+  }
+  data.forEach((v, i) => pts.push(px(i).toFixed(1) + "," + py(v).toFixed(1)));
+  g += '<polygon points="' + PL + ',' + (PT + ih) + ' ' + pts.join(" ") + ' ' + px(data.length - 1).toFixed(1) +
+       ',' + (PT + ih) + '" fill="' + color + '" opacity=".13"/>';
+  g += '<polyline points="' + pts.join(" ") + '" fill="none" stroke="' + color +
+       '" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>';
+  data.forEach((v, i) => {
+    g += '<circle cx="' + px(i).toFixed(1) + '" cy="' + py(v).toFixed(1) + '" r="4" fill="#fff" stroke="' +
+         color + '" stroke-width="2.4"><title>' + esc(labels[i]) + ': ' + num(v, 0) + '</title></circle>';
+  });
+  labels.forEach((lb, i) => {
+    g += '<text x="' + px(i).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" font-size="11" fill="#5C6B62">' +
+         esc(lb) + '</text>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">' + g + '</svg>';
+}
+
+function chartHBar(items, opts) {
+  opts = opts || {};
+  const W = 760, rowH = 30, H = Math.max(90, items.length * rowH + 20), PL = 165, PR = 70;
+  const iw = W - PL - PR;
+  const max = Math.max(1, ...items.map(i => i.value));
+  let g = "";
+  items.forEach((it, i) => {
+    const y = 10 + i * rowH, w = it.value / max * iw;
+    g += '<text x="' + (PL - 10) + '" y="' + (y + 15) + '" text-anchor="end" font-size="12" fill="#16211B">' +
+         esc(it.label.length > 22 ? it.label.slice(0, 21) + "…" : it.label) + '</text>' +
+         '<rect x="' + PL + '" y="' + (y + 4) + '" width="' + iw + '" height="16" fill="#EAF5EF" rx="4"/>' +
+         '<rect x="' + PL + '" y="' + (y + 4) + '" width="' + Math.max(2, w).toFixed(1) + '" height="16" fill="' +
+         (it.color || "#00693C") + '" rx="4"><title>' + esc(it.label) + ': ' + num(it.value, 0) + '</title></rect>' +
+         '<text x="' + (PL + iw + 8) + '" y="' + (y + 16) + '" font-size="11.5" fill="#5C6B62">' + num(it.value, 0) + '</text>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">' + g + '</svg>';
+}
+
+/* ============================================================ Modal */
+function modal(title, bodyHTML, footHTML, onMount) {
+  const root = $("#modalRoot");
+  root.innerHTML =
+    '<div class="modal-bg" id="mbg"><div class="modal" role="dialog" aria-modal="true">' +
+    '<div class="modal-h"><h3>' + esc(title) + '</h3>' +
+    '<button class="btn btn-g btn-icon" id="mClose" aria-label="ปิด">' +
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>' +
+    '</button></div>' +
+    '<div class="modal-b">' + bodyHTML + '</div>' +
+    (footHTML ? '<div class="modal-f">' + footHTML + '</div>' : '') +
+    '</div></div>';
+  const close = () => { root.innerHTML = ""; document.removeEventListener("keydown", onKey); };
+  const onKey = e => { if (e.key === "Escape") close(); };
+  $("#mClose").onclick = close;
+  $("#mbg").onclick = e => { if (e.target.id === "mbg") close(); };
+  document.addEventListener("keydown", onKey);
+  if (onMount) onMount(close);
+  return close;
+}
+
+/* ============================================================ Print */
+function printDoc(title, subtitle, innerHTML, signers) {
+  const now = new Date();
+  $("#printRoot").innerHTML =
+    '<div class="pr-head">' +
+      '<svg width="46" height="46" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#00693C"/>' +
+      '<path d="M32 13c-9 6-14 13-14 21a14 14 0 0 0 28 0c0-8-5-15-14-21z" fill="#A8CF45"/></svg>' +
+      '<div class="org"><b>การยางแห่งประเทศไทย</b><span>Rubber Authority of Thailand · ระบบควบคุมสินค้าคงคลัง</span></div>' +
+      '<div class="rt">พิมพ์โดย: admin<br>วันที่พิมพ์: ' + thDateTime(now.getTime()) + '</div>' +
+    '</div>' +
+    '<div class="pr-title">' + esc(title) + '</div>' +
+    '<div class="pr-sub">' + esc(subtitle || "") + '</div>' +
+    innerHTML +
+    (signers === false ? '' :
+      '<div class="pr-sign">' +
+        '<div><div class="line"></div>ผู้จัดทำ / ผู้ตรวจนับ</div>' +
+        '<div><div class="line"></div>หัวหน้าคลังสินค้า</div>' +
+        '<div><div class="line"></div>ผู้อนุมัติ</div>' +
+      '</div>');
+  window.print();
+}
+
+function tableToCSV(headers, rows, filename) {
+  const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+  const csv = "﻿" + [headers.map(q).join(",")].concat(rows.map(r => r.map(q).join(","))).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  toast("ส่งออกไฟล์ " + filename + " แล้ว");
+}
+
+/* ============================================================ Navigation */
+const IC = {
+  dash:'<path d="M3 13h8V3H3zM13 21h8V11h-8zM13 3v6h8V3zM3 21h8v-6H3z"/>',
+  in:'<path d="M12 3v13M6 11l6 6 6-6M4 21h16"/>',
+  out:'<path d="M12 21V8M6 13l6-6 6 6M4 3h16"/>',
+  move:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
+  adj:'<path d="M4 6h16M4 12h10M4 18h7M17 15l3 3-3 3M20 18h-6"/>',
+  box:'<path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8"/>',
+  map:'<path d="M9 3L3 6v15l6-3 6 3 6-3V3l-6 3z"/><path d="M9 3v15M15 6v15"/>',
+  rep:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  chart:'<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>'
+};
+const NAV = [
+  { g: "ภาพรวม", items: [ { id:"dash", ic:IC.dash, t:"แดชบอร์ด", sub:"ภาพรวมสินค้าคงคลัง" } ] },
+  { g: "ทำรายการ", items: [
+      { id:"receive",  ic:IC.in,   t:"รับสินค้า",      sub:"บันทึกการรับสินค้าเข้าคลัง" },
+      { id:"issue",    ic:IC.out,  t:"เบิกสินค้า",     sub:"บันทึกการเบิก-จ่ายสินค้า" },
+      { id:"transfer", ic:IC.move, t:"โอนสินค้า",      sub:"โอนย้ายระหว่างคลัง" },
+      { id:"adjust",   ic:IC.adj,  t:"ปรับปรุงสินค้า", sub:"ปรับยอดตามผลการตรวจนับ" } ] },
+  { g: "ข้อมูลหลัก", items: [
+      { id:"products",  ic:IC.box, t:"ข้อมูลสินค้า",       sub:"รายละเอียด รูปภาพ และบาร์โค๊ด" },
+      { id:"provinces", ic:IC.map, t:"สินค้าตามจังหวัด",   sub:"แผนที่และยอดคงเหลือรายจังหวัด" } ] },
+  { g: "รายงาน", items: [
+      { id:"reports", ic:IC.rep,   t:"รายงาน",       sub:"รายงานสรุปและการตรวจนับ" },
+      { id:"graphs",  ic:IC.chart, t:"กราฟสรุป",     sub:"ปริมาณขึ้น-ลง และยอดคงเหลือ" } ] }
+];
+
+let VIEW = "dash";
+
+function renderNav() {
+  $("#sideNav").innerHTML = NAV.map(g =>
+    '<div class="nav-group">' + esc(g.g) + '</div>' +
+    g.items.map(it =>
+      '<button class="nav-item' + (it.id === VIEW ? " active" : "") + '" data-nav="' + it.id + '">' +
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+      it.ic + '</svg>' + esc(it.t) + '</button>').join("")
+  ).join("");
+}
+
+function go(id) {
+  VIEW = id;
+  const item = NAV.flatMap(g => g.items).find(i => i.id === id);
+  $("#pgTitle").textContent = item ? item.t : "";
+  $("#pgSub").textContent = item ? item.sub : "";
+  renderNav();
+  $("#sidebar").classList.remove("open");
+  const sc = $("#scrim"); if (sc) sc.remove();
+  window.scrollTo(0, 0);
+  ({ dash:viewDash, receive:()=>viewTxn("RECEIVE"), issue:()=>viewTxn("ISSUE"),
+     transfer:()=>viewTxn("TRANSFER"), adjust:viewAdjust, products:viewProducts,
+     provinces:viewProvinces, reports:viewReports, graphs:viewGraphs }[id] || viewDash)();
+}
+
+/* ============================================================ VIEW: Dashboard */
+function viewDash() {
+  const m = stockMap();
+  const totalQty = DB.products.reduce((s, p) => s + stockTotal(p.id, m), 0);
+  const totalVal = DB.products.reduce((s, p) => s + stockTotal(p.id, m) * (p.price || 0), 0);
+  const low = DB.products.filter(p => stockTotal(p.id, m) < p.min);
+  const today = todayISO();
+  const todayTx = DB.txns.filter(t => t.date === today).length;
+
+  // 6 เดือนล่าสุด
+  const months = [], now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ key: d.toISOString().slice(0, 7), label: d.toLocaleDateString("th-TH", { month: "short" }) });
+  }
+  const inD = [], outD = [];
+  months.forEach(mo => {
+    let i = 0, o = 0;
+    DB.txns.forEach(t => {
+      if (t.date.slice(0, 7) !== mo.key) return;
+      if (t.type === "RECEIVE") i += t.qty;
+      else if (t.type === "ISSUE") o += t.qty;
+      else if (t.type === "ADJUST") { if (t.qty > 0) i += t.qty; else o += -t.qty; }
+    });
+    inD.push(i); outD.push(o);
+  });
+
+  const recent = DB.txns.slice().sort((a, b) => b.ts - a.ts).slice(0, 10);
+  const topWh = DB.warehouses.map(w => ({ label: w.province, value: whTotal(w.id, m), color: "#0F8A4D" }))
+    .sort((a, b) => b.value - a.value).slice(0, 8);
+
+  $("#content").innerHTML =
+    '<div class="grid g4" style="margin-bottom:16px">' +
+      kpi(IC.box, "รายการสินค้าทั้งหมด", num(DB.products.length, 0) + " รายการ", DB.warehouses.length + " คลังสินค้า", "") +
+      kpi(IC.chart, "ยอดคงเหลือรวม", num(totalQty, 0) + " หน่วย", "มูลค่า ฿" + num(totalVal, 0), "info") +
+      kpi(IC.adj, "สินค้าต่ำกว่าจุดสั่งซื้อ", num(low.length, 0) + " รายการ", low.length ? "ควรดำเนินการจัดหา" : "อยู่ในเกณฑ์ปกติ", low.length ? "warn" : "") +
+      kpi(IC.rep, "รายการวันนี้", num(todayTx, 0) + " รายการ", thDate(today), "") +
+    '</div>' +
+
+    '<div class="grid g2" style="margin-bottom:16px">' +
+      card("ปริมาณรับเข้า–จ่ายออก ย้อนหลัง 6 เดือน", "",
+        '<div class="chart">' + chartBars(
+          [ { name:"รับเข้า", color:"#0F8A4D", data:inD }, { name:"จ่ายออก", color:"#B3261E", data:outD } ],
+          months.map(x => x.label)) + '</div>' +
+        '<div class="legend"><span><i style="background:#0F8A4D"></i>รับเข้า</span><span><i style="background:#B3261E"></i>จ่ายออก</span></div>') +
+      card("ยอดคงเหลือแยกตามจังหวัด", "", '<div class="chart">' + chartHBar(topWh) + '</div>') +
+    '</div>' +
+
+    '<div class="grid g2">' +
+      card("รายการเคลื่อนไหวล่าสุด", '<button class="btn btn-o btn-sm" data-nav="reports">ดูรายงานทั้งหมด</button>',
+        recent.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>วันที่</th><th>เลขที่</th><th>ประเภท</th><th>สินค้า</th><th class="num">จำนวน</th></tr></thead><tbody>' +
+          recent.map(t =>
+            '<tr><td>' + thDate(t.date) + '</td><td style="font-family:var(--mono);font-size:12.5px">' + esc(t.docNo) + '</td>' +
+            '<td><span class="bdg ' + TYPES[t.type].badge + '">' + TYPES[t.type].name + '</span></td>' +
+            '<td>' + esc(prodName(t.productId)) + '</td>' +
+            '<td class="num">' + num(Math.abs(t.qty), 0) + '</td></tr>').join("") +
+          '</tbody></table></div>' : '<div class="empty">ยังไม่มีรายการ</div>') +
+
+      card("สินค้าต่ำกว่าจุดสั่งซื้อ", '<span class="bdg ' + (low.length ? "bdg-warn" : "bdg-ok") + '">' + low.length + ' รายการ</span>',
+        low.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+          '<th>รหัส</th><th>สินค้า</th><th class="num">คงเหลือ</th><th class="num">จุดสั่งซื้อ</th></tr></thead><tbody>' +
+          low.slice(0, 10).map(p =>
+            '<tr><td style="font-family:var(--mono);font-size:12.5px">' + esc(p.code) + '</td><td>' + esc(p.name) + '</td>' +
+            '<td class="num" style="color:var(--err);font-weight:700">' + num(stockTotal(p.id, m), 0) + '</td>' +
+            '<td class="num">' + num(p.min, 0) + '</td></tr>').join("") +
+          '</tbody></table></div>' : '<div class="empty">ทุกรายการมียอดคงเหลือเพียงพอ</div>') +
+    '</div>';
+}
+
+const kpi = (ic, label, value, sub, kind) =>
+  '<div class="kpi ' + (kind || "") + '"><div class="top"><div class="ic">' +
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + ic + '</svg>' +
+  '</div><div class="lb">' + esc(label) + '</div></div><b>' + value + '</b><div class="sub">' + esc(sub) + '</div></div>';
+
+const card = (title, actions, body) =>
+  '<div class="card"><div class="card-h"><h3>' + esc(title) + '</h3>' +
+  (actions ? '<div class="sp">' + actions + '</div>' : '') + '</div>' +
+  '<div class="card-b">' + body + '</div></div>';
+
+/* ============================================================ VIEW: รับ / เบิก / โอน */
+let cart = [];
+
+function prodOptions(sel) {
+  return DB.products.map(p =>
+    '<option value="' + p.id + '"' + (p.id === sel ? " selected" : "") + '>' +
+    esc(p.code + " · " + p.name) + '</option>').join("");
+}
+function whOptions(sel) {
+  return DB.warehouses.map(w =>
+    '<option value="' + w.id + '"' + (w.id === sel ? " selected" : "") + '>' +
+    esc(w.code + " · " + w.name) + '</option>').join("");
+}
+
+function viewTxn(type) {
+  cart = [];
+  const T = TYPES[type];
+  const isTf = type === "TRANSFER";
+  const docNo = nextDocNo(type, todayISO());
+
+  $("#content").innerHTML =
+    card("บันทึก" + T.name, '<span class="bdg bdg-gray">เลขที่เอกสาร ' + esc(docNo) + '</span>',
+      '<div class="form-grid">' +
+        '<div class="field"><label class="lbl" for="f_date">วันที่ทำรายการ</label>' +
+          '<input class="inp" type="date" id="f_date" value="' + todayISO() + '"></div>' +
+        '<div class="field"><label class="lbl" for="f_doc">เลขที่เอกสาร</label>' +
+          '<input class="inp" id="f_doc" value="' + esc(docNo) + '" readonly></div>' +
+        '<div class="field"><label class="lbl" for="f_wh">' + (isTf ? "คลังต้นทาง" : "คลังสินค้า") + '</label>' +
+          '<select class="sel" id="f_wh">' + whOptions() + '</select></div>' +
+        (isTf ? '<div class="field"><label class="lbl" for="f_wh2">คลังปลายทาง</label>' +
+          '<select class="sel" id="f_wh2">' + whOptions("W02") + '</select></div>'
+              : '<div class="field"><label class="lbl" for="f_ref">' +
+                (type === "RECEIVE" ? "เลขที่ใบส่งของ / ผู้ขาย" : "หน่วยงานผู้เบิก") + '</label>' +
+                '<input class="inp" id="f_ref" placeholder="' +
+                (type === "RECEIVE" ? "เช่น INV-2569-0142" : "เช่น ฝ่ายวิจัยและพัฒนา") + '"></div>') +
+      '</div>' +
+
+      '<hr style="border:0;border-top:1px solid var(--border);margin:18px 0">' +
+
+      '<div class="form-grid">' +
+        '<div class="field span2"><label class="lbl" for="f_prod">สินค้า</label>' +
+          '<select class="sel" id="f_prod">' + prodOptions() + '</select></div>' +
+        '<div class="field"><label class="lbl" for="f_qty">จำนวน</label>' +
+          '<input class="inp num" type="number" id="f_qty" min="0.01" step="any" placeholder="0"></div>' +
+        '<div class="field"><label class="lbl">คงเหลือปัจจุบัน</label>' +
+          '<input class="inp num" id="f_bal" readonly value="0"></div>' +
+        '<div class="field span2"><label class="lbl" for="f_note">หมายเหตุ</label>' +
+          '<input class="inp" id="f_note" placeholder="ระบุรายละเอียดเพิ่มเติม (ถ้ามี)"></div>' +
+        '<div class="field span2" style="display:flex;align-items:flex-end">' +
+          '<button class="btn btn-o" id="btnAdd" style="width:100%">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>' +
+          'เพิ่มลงรายการ</button></div>' +
+      '</div>') +
+
+    '<div style="height:16px"></div>' +
+
+    card("รายการในเอกสาร", '<button class="btn btn-p" id="btnSave" disabled>บันทึกเอกสาร</button>' +
+      '<button class="btn btn-g" id="btnClear">ล้างรายการ</button>', '<div id="cartBox"></div>') +
+
+    '<div style="height:16px"></div>' +
+
+    card("รายงาน" + T.name + " ล่าสุด",
+      '<button class="btn btn-o btn-sm" id="btnRep">พิมพ์รายงาน</button>' +
+      '<button class="btn btn-g btn-sm" id="btnCsv">ส่งออก CSV</button>',
+      recentTxnTable(type));
+
+  const refreshBal = () => {
+    const b = stockOf($("#f_prod").value, $("#f_wh").value);
+    $("#f_bal").value = num(b, 0);
+  };
+  $("#f_prod").onchange = refreshBal;
+  $("#f_wh").onchange = refreshBal;
+  $("#f_date").onchange = () => { $("#f_doc").value = nextDocNo(type, $("#f_date").value); };
+  refreshBal();
+  drawCart(type);
+
+  $("#btnAdd").onclick = () => {
+    const pid = $("#f_prod").value, qty = parseFloat($("#f_qty").value);
+    const wh = $("#f_wh").value, wh2 = isTf ? $("#f_wh2").value : "";
+    if (!(qty > 0)) return toast("กรุณาระบุจำนวนให้มากกว่า 0", "err");
+    if (isTf && wh === wh2) return toast("คลังต้นทางและปลายทางต้องไม่ใช่คลังเดียวกัน", "err");
+    if (type !== "RECEIVE") {
+      const inCart = cart.filter(c => c.productId === pid).reduce((s, c) => s + c.qty, 0);
+      const avail = stockOf(pid, wh) - inCart;
+      if (qty > avail)
+        return toast("ยอดคงเหลือไม่พอ — คงเหลือใช้ได้ " + num(avail, 0) + " หน่วย", "err");
+    }
+    cart.push({ productId: pid, qty: qty, note: $("#f_note").value.trim(), whId: wh, whTo: wh2 });
+    $("#f_qty").value = ""; $("#f_note").value = "";
+    drawCart(type); refreshBal();
+    toast("เพิ่ม " + prodName(pid) + " จำนวน " + num(qty, 0) + " แล้ว");
+  };
+
+  $("#btnClear").onclick = () => { cart = []; drawCart(type); };
+
+  $("#btnSave").onclick = () => {
+    if (!cart.length) return;
+    const date = $("#f_date").value || todayISO();
+    const doc = nextDocNo(type, date);
+    const ref = isTf ? "" : ($("#f_ref") ? $("#f_ref").value.trim() : "");
+    const ts = new Date(date + "T09:00:00").getTime();
+    cart.forEach(c => {
+      DB.txns.push({
+        id: uid(), type: type, docNo: doc, date: date, productId: c.productId,
+        qty: c.qty, whId: c.whId, whTo: c.whTo, note: c.note, ref: ref, user: "admin", ts: ts
+      });
+    });
+    commitDocNo(type, date);
+    DB.txns.sort((a, b) => a.ts - b.ts);
+    save();
+    toast("บันทึกเอกสาร " + doc + " (" + cart.length + " รายการ) เรียบร้อย");
+    cart = [];
+    viewTxn(type);
+  };
+
+  $("#btnRep").onclick = () => printTxnReport(type);
+  $("#btnCsv").onclick = () => {
+    const rows = DB.txns.filter(t => t.type === type).sort((a, b) => b.ts - a.ts).map(t => [
+      t.date, t.docNo, prodById(t.productId) ? prodById(t.productId).code : "", prodName(t.productId),
+      t.qty, whName(t.whId), t.whTo ? whName(t.whTo) : "", t.user, t.note || "" ]);
+    tableToCSV(["วันที่","เลขที่เอกสาร","รหัสสินค้า","ชื่อสินค้า","จำนวน","คลัง","คลังปลายทาง","ผู้ทำรายการ","หมายเหตุ"],
+      rows, "รายงาน" + T.name + ".csv");
+  };
+}
+
+function drawCart(type) {
+  const isTf = type === "TRANSFER";
+  const box = $("#cartBox");
+  if (!cart.length) {
+    box.innerHTML = '<div class="empty">ยังไม่มีรายการ — เลือกสินค้าและกด “เพิ่มลงรายการ” ด้านบน</div>';
+  } else {
+    box.innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th style="width:44px">#</th><th>สินค้า</th><th>หน่วย</th>' +
+      (isTf ? '<th>ต้นทาง → ปลายทาง</th>' : '<th>คลัง</th>') +
+      '<th class="num">จำนวน</th><th>หมายเหตุ</th><th style="width:52px"></th></tr></thead><tbody>' +
+      cart.map((c, i) => {
+        const p = prodById(c.productId);
+        return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(p ? p.name : "") + '</b><br>' +
+          '<span style="font-family:var(--mono);font-size:11.5px;color:var(--fg-faint)">' + esc(p ? p.code : "") + '</span></td>' +
+          '<td>' + esc(p ? p.unit : "") + '</td>' +
+          '<td style="font-size:13px">' + esc(whName(c.whId)) + (isTf ? ' <b>→</b> ' + esc(whName(c.whTo)) : "") + '</td>' +
+          '<td class="num"><b>' + num(c.qty, 0) + '</b></td><td style="font-size:13px">' + esc(c.note || "—") + '</td>' +
+          '<td><button class="btn btn-d btn-icon" data-del="' + i + '" title="ลบ">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>' +
+          '</button></td></tr>';
+      }).join("") +
+      '</tbody><tfoot><tr><td colspan="4">รวมทั้งสิ้น ' + cart.length + ' รายการ</td>' +
+      '<td class="num">' + num(cart.reduce((s, c) => s + c.qty, 0), 0) + '</td><td colspan="2"></td></tr></tfoot></table></div>';
+    $$("[data-del]", box).forEach(b => b.onclick = () => {
+      cart.splice(+b.dataset.del, 1); drawCart(type);
+    });
+  }
+  $("#btnSave").disabled = !cart.length;
+}
+
+function recentTxnTable(type) {
+  const list = DB.txns.filter(t => t.type === type).sort((a, b) => b.ts - a.ts).slice(0, 15);
+  if (!list.length) return '<div class="empty">ยังไม่มีรายการ' + TYPES[type].name + '</div>';
+  const isTf = type === "TRANSFER";
+  return '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+    '<th>วันที่</th><th>เลขที่เอกสาร</th><th>สินค้า</th>' +
+    (isTf ? '<th>ต้นทาง → ปลายทาง</th>' : '<th>คลัง</th>') +
+    '<th class="num">จำนวน</th><th>ผู้ทำรายการ</th></tr></thead><tbody>' +
+    list.map(t =>
+      '<tr><td>' + thDate(t.date) + '</td>' +
+      '<td style="font-family:var(--mono);font-size:12.5px">' + esc(t.docNo) + '</td>' +
+      '<td>' + esc(prodName(t.productId)) + '</td>' +
+      '<td style="font-size:13px">' + esc(whName(t.whId)) + (isTf ? ' <b>→</b> ' + esc(whName(t.whTo)) : "") + '</td>' +
+      '<td class="num">' + num(Math.abs(t.qty), 0) + '</td><td>' + esc(t.user) + '</td></tr>').join("") +
+    '</tbody></table></div>';
+}
+
+function printTxnReport(type) {
+  const T = TYPES[type], isTf = type === "TRANSFER";
+  const list = DB.txns.filter(t => t.type === type).sort((a, b) => a.ts - b.ts);
+  if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+  const html = '<table><thead><tr><th>ลำดับ</th><th>วันที่</th><th>เลขที่เอกสาร</th><th>รหัส</th><th>รายการสินค้า</th>' +
+    '<th>หน่วย</th><th>' + (isTf ? "ต้นทาง → ปลายทาง" : "คลัง") + '</th><th style="text-align:right">จำนวน</th></tr></thead><tbody>' +
+    list.map((t, i) => {
+      const p = prodById(t.productId);
+      return '<tr><td>' + (i + 1) + '</td><td>' + thDate(t.date) + '</td><td>' + esc(t.docNo) + '</td>' +
+        '<td>' + esc(p ? p.code : "") + '</td><td>' + esc(prodName(t.productId)) + '</td>' +
+        '<td>' + esc(p ? p.unit : "") + '</td>' +
+        '<td>' + esc(whName(t.whId)) + (isTf ? " → " + esc(whName(t.whTo)) : "") + '</td>' +
+        '<td style="text-align:right">' + num(Math.abs(t.qty), 0) + '</td></tr>';
+    }).join("") +
+    '</tbody><tfoot><tr><td colspan="7">รวมทั้งสิ้น ' + list.length + ' รายการ</td>' +
+    '<td style="text-align:right">' + num(list.reduce((s, t) => s + Math.abs(t.qty), 0), 0) + '</td></tr></tfoot></table>';
+  printDoc("รายงาน" + T.name, "ข้อมูลทั้งหมด " + list.length + " รายการ", html);
+}
+
+/* ============================================================ VIEW: ปรับปรุงสินค้า */
+function viewAdjust() {
+  cart = [];
+  const docNo = nextDocNo("ADJUST", todayISO());
+
+  $("#content").innerHTML =
+    card("บันทึกการปรับปรุงสินค้า (จากผลการตรวจนับ)",
+      '<span class="bdg bdg-gray">เลขที่เอกสาร ' + esc(docNo) + '</span>',
+      '<div class="form-grid">' +
+        '<div class="field"><label class="lbl" for="f_date">วันที่ตรวจนับ</label>' +
+          '<input class="inp" type="date" id="f_date" value="' + todayISO() + '"></div>' +
+        '<div class="field"><label class="lbl" for="f_doc">เลขที่เอกสาร</label>' +
+          '<input class="inp" id="f_doc" value="' + esc(docNo) + '" readonly></div>' +
+        '<div class="field span2"><label class="lbl" for="f_wh">คลังสินค้า</label>' +
+          '<select class="sel" id="f_wh">' + whOptions() + '</select></div>' +
+        '<div class="field span2"><label class="lbl" for="f_prod">สินค้า</label>' +
+          '<select class="sel" id="f_prod">' + prodOptions() + '</select></div>' +
+        '<div class="field"><label class="lbl">ยอดตามบัญชี</label>' +
+          '<input class="inp num" id="f_book" readonly value="0"></div>' +
+        '<div class="field"><label class="lbl" for="f_count">ยอดนับได้จริง</label>' +
+          '<input class="inp num" type="number" id="f_count" step="any" placeholder="0"></div>' +
+        '<div class="field"><label class="lbl">ผลต่าง</label>' +
+          '<input class="inp num" id="f_diff" readonly value="0"></div>' +
+        '<div class="field"><label class="lbl" for="f_reason">สาเหตุ</label>' +
+          '<select class="sel" id="f_reason">' +
+            '<option>ผลต่างจากการตรวจนับประจำงวด</option>' +
+            '<option>สินค้าชำรุด / เสื่อมสภาพ</option>' +
+            '<option>สินค้าสูญหาย</option>' +
+            '<option>บันทึกรับ-จ่ายผิดพลาด</option>' +
+            '<option>อื่น ๆ</option>' +
+          '</select></div>' +
+        '<div class="field span2" style="display:flex;align-items:flex-end">' +
+          '<button class="btn btn-o" id="btnAdd" style="width:100%">เพิ่มลงรายการ</button></div>' +
+      '</div>') +
+
+    '<div style="height:16px"></div>' +
+
+    card("รายการปรับปรุง",
+      '<button class="btn btn-p" id="btnSave" disabled>บันทึกเอกสาร</button>' +
+      '<button class="btn btn-g" id="btnClear">ล้างรายการ</button>', '<div id="cartBox"></div>') +
+
+    '<div style="height:16px"></div>' +
+
+    card("รายงานการปรับปรุงล่าสุด",
+      '<button class="btn btn-o btn-sm" id="btnRep">พิมพ์รายงาน</button>' +
+      '<button class="btn btn-g btn-sm" id="btnSheet">พิมพ์ใบตรวจนับ</button>',
+      adjustTable());
+
+  const refresh = () => {
+    const b = stockOf($("#f_prod").value, $("#f_wh").value);
+    $("#f_book").value = num(b, 0);
+    const c = parseFloat($("#f_count").value);
+    $("#f_diff").value = isNaN(c) ? "0" : num(c - b, 0);
+    $("#f_diff").style.color = isNaN(c) || c === b ? "" : (c > b ? "var(--ok)" : "var(--err)");
+  };
+  $("#f_prod").onchange = refresh;
+  $("#f_wh").onchange = refresh;
+  $("#f_count").oninput = refresh;
+  $("#f_date").onchange = () => { $("#f_doc").value = nextDocNo("ADJUST", $("#f_date").value); };
+  refresh();
+  drawAdjCart();
+
+  $("#btnAdd").onclick = () => {
+    const pid = $("#f_prod").value, wh = $("#f_wh").value;
+    const counted = parseFloat($("#f_count").value);
+    if (isNaN(counted) || counted < 0) return toast("กรุณาระบุยอดนับได้จริง", "err");
+    const book = stockOf(pid, wh);
+    const diff = counted - book;
+    if (diff === 0) return toast("ยอดตรงกับบัญชี ไม่ต้องปรับปรุง", "warn");
+    if (cart.some(c => c.productId === pid && c.whId === wh))
+      return toast("มีรายการสินค้านี้ในเอกสารแล้ว", "warn");
+    cart.push({ productId: pid, whId: wh, whTo: "", book: book, counted: counted, qty: diff,
+                note: $("#f_reason").value });
+    $("#f_count").value = "";
+    drawAdjCart(); refresh();
+    toast("เพิ่มรายการปรับปรุง " + prodName(pid));
+  };
+  $("#btnClear").onclick = () => { cart = []; drawAdjCart(); };
+
+  $("#btnSave").onclick = () => {
+    if (!cart.length) return;
+    const date = $("#f_date").value || todayISO();
+    const doc = nextDocNo("ADJUST", date);
+    const ts = new Date(date + "T09:00:00").getTime();
+    cart.forEach(c => DB.txns.push({
+      id: uid(), type: "ADJUST", docNo: doc, date: date, productId: c.productId,
+      qty: c.qty, whId: c.whId, whTo: "", note: c.note, ref: "นับได้ " + c.counted + " / บัญชี " + c.book,
+      user: "admin", ts: ts
+    }));
+    commitDocNo("ADJUST", date);
+    DB.txns.sort((a, b) => a.ts - b.ts);
+    save();
+    toast("บันทึกเอกสารปรับปรุง " + doc + " เรียบร้อย");
+    cart = [];
+    viewAdjust();
+  };
+
+  $("#btnRep").onclick = () => printTxnReport("ADJUST");
+  $("#btnSheet").onclick = () => printCountSheet($("#f_wh").value);
+}
+
+function drawAdjCart() {
+  const box = $("#cartBox");
+  if (!cart.length) {
+    box.innerHTML = '<div class="empty">ยังไม่มีรายการปรับปรุง</div>';
+  } else {
+    box.innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th style="width:44px">#</th><th>สินค้า</th><th>คลัง</th>' +
+      '<th class="num">ตามบัญชี</th><th class="num">นับได้</th><th class="num">ผลต่าง</th>' +
+      '<th>สาเหตุ</th><th style="width:52px"></th></tr></thead><tbody>' +
+      cart.map((c, i) =>
+        '<tr><td>' + (i + 1) + '</td><td>' + esc(prodName(c.productId)) + '</td>' +
+        '<td style="font-size:13px">' + esc(whName(c.whId)) + '</td>' +
+        '<td class="num">' + num(c.book, 0) + '</td><td class="num">' + num(c.counted, 0) + '</td>' +
+        '<td class="num"><b style="color:' + (c.qty > 0 ? "var(--ok)" : "var(--err)") + '">' +
+        (c.qty > 0 ? "+" : "") + num(c.qty, 0) + '</b></td>' +
+        '<td style="font-size:13px">' + esc(c.note) + '</td>' +
+        '<td><button class="btn btn-d btn-icon" data-del="' + i + '">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>' +
+        '</button></td></tr>').join("") +
+      '</tbody></table></div>';
+    $$("[data-del]", box).forEach(b => b.onclick = () => { cart.splice(+b.dataset.del, 1); drawAdjCart(); });
+  }
+  $("#btnSave").disabled = !cart.length;
+}
+
+function adjustTable() {
+  const list = DB.txns.filter(t => t.type === "ADJUST").sort((a, b) => b.ts - a.ts).slice(0, 15);
+  if (!list.length) return '<div class="empty">ยังไม่มีรายการปรับปรุง</div>';
+  return '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+    '<th>วันที่</th><th>เลขที่เอกสาร</th><th>สินค้า</th><th>คลัง</th>' +
+    '<th class="num">ผลต่าง</th><th>สาเหตุ</th></tr></thead><tbody>' +
+    list.map(t =>
+      '<tr><td>' + thDate(t.date) + '</td>' +
+      '<td style="font-family:var(--mono);font-size:12.5px">' + esc(t.docNo) + '</td>' +
+      '<td>' + esc(prodName(t.productId)) + '</td><td style="font-size:13px">' + esc(whName(t.whId)) + '</td>' +
+      '<td class="num"><b style="color:' + (t.qty > 0 ? "var(--ok)" : "var(--err)") + '">' +
+      (t.qty > 0 ? "+" : "") + num(t.qty, 0) + '</b></td>' +
+      '<td style="font-size:13px">' + esc(t.note || "—") + '</td></tr>').join("") +
+    '</tbody></table></div>';
+}
+
+/** ใบตรวจนับสินค้า (มีช่องว่างให้กรอกยอดนับจริง) */
+function printCountSheet(whId) {
+  const m = stockMap();
+  const w = whById(whId);
+  const rows = DB.products.map((p, i) =>
+    '<tr><td>' + (i + 1) + '</td><td>' + esc(p.code) + '</td><td>' + esc(p.name) + '</td>' +
+    '<td>' + esc(p.unit) + '</td><td style="text-align:right">' + num(stockOf(p.id, whId, m), 0) + '</td>' +
+    '<td style="width:70px"></td><td style="width:70px"></td><td style="width:110px"></td></tr>').join("");
+  const html = '<table><thead><tr><th>ลำดับ</th><th>รหัสสินค้า</th><th>รายการสินค้า</th><th>หน่วยนับ</th>' +
+    '<th style="text-align:right">ยอดตามบัญชี</th><th>นับได้จริง</th><th>ผลต่าง</th><th>หมายเหตุ</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '<div class="pr-note">หมายเหตุ: กรอกยอดที่นับได้จริงลงในช่อง “นับได้จริง” แล้วนำผลต่างไปบันทึกในหน้าจอปรับปรุงสินค้า</div>';
+  printDoc("ใบตรวจนับสินค้าคงคลัง",
+    (w ? w.name + " · จังหวัด" + w.province : "ทุกคลัง") + " · ณ วันที่ " + thDate(todayISO()), html);
+}
+
+/* ============================================================ VIEW: ข้อมูลสินค้า */
+let prodSearch = "", prodCat = "";
+
+function viewProducts() {
+  const m = stockMap();
+  const cats = Array.from(new Set(DB.products.map(p => p.cat)));
+  const list = DB.products.filter(p => {
+    const q = prodSearch.toLowerCase();
+    const okQ = !q || (p.name + p.code + p.barcode + p.cat).toLowerCase().includes(q);
+    return okQ && (!prodCat || p.cat === prodCat);
+  });
+
+  $("#content").innerHTML =
+    card("ข้อมูลสินค้า",
+      '<button class="btn btn-p btn-sm" id="btnNew">' +
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>' +
+      'เพิ่มสินค้าใหม่</button>' +
+      '<button class="btn btn-o btn-sm" id="btnLabels">พิมพ์ป้ายบาร์โค๊ด</button>' +
+      '<button class="btn btn-g btn-sm" id="btnPList">พิมพ์ทะเบียนสินค้า</button>',
+      '<div class="row" style="margin-bottom:16px">' +
+        '<input class="inp" id="q" placeholder="ค้นหาชื่อ / รหัส / บาร์โค๊ด…" value="' + esc(prodSearch) + '" style="max-width:320px">' +
+        '<select class="sel" id="qcat" style="max-width:210px"><option value="">ทุกหมวดหมู่</option>' +
+        cats.map(c => '<option' + (c === prodCat ? " selected" : "") + '>' + esc(c) + '</option>').join("") +
+        '</select>' +
+        '<span class="bdg bdg-gray">' + list.length + ' รายการ</span>' +
+      '</div>' +
+      (list.length ? '<div class="prod-grid">' + list.map(p => {
+        const st = stockTotal(p.id, m);
+        const low = st < p.min;
+        return '<div class="prod"><div class="ph">' +
+          (p.img ? '<img src="' + p.img + '" alt="' + esc(p.name) + '">' :
+            '<svg class="noimg" width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + IC.box + '</svg>') +
+          '</div><div class="bd">' +
+          '<div class="code">' + esc(p.code) + ' · ' + esc(p.cat) + '</div>' +
+          '<div class="nm">' + esc(p.name) + '</div>' +
+          '<div class="meta">หน่วย: ' + esc(p.unit) + ' · ฿' + num(p.price) + '</div>' +
+          '<div style="margin-top:auto;padding-top:7px">' +
+          '<span class="bdg ' + (low ? "bdg-warn" : "bdg-ok") + '">คงเหลือ ' + num(st, 0) + '</span> ' +
+          '<span class="bdg bdg-gray">ต่ำสุด ' + num(p.min, 0) + '</span></div>' +
+          '</div><div class="ft">' +
+          '<button class="btn btn-g btn-sm" data-view="' + p.id + '">รายละเอียด</button>' +
+          '<button class="btn btn-o btn-sm" data-edit="' + p.id + '">แก้ไข</button>' +
+          '</div></div>';
+      }).join("") + '</div>' : '<div class="empty">ไม่พบสินค้าที่ตรงกับเงื่อนไข</div>'));
+
+  $("#q").oninput = e => { prodSearch = e.target.value; const c = e.target.selectionStart; viewProducts(); const el = $("#q"); el.focus(); el.setSelectionRange(c, c); };
+  $("#qcat").onchange = e => { prodCat = e.target.value; viewProducts(); };
+  $("#btnNew").onclick = () => productForm(null);
+  $("#btnLabels").onclick = printLabels;
+  $("#btnPList").onclick = printProductList;
+  $$("[data-edit]").forEach(b => b.onclick = () => productForm(b.dataset.edit));
+  $$("[data-view]").forEach(b => b.onclick = () => productDetail(b.dataset.view));
+}
+
+function productDetail(id) {
+  const p = prodById(id);
+  if (!p) return;
+  const m = stockMap();
+  const byWh = DB.warehouses.map(w => ({ w: w, q: stockOf(p.id, w.id, m) })).filter(x => x.q !== 0);
+  const hist = DB.txns.filter(t => t.productId === p.id).sort((a, b) => b.ts - a.ts).slice(0, 12);
+
+  modal(p.name,
+    '<div class="grid g2" style="gap:18px">' +
+      '<div>' +
+        (p.img ? '<img src="' + p.img + '" alt="" style="width:100%;border-radius:11px;border:1px solid var(--border)">'
+               : '<div style="height:170px;background:var(--brand-50);border-radius:11px;display:grid;place-items:center;color:var(--brand);opacity:.4">' +
+                 '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + IC.box + '</svg></div>') +
+        '<div class="bc-box" style="margin-top:12px">' + barcodeSVG(p.barcode, { module: 2, height: 46 }) + '</div>' +
+      '</div>' +
+      '<div>' +
+        '<table class="tbl" style="font-size:13.5px"><tbody>' +
+        row2("รหัสสินค้า", p.code) + row2("หมวดหมู่", p.cat) + row2("หน่วยนับ", p.unit) +
+        row2("ราคาต่อหน่วย", "฿" + num(p.price)) + row2("จุดสั่งซื้อต่ำสุด", num(p.min, 0)) +
+        row2("บาร์โค๊ด", p.barcode || "—") +
+        row2("คงเหลือรวมทุกคลัง", "<b>" + num(stockTotal(p.id, m), 0) + " " + esc(p.unit) + "</b>") +
+        row2("มูลค่าคงเหลือ", "฿" + num(stockTotal(p.id, m) * p.price)) +
+        '</tbody></table>' +
+        (p.note ? '<p style="margin-top:12px;font-size:13.5px;color:var(--fg-muted)">' + esc(p.note) + '</p>' : '') +
+      '</div>' +
+    '</div>' +
+
+    '<h4 style="margin:20px 0 9px;font-size:14.5px">ยอดคงเหลือแยกตามคลัง</h4>' +
+    (byWh.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>คลัง</th><th>จังหวัด</th><th class="num">คงเหลือ</th></tr></thead><tbody>' +
+      byWh.map(x => '<tr><td>' + esc(x.w.name) + '</td><td>' + esc(x.w.province) + '</td>' +
+        '<td class="num"><b>' + num(x.q, 0) + '</b></td></tr>').join("") +
+      '</tbody></table></div>' : '<div class="empty">ไม่มียอดคงเหลือ</div>') +
+
+    '<h4 style="margin:20px 0 9px;font-size:14.5px">ประวัติการเคลื่อนไหวล่าสุด</h4>' +
+    (hist.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>วันที่</th><th>เลขที่</th><th>ประเภท</th><th>คลัง</th><th class="num">จำนวน</th></tr></thead><tbody>' +
+      hist.map(t => '<tr><td>' + thDate(t.date) + '</td>' +
+        '<td style="font-family:var(--mono);font-size:12px">' + esc(t.docNo) + '</td>' +
+        '<td><span class="bdg ' + TYPES[t.type].badge + '">' + TYPES[t.type].name + '</span></td>' +
+        '<td style="font-size:13px">' + esc(whName(t.whId)) + '</td>' +
+        '<td class="num">' + (t.qty > 0 ? "+" : "") + num(t.qty, 0) + '</td></tr>').join("") +
+      '</tbody></table></div>' : '<div class="empty">ยังไม่มีประวัติ</div>'),
+
+    '<button class="btn btn-g" id="mPrintBc">พิมพ์บาร์โค๊ด</button>' +
+    '<button class="btn btn-p" id="mEdit">แก้ไขข้อมูล</button>',
+
+    close => {
+      $("#mEdit").onclick = () => { close(); productForm(id); };
+      $("#mPrintBc").onclick = () => {
+        printDoc("ป้ายบาร์โค๊ดสินค้า", p.code + " · " + p.name,
+          '<div class="lbl-grid">' + Array(12).fill(0).map(() =>
+            '<div class="lbl-card"><div style="font-size:9pt;font-weight:700">' + esc(p.name) + '</div>' +
+            '<div style="font-size:8pt;color:#555">' + esc(p.code) + ' · ' + esc(p.unit) + '</div>' +
+            barcodeSVG(p.barcode, { module: 1.4, height: 34 }) + '</div>').join("") + '</div>', false);
+      };
+    });
+}
+const row2 = (k, v) => '<tr><td style="color:var(--fg-muted);width:44%">' + esc(k) + '</td><td>' + v + '</td></tr>';
+
+function productForm(id) {
+  const p = id ? prodById(id) : null;
+  const isNew = !p;
+  const d = p || { code: nextProdCode(), name: "", unit: "", cat: "", price: 0, min: 0, barcode: "", img: "", note: "" };
+
+  modal(isNew ? "เพิ่มสินค้าใหม่" : "แก้ไขข้อมูลสินค้า",
+    '<div class="form-grid" style="grid-template-columns:repeat(2,1fr)">' +
+      '<div class="field"><label class="lbl" for="e_code">รหัสสินค้า</label>' +
+        '<input class="inp" id="e_code" value="' + esc(d.code) + '"></div>' +
+      '<div class="field"><label class="lbl" for="e_cat">หมวดหมู่</label>' +
+        '<input class="inp" id="e_cat" list="catList" value="' + esc(d.cat) + '" placeholder="เช่น วัตถุดิบยาง">' +
+        '<datalist id="catList">' + Array.from(new Set(DB.products.map(x => x.cat)))
+          .map(c => '<option value="' + esc(c) + '">').join("") + '</datalist></div>' +
+      '<div class="field span2"><label class="lbl" for="e_name">ชื่อสินค้า</label>' +
+        '<input class="inp" id="e_name" value="' + esc(d.name) + '" placeholder="ระบุชื่อสินค้า"></div>' +
+      '<div class="field"><label class="lbl" for="e_unit">หน่วยนับ</label>' +
+        '<input class="inp" id="e_unit" value="' + esc(d.unit) + '" placeholder="เช่น กิโลกรัม"></div>' +
+      '<div class="field"><label class="lbl" for="e_price">ราคาต่อหน่วย (บาท)</label>' +
+        '<input class="inp num" type="number" step="any" id="e_price" value="' + d.price + '"></div>' +
+      '<div class="field"><label class="lbl" for="e_min">จุดสั่งซื้อต่ำสุด</label>' +
+        '<input class="inp num" type="number" step="any" id="e_min" value="' + d.min + '"></div>' +
+      '<div class="field"><label class="lbl" for="e_bc">บาร์โค๊ด</label>' +
+        '<div class="row" style="flex-wrap:nowrap">' +
+        '<input class="inp" id="e_bc" value="' + esc(d.barcode) + '" placeholder="สแกนหรือพิมพ์">' +
+        '<button class="btn btn-g btn-sm" id="e_gen" type="button" style="white-space:nowrap">สุ่ม</button></div></div>' +
+      '<div class="field span2"><label class="lbl">ตัวอย่างบาร์โค๊ด</label>' +
+        '<div class="bc-box" id="e_bcbox">' + barcodeSVG(d.barcode, { module: 2, height: 44 }) + '</div></div>' +
+      '<div class="field span2"><label class="lbl">รูปภาพสินค้า</label>' +
+        '<div class="drop" id="e_drop" tabindex="0" role="button">' +
+        (d.img ? '<img src="' + d.img + '" alt="" id="e_prev">' : '') +
+        '<div class="t">คลิกเพื่อเลือกรูป หรือลากไฟล์มาวางที่นี่ · ระบบจะย่อรูปให้อัตโนมัติ</div></div>' +
+        '<input type="file" id="e_file" accept="image/*" hidden>' +
+        (d.img ? '<button class="btn btn-d btn-sm" id="e_rmimg" type="button" style="margin-top:8px">ลบรูปภาพ</button>' : '') +
+      '</div>' +
+      '<div class="field span2"><label class="lbl" for="e_note">รายละเอียดเพิ่มเติม</label>' +
+        '<textarea class="txa" id="e_note" placeholder="คุณลักษณะ เงื่อนไขการจัดเก็บ ฯลฯ">' + esc(d.note || "") + '</textarea></div>' +
+    '</div>',
+
+    (isNew ? '' : '<button class="btn btn-d" id="e_del">ลบสินค้า</button>') +
+    '<button class="btn btn-p" id="e_save">บันทึกข้อมูล</button>',
+
+    close => {
+      let img = d.img;
+      const bc = $("#e_bc");
+      bc.oninput = () => { $("#e_bcbox").innerHTML = barcodeSVG(bc.value, { module: 2, height: 44 }); };
+      $("#e_gen").onclick = () => {
+        bc.value = "885" + String(Math.floor(Math.random() * 1e10)).padStart(10, "0");
+        bc.dispatchEvent(new Event("input"));
+      };
+
+      const drop = $("#e_drop"), file = $("#e_file");
+      const setImg = dataURL => {
+        img = dataURL;
+        drop.innerHTML = '<img src="' + dataURL + '" alt=""><div class="t">คลิกเพื่อเปลี่ยนรูป</div>';
+      };
+      drop.onclick = () => file.click();
+      drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); } };
+      drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+      drop.ondragleave = () => drop.classList.remove("over");
+      drop.ondrop = e => {
+        e.preventDefault(); drop.classList.remove("over");
+        if (e.dataTransfer.files[0]) resizeImage(e.dataTransfer.files[0], setImg);
+      };
+      file.onchange = () => { if (file.files[0]) resizeImage(file.files[0], setImg); };
+      if ($("#e_rmimg")) $("#e_rmimg").onclick = () => {
+        img = ""; drop.innerHTML = '<div class="t">คลิกเพื่อเลือกรูป หรือลากไฟล์มาวางที่นี่</div>';
+      };
+
+      if ($("#e_del")) $("#e_del").onclick = () => {
+        const used = DB.txns.some(t => t.productId === id);
+        if (!confirm(used
+          ? "สินค้านี้มีประวัติการเคลื่อนไหวอยู่ หากลบ ประวัติที่เกี่ยวข้องจะถูกลบไปด้วย\n\nยืนยันการลบ?"
+          : "ยืนยันการลบสินค้า " + d.name + " ?")) return;
+        DB.products = DB.products.filter(x => x.id !== id);
+        DB.txns = DB.txns.filter(t => t.productId !== id);
+        save(); close(); viewProducts();
+        toast("ลบสินค้าเรียบร้อย");
+      };
+
+      $("#e_save").onclick = () => {
+        const v = {
+          code: $("#e_code").value.trim(), name: $("#e_name").value.trim(),
+          unit: $("#e_unit").value.trim(), cat: $("#e_cat").value.trim() || "ทั่วไป",
+          price: parseFloat($("#e_price").value) || 0, min: parseFloat($("#e_min").value) || 0,
+          barcode: $("#e_bc").value.trim(), note: $("#e_note").value.trim(), img: img
+        };
+        if (!v.code) return toast("กรุณาระบุรหัสสินค้า", "err");
+        if (!v.name) return toast("กรุณาระบุชื่อสินค้า", "err");
+        if (!v.unit) return toast("กรุณาระบุหน่วยนับ", "err");
+        if (DB.products.some(x => x.code.toLowerCase() === v.code.toLowerCase() && x.id !== id))
+          return toast("รหัสสินค้านี้ถูกใช้แล้ว", "err");
+        if (isNew) DB.products.push(Object.assign({ id: uid() }, v));
+        else Object.assign(prodById(id), v);
+        save(); close(); viewProducts();
+        toast(isNew ? "เพิ่มสินค้าเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย");
+      };
+    });
+}
+
+function nextProdCode() {
+  let n = 1;
+  DB.products.forEach(p => {
+    const mm = /^P(\d+)$/.exec(p.code);
+    if (mm) n = Math.max(n, parseInt(mm[1], 10) + 1);
+  });
+  return "P" + String(n).padStart(3, "0");
+}
+
+/** ย่อรูปด้วย canvas ก่อนเก็บลง localStorage */
+function resizeImage(file, cb) {
+  if (!/^image\//.test(file.type)) return toast("กรุณาเลือกไฟล์รูปภาพ", "err");
+  const fr = new FileReader();
+  fr.onload = () => {
+    const im = new Image();
+    im.onload = () => {
+      const MAX = 480;
+      let w = im.width, h = im.height;
+      if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      else if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      const cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      const cx = cv.getContext("2d");
+      cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h);
+      cx.drawImage(im, 0, 0, w, h);
+      cb(cv.toDataURL("image/jpeg", 0.82));
+    };
+    im.onerror = () => toast("ไม่สามารถอ่านไฟล์รูปภาพได้", "err");
+    im.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+
+function printLabels() {
+  const html = '<div class="lbl-grid">' + DB.products.map(p =>
+    '<div class="lbl-card"><div style="font-size:9pt;font-weight:700">' + esc(p.name) + '</div>' +
+    '<div style="font-size:8pt;color:#555">' + esc(p.code) + ' · ' + esc(p.unit) + '</div>' +
+    barcodeSVG(p.barcode, { module: 1.4, height: 34 }) + '</div>').join("") + '</div>';
+  printDoc("ป้ายบาร์โค๊ดสินค้า", "ทั้งหมด " + DB.products.length + " รายการ", html, false);
+}
+
+function printProductList() {
+  const m = stockMap();
+  const html = '<table><thead><tr><th>ลำดับ</th><th>รหัส</th><th>รายการสินค้า</th><th>หมวดหมู่</th>' +
+    '<th>หน่วย</th><th style="text-align:right">ราคา/หน่วย</th><th style="text-align:right">จุดสั่งซื้อ</th>' +
+    '<th style="text-align:right">คงเหลือ</th></tr></thead><tbody>' +
+    DB.products.map((p, i) =>
+      '<tr><td>' + (i + 1) + '</td><td>' + esc(p.code) + '</td><td>' + esc(p.name) + '</td>' +
+      '<td>' + esc(p.cat) + '</td><td>' + esc(p.unit) + '</td>' +
+      '<td style="text-align:right">' + num(p.price) + '</td>' +
+      '<td style="text-align:right">' + num(p.min, 0) + '</td>' +
+      '<td style="text-align:right">' + num(stockTotal(p.id, m), 0) + '</td></tr>').join("") +
+    '</tbody></table>';
+  printDoc("ทะเบียนข้อมูลสินค้า", "ณ วันที่ " + thDate(todayISO()), html);
+}
+
+/* ============================================================ VIEW: สินค้าตามจังหวัด */
+let selWh = "W01";
+
+function viewProvinces() {
+  const m = stockMap();
+  const w = whById(selWh) || DB.warehouses[0];
+  selWh = w.id;
+  const items = DB.products.map(p => ({ p: p, q: stockOf(p.id, w.id, m) })).filter(x => x.q !== 0)
+    .sort((a, b) => b.q - a.q);
+  const value = items.reduce((s, x) => s + x.q * x.p.price, 0);
+  const mapURL = "https://www.google.com/maps?q=" + w.lat + "," + w.lng + "&hl=th&z=11&output=embed";
+  const linkURL = "https://www.google.com/maps/search/?api=1&query=" + w.lat + "," + w.lng;
+
+  $("#content").innerHTML =
+    '<div class="grid" style="grid-template-columns:340px 1fr;gap:16px">' +
+      card("คลังสินค้ารายจังหวัด", '<span class="bdg bdg-gray">' + DB.warehouses.length + ' คลัง</span>',
+        '<div class="prov-list">' + DB.warehouses.map(x => {
+          const q = whTotal(x.id, m);
+          return '<button class="prov' + (x.id === selWh ? " active" : "") + '" data-wh="' + x.id + '">' +
+            '<span class="pin"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>' +
+            '<span class="info"><b>' + esc(x.province) + '</b><span>' + esc(x.name) + '</span></span>' +
+            '<span class="qty"><b>' + num(q, 0) + '</b><span>หน่วย</span></span></button>';
+        }).join("") + '</div>') +
+
+      '<div>' +
+        card("แผนที่ตั้งคลัง — " + w.name,
+          '<a class="btn btn-o btn-sm" href="' + linkURL + '" target="_blank" rel="noopener">เปิดใน Google Maps</a>',
+          '<div class="map-wrap"><iframe src="' + mapURL + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade" ' +
+          'title="แผนที่ ' + esc(w.name) + '" allowfullscreen></iframe></div>' +
+          '<div class="row" style="margin-top:12px">' +
+            '<span class="bdg bdg-info">จังหวัด' + esc(w.province) + '</span>' +
+            '<span class="bdg bdg-gray">พิกัด ' + w.lat + ", " + w.lng + '</span>' +
+            '<span class="bdg bdg-ok">คงเหลือรวม ' + num(whTotal(w.id, m), 0) + ' หน่วย</span>' +
+            '<span class="bdg bdg-gray">มูลค่า ฿' + num(value, 0) + '</span>' +
+          '</div>' +
+          '<p style="margin-top:10px;font-size:12.5px;color:var(--fg-faint)">' +
+          'แผนที่แสดงผลผ่าน Google Maps Embed — ต้องเชื่อมต่ออินเทอร์เน็ตจึงจะเห็นภาพแผนที่</p>') +
+      '</div>' +
+    '</div>' +
+
+    '<div style="height:16px"></div>' +
+
+    card("รายการสินค้าคงเหลือ — " + w.name,
+      '<button class="btn btn-o btn-sm" id="btnPrintWh">พิมพ์รายงาน</button>' +
+      '<button class="btn btn-g btn-sm" id="btnSheetWh">พิมพ์ใบตรวจนับ</button>',
+      items.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+        '<th>รหัส</th><th>รายการสินค้า</th><th>หมวดหมู่</th><th>หน่วย</th>' +
+        '<th class="num">คงเหลือ</th><th class="num">มูลค่า (บาท)</th><th>สถานะ</th></tr></thead><tbody>' +
+        items.map(x =>
+          '<tr><td style="font-family:var(--mono);font-size:12.5px">' + esc(x.p.code) + '</td>' +
+          '<td>' + esc(x.p.name) + '</td><td>' + esc(x.p.cat) + '</td><td>' + esc(x.p.unit) + '</td>' +
+          '<td class="num"><b>' + num(x.q, 0) + '</b></td>' +
+          '<td class="num">' + num(x.q * x.p.price, 0) + '</td>' +
+          '<td><span class="bdg ' + (x.q < x.p.min ? "bdg-warn" : "bdg-ok") + '">' +
+          (x.q < x.p.min ? "ต่ำกว่าเกณฑ์" : "ปกติ") + '</span></td></tr>').join("") +
+        '</tbody><tfoot><tr><td colspan="4">รวม ' + items.length + ' รายการ</td>' +
+        '<td class="num">' + num(items.reduce((s, x) => s + x.q, 0), 0) + '</td>' +
+        '<td class="num">' + num(value, 0) + '</td><td></td></tr></tfoot></table></div>'
+        : '<div class="empty">คลังนี้ยังไม่มีสินค้าคงเหลือ</div>');
+
+  $$("[data-wh]").forEach(b => b.onclick = () => { selWh = b.dataset.wh; viewProvinces(); });
+  $("#btnSheetWh").onclick = () => printCountSheet(selWh);
+  $("#btnPrintWh").onclick = () => {
+    const html = '<table><thead><tr><th>ลำดับ</th><th>รหัส</th><th>รายการสินค้า</th><th>หน่วย</th>' +
+      '<th style="text-align:right">คงเหลือ</th><th style="text-align:right">มูลค่า (บาท)</th></tr></thead><tbody>' +
+      items.map((x, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(x.p.code) + '</td><td>' + esc(x.p.name) + '</td>' +
+        '<td>' + esc(x.p.unit) + '</td><td style="text-align:right">' + num(x.q, 0) + '</td>' +
+        '<td style="text-align:right">' + num(x.q * x.p.price, 0) + '</td></tr>').join("") +
+      '</tbody><tfoot><tr><td colspan="4">รวม ' + items.length + ' รายการ</td>' +
+      '<td style="text-align:right">' + num(items.reduce((s, x) => s + x.q, 0), 0) + '</td>' +
+      '<td style="text-align:right">' + num(value, 0) + '</td></tr></tfoot></table>';
+    printDoc("รายงานสินค้าคงเหลือรายคลัง", w.name + " · จังหวัด" + w.province + " · ณ " + thDate(todayISO()), html);
+  };
+}
+
+/* ============================================================ VIEW: รายงาน */
+let repTab = "stock";
+let repF = { from: "", to: todayISO(), wh: "", prod: "" };
+
+function viewReports() {
+  if (!repF.from) {
+    const d = new Date(); d.setMonth(d.getMonth() - 3);
+    repF.from = d.toISOString().slice(0, 10);
+  }
+  const TABS = [
+    { id:"stock",    t:"สรุปยอดคงเหลือ" },
+    { id:"RECEIVE",  t:"รายงานรับสินค้า" },
+    { id:"ISSUE",    t:"รายงานเบิกสินค้า" },
+    { id:"TRANSFER", t:"รายงานโอนสินค้า" },
+    { id:"ADJUST",   t:"รายงานปรับปรุง" },
+    { id:"count",    t:"ใบตรวจนับสินค้า" },
+    { id:"card",     t:"บัตรสินค้า (Stock Card)" }
+  ];
+
+  $("#content").innerHTML =
+    '<div class="tabs">' + TABS.map(t =>
+      '<button class="tab" role="tab" aria-selected="' + (t.id === repTab) + '" data-tab="' + t.id + '">' +
+      esc(t.t) + '</button>').join("") + '</div>' +
+    '<div id="repBody"></div>';
+
+  $$("[data-tab]").forEach(b => b.onclick = () => { repTab = b.dataset.tab; viewReports(); });
+  renderReport();
+}
+
+function filterBar(showType) {
+  return '<div class="row" style="margin-bottom:15px;align-items:flex-end">' +
+    '<div style="min-width:150px"><label class="lbl" for="r_from">ตั้งแต่วันที่</label>' +
+      '<input class="inp" type="date" id="r_from" value="' + repF.from + '"></div>' +
+    '<div style="min-width:150px"><label class="lbl" for="r_to">ถึงวันที่</label>' +
+      '<input class="inp" type="date" id="r_to" value="' + repF.to + '"></div>' +
+    '<div style="min-width:200px"><label class="lbl" for="r_wh">คลังสินค้า</label>' +
+      '<select class="sel" id="r_wh"><option value="">ทุกคลัง</option>' + whOptions(repF.wh) + '</select></div>' +
+    '<div style="min-width:220px"><label class="lbl" for="r_prod">สินค้า</label>' +
+      '<select class="sel" id="r_prod"><option value="">ทุกรายการ</option>' + prodOptions(repF.prod) + '</select></div>' +
+    '<button class="btn btn-p" id="r_go">แสดงรายงาน</button>' +
+  '</div>';
+}
+function bindFilter() {
+  const go = () => {
+    repF.from = $("#r_from").value; repF.to = $("#r_to").value;
+    repF.wh = $("#r_wh").value; repF.prod = $("#r_prod").value;
+    renderReport();
+  };
+  $("#r_go").onclick = go;
+  ["r_from", "r_to", "r_wh", "r_prod"].forEach(id => { const el = $("#" + id); if (el) el.onchange = go; });
+}
+function inRange(t) {
+  if (repF.from && t.date < repF.from) return false;
+  if (repF.to && t.date > repF.to) return false;
+  if (repF.prod && t.productId !== repF.prod) return false;
+  if (repF.wh && t.whId !== repF.wh && t.whTo !== repF.wh) return false;
+  return true;
+}
+
+function renderReport() {
+  const body = $("#repBody");
+
+  /* ---- สรุปยอดคงเหลือ ---- */
+  if (repTab === "stock") {
+    const m = stockMap();
+    const rows = DB.products
+      .filter(p => !repF.prod || p.id === repF.prod)
+      .map(p => {
+        const q = repF.wh ? stockOf(p.id, repF.wh, m) : stockTotal(p.id, m);
+        return { p: p, q: q, v: q * p.price };
+      });
+    const tq = rows.reduce((s, r) => s + r.q, 0), tv = rows.reduce((s, r) => s + r.v, 0);
+
+    body.innerHTML = card("สรุปยอดคงเหลือ",
+      '<button class="btn btn-o btn-sm" id="p1">พิมพ์</button><button class="btn btn-g btn-sm" id="c1">ส่งออก CSV</button>',
+      filterBar() +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>รหัส</th><th>รายการสินค้า</th><th>หมวดหมู่</th>' +
+      '<th>หน่วย</th><th class="num">คงเหลือ</th><th class="num">จุดสั่งซื้อ</th>' +
+      '<th class="num">มูลค่า (บาท)</th><th>สถานะ</th></tr></thead><tbody>' +
+      rows.map(r => '<tr><td style="font-family:var(--mono);font-size:12.5px">' + esc(r.p.code) + '</td>' +
+        '<td>' + esc(r.p.name) + '</td><td>' + esc(r.p.cat) + '</td><td>' + esc(r.p.unit) + '</td>' +
+        '<td class="num"><b>' + num(r.q, 0) + '</b></td><td class="num">' + num(r.p.min, 0) + '</td>' +
+        '<td class="num">' + num(r.v, 0) + '</td>' +
+        '<td><span class="bdg ' + (r.q < r.p.min ? "bdg-warn" : "bdg-ok") + '">' +
+        (r.q < r.p.min ? "ต่ำกว่าเกณฑ์" : "ปกติ") + '</span></td></tr>').join("") +
+      '</tbody><tfoot><tr><td colspan="4">รวม ' + rows.length + ' รายการ</td>' +
+      '<td class="num">' + num(tq, 0) + '</td><td></td><td class="num">' + num(tv, 0) + '</td><td></td></tr></tfoot></table></div>');
+    bindFilter();
+    $("#p1").onclick = () => {
+      const html = '<table><thead><tr><th>ลำดับ</th><th>รหัส</th><th>รายการสินค้า</th><th>หน่วย</th>' +
+        '<th style="text-align:right">คงเหลือ</th><th style="text-align:right">มูลค่า (บาท)</th></tr></thead><tbody>' +
+        rows.map((r, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(r.p.code) + '</td><td>' + esc(r.p.name) + '</td>' +
+          '<td>' + esc(r.p.unit) + '</td><td style="text-align:right">' + num(r.q, 0) + '</td>' +
+          '<td style="text-align:right">' + num(r.v, 0) + '</td></tr>').join("") +
+        '</tbody><tfoot><tr><td colspan="4">รวม</td><td style="text-align:right">' + num(tq, 0) +
+        '</td><td style="text-align:right">' + num(tv, 0) + '</td></tr></tfoot></table>';
+      printDoc("รายงานสรุปยอดคงเหลือ",
+        (repF.wh ? whName(repF.wh) : "ทุกคลัง") + " · ณ วันที่ " + thDate(todayISO()), html);
+    };
+    $("#c1").onclick = () => tableToCSV(
+      ["รหัส","รายการสินค้า","หมวดหมู่","หน่วย","คงเหลือ","จุดสั่งซื้อ","มูลค่า"],
+      rows.map(r => [r.p.code, r.p.name, r.p.cat, r.p.unit, r.q, r.p.min, r.v]), "สรุปยอดคงเหลือ.csv");
+    return;
+  }
+
+  /* ---- ใบตรวจนับ ---- */
+  if (repTab === "count") {
+    const m = stockMap();
+    const wid = repF.wh || DB.warehouses[0].id;
+    body.innerHTML = card("ใบตรวจนับสินค้าคงคลัง",
+      '<button class="btn btn-p btn-sm" id="p2">พิมพ์ใบตรวจนับ</button>',
+      filterBar() +
+      '<p style="margin-bottom:13px;font-size:13.5px;color:var(--fg-muted)">' +
+      'ใบตรวจนับจะพิมพ์ยอดตามบัญชีมาให้ พร้อมเว้นช่องสำหรับกรอกยอดที่นับได้จริง ผลต่าง และหมายเหตุ ' +
+      'เมื่อตรวจนับเสร็จให้นำผลต่างไปบันทึกที่หน้าจอ “ปรับปรุงสินค้า”</p>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>ลำดับ</th><th>รหัส</th><th>รายการสินค้า</th>' +
+      '<th>หน่วย</th><th class="num">ยอดตามบัญชี</th><th>นับได้จริง</th><th>ผลต่าง</th></tr></thead><tbody>' +
+      DB.products.map((p, i) =>
+        '<tr><td>' + (i + 1) + '</td><td style="font-family:var(--mono);font-size:12.5px">' + esc(p.code) + '</td>' +
+        '<td>' + esc(p.name) + '</td><td>' + esc(p.unit) + '</td>' +
+        '<td class="num">' + num(stockOf(p.id, wid, m), 0) + '</td>' +
+        '<td style="color:var(--fg-faint)">……………</td><td style="color:var(--fg-faint)">……………</td></tr>').join("") +
+      '</tbody></table></div>');
+    bindFilter();
+    $("#p2").onclick = () => printCountSheet(wid);
+    return;
+  }
+
+  /* ---- บัตรสินค้า ---- */
+  if (repTab === "card") {
+    const pid = repF.prod || DB.products[0].id;
+    const p = prodById(pid);
+    const wid = repF.wh;
+    const list = DB.txns.filter(t => t.productId === pid && inRange(t)).sort((a, b) => a.ts - b.ts);
+    let bal = 0;
+    // ยอดยกมาก่อนช่วงที่เลือก
+    DB.txns.forEach(t => {
+      if (t.productId !== pid || (repF.from && t.date >= repF.from)) return;
+      bal += movement(t, wid);
+    });
+    const opening = bal;
+    const rows = list.map(t => {
+      const mv = movement(t, wid);
+      bal += mv;
+      return { t: t, mv: mv, bal: bal };
+    });
+
+    body.innerHTML = card("บัตรสินค้า (Stock Card)",
+      '<button class="btn btn-o btn-sm" id="p3">พิมพ์</button><button class="btn btn-g btn-sm" id="c3">ส่งออก CSV</button>',
+      filterBar() +
+      '<div class="row" style="margin-bottom:13px">' +
+        '<span class="bdg bdg-info">' + esc(p ? p.code + " · " + p.name : "") + '</span>' +
+        '<span class="bdg bdg-gray">' + (wid ? esc(whName(wid)) : "ทุกคลัง") + '</span>' +
+        '<span class="bdg bdg-ok">ยอดยกมา ' + num(opening, 0) + '</span>' +
+        '<span class="bdg bdg-ok">ยอดคงเหลือ ' + num(bal, 0) + '</span>' +
+      '</div>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ประเภท</th>' +
+      '<th>คลัง</th><th class="num">รับ</th><th class="num">จ่าย</th><th class="num">คงเหลือ</th>' +
+      '</tr></thead><tbody>' +
+      '<tr style="background:var(--brand-50)"><td colspan="6"><b>ยอดยกมา</b></td>' +
+      '<td class="num"><b>' + num(opening, 0) + '</b></td></tr>' +
+      (rows.length ? rows.map(r =>
+        '<tr><td>' + thDate(r.t.date) + '</td>' +
+        '<td style="font-family:var(--mono);font-size:12.5px">' + esc(r.t.docNo) + '</td>' +
+        '<td><span class="bdg ' + TYPES[r.t.type].badge + '">' + TYPES[r.t.type].name + '</span></td>' +
+        '<td style="font-size:13px">' + esc(whName(r.t.whId)) + (r.t.whTo ? " → " + esc(whName(r.t.whTo)) : "") + '</td>' +
+        '<td class="num">' + (r.mv > 0 ? num(r.mv, 0) : "") + '</td>' +
+        '<td class="num">' + (r.mv < 0 ? num(-r.mv, 0) : "") + '</td>' +
+        '<td class="num"><b>' + num(r.bal, 0) + '</b></td></tr>').join("")
+        : '<tr><td colspan="7" class="empty">ไม่มีรายการในช่วงเวลาที่เลือก</td></tr>') +
+      '</tbody></table></div>');
+    bindFilter();
+    $("#p3").onclick = () => {
+      const html = '<table><thead><tr><th>วันที่</th><th>เลขที่เอกสาร</th><th>ประเภท</th><th>คลัง</th>' +
+        '<th style="text-align:right">รับ</th><th style="text-align:right">จ่าย</th>' +
+        '<th style="text-align:right">คงเหลือ</th></tr></thead><tbody>' +
+        '<tr><td colspan="6"><b>ยอดยกมา</b></td><td style="text-align:right"><b>' + num(opening, 0) + '</b></td></tr>' +
+        rows.map(r => '<tr><td>' + thDate(r.t.date) + '</td><td>' + esc(r.t.docNo) + '</td>' +
+          '<td>' + TYPES[r.t.type].name + '</td><td>' + esc(whName(r.t.whId)) + '</td>' +
+          '<td style="text-align:right">' + (r.mv > 0 ? num(r.mv, 0) : "") + '</td>' +
+          '<td style="text-align:right">' + (r.mv < 0 ? num(-r.mv, 0) : "") + '</td>' +
+          '<td style="text-align:right">' + num(r.bal, 0) + '</td></tr>').join("") +
+        '</tbody></table>';
+      printDoc("บัตรสินค้า (Stock Card)",
+        (p ? p.code + " · " + p.name : "") + " · " + (wid ? whName(wid) : "ทุกคลัง") +
+        " · " + thDate(repF.from) + " ถึง " + thDate(repF.to), html);
+    };
+    $("#c3").onclick = () => tableToCSV(
+      ["วันที่","เลขที่เอกสาร","ประเภท","คลัง","รับ","จ่าย","คงเหลือ"],
+      rows.map(r => [r.t.date, r.t.docNo, TYPES[r.t.type].name, whName(r.t.whId),
+        r.mv > 0 ? r.mv : "", r.mv < 0 ? -r.mv : "", r.bal]), "บัตรสินค้า.csv");
+    return;
+  }
+
+  /* ---- รายงานตามประเภทรายการ ---- */
+  const type = repTab, T = TYPES[type];
+  const list = DB.txns.filter(t => t.type === type && inRange(t)).sort((a, b) => a.ts - b.ts);
+  const total = list.reduce((s, t) => s + Math.abs(t.qty), 0);
+  const value = list.reduce((s, t) => {
+    const p = prodById(t.productId);
+    return s + Math.abs(t.qty) * (p ? p.price : 0);
+  }, 0);
+  const isTf = type === "TRANSFER";
+
+  body.innerHTML = card(T.name === "ปรับปรุงสินค้า" ? "รายงานการปรับปรุงสินค้า" : "รายงาน" + T.name,
+    '<button class="btn btn-o btn-sm" id="p4">พิมพ์</button><button class="btn btn-g btn-sm" id="c4">ส่งออก CSV</button>',
+    filterBar() +
+    '<div class="row" style="margin-bottom:13px">' +
+      '<span class="bdg ' + T.badge + '">' + list.length + ' รายการ</span>' +
+      '<span class="bdg bdg-gray">รวม ' + num(total, 0) + ' หน่วย</span>' +
+      '<span class="bdg bdg-gray">มูลค่ารวม ฿' + num(value, 0) + '</span>' +
+    '</div>' +
+    (list.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th>วันที่</th><th>เลขที่เอกสาร</th><th>รหัส</th><th>รายการสินค้า</th><th>หน่วย</th>' +
+      '<th>' + (isTf ? "ต้นทาง → ปลายทาง" : "คลัง") + '</th>' +
+      '<th class="num">' + (type === "ADJUST" ? "ผลต่าง" : "จำนวน") + '</th>' +
+      '<th class="num">มูลค่า</th><th>ผู้ทำรายการ</th><th>หมายเหตุ</th></tr></thead><tbody>' +
+      list.map(t => {
+        const p = prodById(t.productId);
+        return '<tr><td>' + thDate(t.date) + '</td>' +
+          '<td style="font-family:var(--mono);font-size:12.5px">' + esc(t.docNo) + '</td>' +
+          '<td style="font-family:var(--mono);font-size:12.5px">' + esc(p ? p.code : "") + '</td>' +
+          '<td>' + esc(prodName(t.productId)) + '</td><td>' + esc(p ? p.unit : "") + '</td>' +
+          '<td style="font-size:13px">' + esc(whName(t.whId)) + (isTf ? ' <b>→</b> ' + esc(whName(t.whTo)) : "") + '</td>' +
+          '<td class="num"><b' + (type === "ADJUST" ? ' style="color:' + (t.qty > 0 ? "var(--ok)" : "var(--err)") + '"' : "") + '>' +
+          (type === "ADJUST" && t.qty > 0 ? "+" : "") + num(t.qty, 0) + '</b></td>' +
+          '<td class="num">' + num(Math.abs(t.qty) * (p ? p.price : 0), 0) + '</td>' +
+          '<td>' + esc(t.user) + '</td><td style="font-size:12.5px">' + esc(t.note || t.ref || "—") + '</td></tr>';
+      }).join("") +
+      '</tbody><tfoot><tr><td colspan="6">รวมทั้งสิ้น ' + list.length + ' รายการ</td>' +
+      '<td class="num">' + num(total, 0) + '</td><td class="num">' + num(value, 0) + '</td>' +
+      '<td colspan="2"></td></tr></tfoot></table></div>'
+      : '<div class="empty">ไม่พบรายการในช่วงเวลาที่เลือก</div>'));
+
+  bindFilter();
+  $("#p4").onclick = () => {
+    if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+    const html = '<table><thead><tr><th>ลำดับ</th><th>วันที่</th><th>เลขที่เอกสาร</th><th>รหัส</th>' +
+      '<th>รายการสินค้า</th><th>หน่วย</th><th>' + (isTf ? "ต้นทาง → ปลายทาง" : "คลัง") + '</th>' +
+      '<th style="text-align:right">จำนวน</th><th style="text-align:right">มูลค่า</th></tr></thead><tbody>' +
+      list.map((t, i) => {
+        const p = prodById(t.productId);
+        return '<tr><td>' + (i + 1) + '</td><td>' + thDate(t.date) + '</td><td>' + esc(t.docNo) + '</td>' +
+          '<td>' + esc(p ? p.code : "") + '</td><td>' + esc(prodName(t.productId)) + '</td>' +
+          '<td>' + esc(p ? p.unit : "") + '</td>' +
+          '<td>' + esc(whName(t.whId)) + (isTf ? " → " + esc(whName(t.whTo)) : "") + '</td>' +
+          '<td style="text-align:right">' + num(t.qty, 0) + '</td>' +
+          '<td style="text-align:right">' + num(Math.abs(t.qty) * (p ? p.price : 0), 0) + '</td></tr>';
+      }).join("") +
+      '</tbody><tfoot><tr><td colspan="7">รวมทั้งสิ้น ' + list.length + ' รายการ</td>' +
+      '<td style="text-align:right">' + num(total, 0) + '</td>' +
+      '<td style="text-align:right">' + num(value, 0) + '</td></tr></tfoot></table>';
+    printDoc("รายงาน" + T.name,
+      (repF.wh ? whName(repF.wh) + " · " : "") + thDate(repF.from) + " ถึง " + thDate(repF.to), html);
+  };
+  $("#c4").onclick = () => tableToCSV(
+    ["วันที่","เลขที่เอกสาร","รหัสสินค้า","รายการสินค้า","หน่วย","คลัง","คลังปลายทาง","จำนวน","ผู้ทำรายการ","หมายเหตุ"],
+    list.map(t => {
+      const p = prodById(t.productId);
+      return [t.date, t.docNo, p ? p.code : "", prodName(t.productId), p ? p.unit : "",
+        whName(t.whId), t.whTo ? whName(t.whTo) : "", t.qty, t.user, t.note || t.ref || ""];
+    }), "รายงาน" + T.name + ".csv");
+}
+
+/** การเคลื่อนไหวของรายการหนึ่งเมื่อมองจากคลังที่เลือก (ไม่ระบุคลัง = มองรวมทุกคลัง) */
+function movement(t, wid) {
+  if (t.type === "RECEIVE") return (!wid || t.whId === wid) ? t.qty : 0;
+  if (t.type === "ISSUE")   return (!wid || t.whId === wid) ? -t.qty : 0;
+  if (t.type === "ADJUST")  return (!wid || t.whId === wid) ? t.qty : 0;
+  if (t.type === "TRANSFER") {
+    if (!wid) return 0;                       // โอนภายในองค์กร ยอดรวมไม่เปลี่ยน
+    if (t.whId === wid) return -t.qty;
+    if (t.whTo === wid) return t.qty;
+  }
+  return 0;
+}
+
+/* ============================================================ VIEW: กราฟสรุป */
+let gMonths = 12, gProd = "", gWh = "";
+
+function viewGraphs() {
+  const now = new Date();
+  const months = [];
+  for (let i = gMonths - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: d.toISOString().slice(0, 7),
+      label: d.toLocaleDateString("th-TH", { month: "short" }) +
+             (gMonths > 6 ? " " + String((d.getFullYear() + 543) % 100) : "")
+    });
+  }
+  const match = t => (!gProd || t.productId === gProd) && (!gWh || t.whId === gWh || t.whTo === gWh);
+
+  const inD = [], outD = [], balD = [];
+  let running = 0;
+  DB.txns.forEach(t => {
+    if (!match(t)) return;
+    if (t.date.slice(0, 7) < months[0].key) running += movement(t, gWh);
+  });
+  months.forEach(mo => {
+    let i = 0, o = 0, net = 0;
+    DB.txns.forEach(t => {
+      if (!match(t) || t.date.slice(0, 7) !== mo.key) return;
+      const mv = movement(t, gWh);
+      if (mv > 0) i += mv; else if (mv < 0) o += -mv;
+      net += mv;
+    });
+    running += net;
+    inD.push(i); outD.push(o); balD.push(running);
+  });
+
+  const m = stockMap();
+  const byCat = {};
+  DB.products.forEach(p => {
+    const q = gWh ? stockOf(p.id, gWh, m) : stockTotal(p.id, m);
+    byCat[p.cat] = (byCat[p.cat] || 0) + q;
+  });
+  const catItems = Object.keys(byCat).map(k => ({ label: k, value: byCat[k], color: "#0F8A4D" }))
+    .sort((a, b) => b.value - a.value);
+  const topProd = DB.products.map(p => ({
+    label: p.name, value: gWh ? stockOf(p.id, gWh, m) : stockTotal(p.id, m), color: "#00693C"
+  })).sort((a, b) => b.value - a.value).slice(0, 10);
+
+  $("#content").innerHTML =
+    card("ตัวกรองกราฟ", "",
+      '<div class="row" style="align-items:flex-end">' +
+        '<div style="min-width:160px"><label class="lbl" for="g_m">ช่วงเวลา</label>' +
+          '<select class="sel" id="g_m">' +
+          [6, 12, 18, 24].map(n => '<option value="' + n + '"' + (n === gMonths ? " selected" : "") + '>' +
+            n + ' เดือนล่าสุด</option>').join("") + '</select></div>' +
+        '<div style="min-width:220px"><label class="lbl" for="g_p">สินค้า</label>' +
+          '<select class="sel" id="g_p"><option value="">ทุกรายการ</option>' + prodOptions(gProd) + '</select></div>' +
+        '<div style="min-width:210px"><label class="lbl" for="g_w">คลังสินค้า</label>' +
+          '<select class="sel" id="g_w"><option value="">ทุกคลัง</option>' + whOptions(gWh) + '</select></div>' +
+      '</div>') +
+
+    '<div style="height:16px"></div>' +
+
+    card("ปริมาณคงเหลือ (แนวโน้มขึ้น-ลง)", '<span class="bdg bdg-gray">ยอดสะสมปลายเดือน</span>',
+      '<div class="chart">' + chartLine(balD, months.map(x => x.label), { color: "#00693C", height: 260 }) + '</div>') +
+
+    '<div style="height:16px"></div>' +
+
+    card("ปริมาณรับเข้า เทียบกับ จ่ายออก", "",
+      '<div class="chart">' + chartBars(
+        [ { name:"รับเข้า", color:"#0F8A4D", data:inD }, { name:"จ่ายออก", color:"#B3261E", data:outD } ],
+        months.map(x => x.label), { height: 270 }) + '</div>' +
+      '<div class="legend"><span><i style="background:#0F8A4D"></i>รับเข้า</span>' +
+      '<span><i style="background:#B3261E"></i>จ่ายออก</span></div>' +
+      '<div class="row" style="margin-top:12px">' +
+        '<span class="bdg bdg-ok">รับเข้ารวม ' + num(inD.reduce((a, b) => a + b, 0), 0) + '</span>' +
+        '<span class="bdg bdg-err">จ่ายออกรวม ' + num(outD.reduce((a, b) => a + b, 0), 0) + '</span>' +
+        '<span class="bdg bdg-info">คงเหลือปัจจุบัน ' + num(balD[balD.length - 1] || 0, 0) + '</span>' +
+      '</div>') +
+
+    '<div style="height:16px"></div>' +
+
+    '<div class="grid g2">' +
+      card("ยอดคงเหลือแยกตามหมวดหมู่", "", '<div class="chart">' + chartHBar(catItems) + '</div>') +
+      card("10 อันดับสินค้าคงเหลือสูงสุด", "", '<div class="chart">' + chartHBar(topProd) + '</div>') +
+    '</div>';
+
+  $("#g_m").onchange = e => { gMonths = +e.target.value; viewGraphs(); };
+  $("#g_p").onchange = e => { gProd = e.target.value; viewGraphs(); };
+  $("#g_w").onchange = e => { gWh = e.target.value; viewGraphs(); };
+}
+
+/* ============================================================ สำรอง / กู้คืน */
+function backupModal() {
+  modal("สำรองและกู้คืนข้อมูล",
+    '<p style="color:var(--fg-muted);font-size:14px;margin-bottom:16px">' +
+    'ระบบนี้ไม่ใช้ฐานข้อมูล — ข้อมูลทั้งหมดถูกเก็บไว้ในเบราว์เซอร์ของเครื่องนี้ (localStorage) ' +
+    'แนะนำให้ส่งออกไฟล์สำรองเก็บไว้เป็นระยะ</p>' +
+    '<div class="grid" style="gap:11px">' +
+      '<button class="btn btn-o" id="b_exp">ส่งออกไฟล์สำรอง (.json)</button>' +
+      '<button class="btn btn-o" id="b_imp">นำเข้าไฟล์สำรอง</button>' +
+      '<input type="file" id="b_file" accept="application/json,.json" hidden>' +
+      '<button class="btn btn-d" id="b_reset">ล้างข้อมูลและสร้างข้อมูลตัวอย่างใหม่</button>' +
+    '</div>' +
+    '<div style="margin-top:16px;padding:12px;background:var(--brand-50);border-radius:9px;font-size:13px;color:var(--brand-d)">' +
+    'ข้อมูลปัจจุบัน: สินค้า <b>' + DB.products.length + '</b> รายการ · คลัง <b>' + DB.warehouses.length +
+    '</b> แห่ง · รายการเคลื่อนไหว <b>' + num(DB.txns.length, 0) + '</b> รายการ</div>',
+    "", close => {
+      $("#b_exp").onclick = () => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(DB, null, 2)], { type: "application/json" }));
+        const a = document.createElement("a");
+        a.href = url; a.download = "raot-inventory-backup-" + todayISO() + ".json"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        toast("ส่งออกไฟล์สำรองแล้ว");
+      };
+      $("#b_imp").onclick = () => $("#b_file").click();
+      $("#b_file").onchange = e => {
+        const f = e.target.files[0]; if (!f) return;
+        const fr = new FileReader();
+        fr.onload = () => {
+          try {
+            const d = JSON.parse(fr.result);
+            if (!d.products || !d.warehouses || !d.txns) throw new Error("รูปแบบไฟล์ไม่ถูกต้อง");
+            if (!confirm("การนำเข้าจะแทนที่ข้อมูลปัจจุบันทั้งหมด ยืนยันหรือไม่?")) return;
+            DB = d; DB.counters = DB.counters || {}; save(); close(); go(VIEW);
+            toast("นำเข้าข้อมูลเรียบร้อย");
+          } catch (err) { toast("ไฟล์ไม่ถูกต้อง: " + err.message, "err"); }
+        };
+        fr.readAsText(f);
+      };
+      $("#b_reset").onclick = () => {
+        if (!confirm("ข้อมูลทั้งหมดจะถูกลบและสร้างข้อมูลตัวอย่างใหม่ ยืนยันหรือไม่?")) return;
+        DB = seed(); save(); close(); go("dash");
+        toast("สร้างข้อมูลตัวอย่างใหม่เรียบร้อย");
+      };
+    });
+}
+
+/* ============================================================ Auth + boot */
+function showApp() {
+  $("#login").hidden = true;
+  $("#app").hidden = false;
+  $("#footWh").textContent = DB.warehouses.length + " คลังทั่วประเทศ";
+  go("dash");
+}
+
+$("#loginForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const u = $("#u").value.trim(), p = $("#p").value;
+  const err = $("#loginErr");
+  if (u === AUTH.username && p === AUTH.password) {
+    try { sessionStorage.setItem(SESS, "1"); } catch (x) {}
+    err.style.display = "none";
+    load();
+    showApp();
+    toast("ยินดีต้อนรับเข้าสู่ระบบ");
+  } else {
+    err.textContent = "ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง";
+    err.style.display = "inline-flex";
+    $("#p").value = "";
+    $("#p").focus();
+  }
+});
+
+$("#btnLogout").addEventListener("click", () => {
+  try { sessionStorage.removeItem(SESS); } catch (x) {}
+  $("#app").hidden = true;
+  $("#login").hidden = false;
+  $("#u").value = ""; $("#p").value = "";
+  $("#loginErr").style.display = "none";
+});
+
+$("#btnBackup").addEventListener("click", backupModal);
+
+$("#burger").addEventListener("click", () => {
+  const sb = $("#sidebar");
+  sb.classList.add("open");
+  const sc = document.createElement("div");
+  sc.id = "scrim";
+  sc.onclick = () => { sb.classList.remove("open"); sc.remove(); };
+  document.body.appendChild(sc);
+});
+
+/* delegate: ปุ่มที่มี data-nav ทุกจุดในหน้า */
+document.addEventListener("click", e => {
+  const b = e.target.closest ? e.target.closest("[data-nav]") : null;
+  if (b) go(b.dataset.nav);
+});
+
+/* คงสถานะล็อกอินไว้ระหว่างรีเฟรชหน้า (ภายในแท็บเดียวกัน) */
+(function boot() {
+  let logged = false;
+  try { logged = sessionStorage.getItem(SESS) === "1"; } catch (x) {}
+  if (logged) { load(); showApp(); }
+  else { $("#u").focus(); }
+})();
+</script>
+</body>
+</html>

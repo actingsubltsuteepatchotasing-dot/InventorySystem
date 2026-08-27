@@ -1,0 +1,19 @@
+{
+  "name": "raot-inventory",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ระบบควบคุมสินค้าคงคลัง การยางแห่งประเทศไทย",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^15.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

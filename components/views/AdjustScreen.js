@@ -1,0 +1,299 @@
+"use client";
+
+// หน้าจอปรับปรุงสินค้า — เทียบยอดตามบัญชีกับยอดที่นับได้จริง แล้วบันทึกผลต่าง
+
+import { useMemo, useState } from "react";
+import { useInv } from "@/lib/store";
+import { ADJUST_REASONS } from "@/lib/constants";
+import { commitDocNo, nextDocNo } from "@/lib/db";
+import { num, thDate, todayISO, uid } from "@/lib/format";
+import { useToast } from "../Toast";
+import { usePrint } from "../Print";
+import { IcTrash } from "../Icons";
+import { Badge, Card, Empty, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
+import { CountSheetBody } from "./printBodies";
+
+export default function AdjustScreen() {
+  const inv = useInv();
+  const { db } = inv;
+  const toast = useToast();
+  const print = usePrint();
+
+  const [date, setDate] = useState(todayISO);
+  const [whId, setWhId] = useState(db.warehouses[0].id);
+  const [productId, setProductId] = useState(db.products[0].id);
+  const [counted, setCounted] = useState("");
+  const [reason, setReason] = useState(ADJUST_REASONS[0]);
+  const [cart, setCart] = useState([]);
+
+  const docNo = nextDocNo(db, "ADJUST", date);
+  const book = inv.stockOf(productId, whId);
+  const countedNum = parseFloat(counted);
+  const diff = isNaN(countedNum) ? 0 : countedNum - book;
+
+  function addLine() {
+    if (isNaN(countedNum) || countedNum < 0) return toast("กรุณาระบุยอดนับได้จริง", "err");
+    if (diff === 0) return toast("ยอดตรงกับบัญชี ไม่ต้องปรับปรุง", "warn");
+    if (cart.some((c) => c.productId === productId && c.whId === whId)) {
+      return toast("มีรายการสินค้านี้ในเอกสารแล้ว", "warn");
+    }
+    setCart((prev) => [
+      ...prev,
+      { key: uid(), productId, whId, book, counted: countedNum, qty: diff, note: reason },
+    ]);
+    setCounted("");
+    toast("เพิ่มรายการปรับปรุง " + inv.prodName(productId));
+  }
+
+  function saveDoc() {
+    if (!cart.length) return;
+    const doc = nextDocNo(db, "ADJUST", date);
+    const ts = new Date(date + "T09:00:00").getTime();
+
+    inv.update((draft) => {
+      cart.forEach((c) => {
+        draft.txns.push({
+          id: uid(),
+          type: "ADJUST",
+          docNo: doc,
+          date,
+          productId: c.productId,
+          qty: c.qty,
+          whId: c.whId,
+          whTo: "",
+          note: c.note,
+          ref: "นับได้ " + c.counted + " / บัญชี " + c.book,
+          user: "admin",
+          ts,
+        });
+      });
+      commitDocNo(draft, "ADJUST", date);
+      draft.txns.sort((a, b) => a.ts - b.ts);
+    });
+
+    toast("บันทึกเอกสารปรับปรุง " + doc + " เรียบร้อย");
+    setCart([]);
+  }
+
+  const recent = useMemo(
+    () => db.txns.filter((t) => t.type === "ADJUST").sort((a, b) => b.ts - a.ts).slice(0, 15),
+    [db.txns]
+  );
+
+  function printAdjustReport() {
+    const list = db.txns.filter((t) => t.type === "ADJUST").sort((a, b) => a.ts - b.ts);
+    if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+
+    print({
+      title: "รายงานการปรับปรุงสินค้า",
+      subtitle: "ข้อมูลทั้งหมด " + list.length + " รายการ",
+      body: (
+        <table>
+          <thead>
+            <tr>
+              <th>ลำดับ</th>
+              <th>วันที่</th>
+              <th>เลขที่เอกสาร</th>
+              <th>รหัส</th>
+              <th>รายการสินค้า</th>
+              <th>คลัง</th>
+              <th style={{ textAlign: "right" }}>ผลต่าง</th>
+              <th>สาเหตุ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((t, i) => {
+              const p = inv.prod(t.productId);
+              return (
+                <tr key={t.id}>
+                  <td>{i + 1}</td>
+                  <td>{thDate(t.date)}</td>
+                  <td>{t.docNo}</td>
+                  <td>{p ? p.code : ""}</td>
+                  <td>{inv.prodName(t.productId)}</td>
+                  <td>{inv.whName(t.whId)}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {(t.qty > 0 ? "+" : "") + num(t.qty, 0)}
+                  </td>
+                  <td>{t.note || "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ),
+    });
+  }
+
+  function printSheet() {
+    const w = inv.wh(whId);
+    print({
+      title: "ใบตรวจนับสินค้าคงคลัง",
+      subtitle: (w ? w.name + " · จังหวัด" + w.province : "ทุกคลัง") + " · ณ วันที่ " + thDate(todayISO()),
+      body: <CountSheetBody db={db} inv={inv} whId={whId} />,
+    });
+  }
+
+  return (
+    <div className="stack">
+      <Card
+        title="บันทึกการปรับปรุงสินค้า (จากผลการตรวจนับ)"
+        actions={<Badge>เลขที่เอกสาร {docNo}</Badge>}
+      >
+        <div className="form-grid">
+          <div className="field">
+            <label className="lbl" htmlFor="a_date">วันที่ตรวจนับ</label>
+            <input className="inp" type="date" id="a_date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="field">
+            <label className="lbl" htmlFor="a_doc">เลขที่เอกสาร</label>
+            <input className="inp" id="a_doc" value={docNo} readOnly />
+          </div>
+          <div className="field span2">
+            <label className="lbl" htmlFor="a_wh">คลังสินค้า</label>
+            <WarehouseSelect db={db} id="a_wh" value={whId} onChange={setWhId} />
+          </div>
+          <div className="field span2">
+            <label className="lbl" htmlFor="a_prod">สินค้า</label>
+            <ProductSelect db={db} id="a_prod" value={productId} onChange={setProductId} />
+          </div>
+          <div className="field">
+            <label className="lbl">ยอดตามบัญชี</label>
+            <input className="inp num" readOnly value={num(book, 0)} />
+          </div>
+          <div className="field">
+            <label className="lbl" htmlFor="a_count">ยอดนับได้จริง</label>
+            <input
+              className="inp num"
+              type="number"
+              step="any"
+              id="a_count"
+              value={counted}
+              onChange={(e) => setCounted(e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div className="field">
+            <label className="lbl">ผลต่าง</label>
+            <input
+              className="inp num"
+              readOnly
+              value={(diff > 0 ? "+" : "") + num(diff, 0)}
+              style={{ color: diff === 0 ? undefined : diff > 0 ? "var(--ok)" : "var(--err)", fontWeight: 700 }}
+            />
+          </div>
+          <div className="field">
+            <label className="lbl" htmlFor="a_reason">สาเหตุ</label>
+            <select className="sel" id="a_reason" value={reason} onChange={(e) => setReason(e.target.value)}>
+              {ADJUST_REASONS.map((r) => (
+                <option key={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field span2" style={{ display: "flex", alignItems: "flex-end" }}>
+            <button className="btn btn-o" onClick={addLine} style={{ width: "100%" }}>
+              เพิ่มลงรายการ
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      <Card
+        title="รายการปรับปรุง"
+        actions={
+          <>
+            <button className="btn btn-p" onClick={saveDoc} disabled={!cart.length}>บันทึกเอกสาร</button>
+            <button className="btn btn-g" onClick={() => setCart([])}>ล้างรายการ</button>
+          </>
+        }
+      >
+        {cart.length ? (
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ width: 44 }}>#</th>
+                <th>สินค้า</th>
+                <th>คลัง</th>
+                <th className="num">ตามบัญชี</th>
+                <th className="num">นับได้</th>
+                <th className="num">ผลต่าง</th>
+                <th>สาเหตุ</th>
+                <th style={{ width: 52 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {cart.map((c, i) => (
+                <tr key={c.key}>
+                  <td>{i + 1}</td>
+                  <td>{inv.prodName(c.productId)}</td>
+                  <td style={{ fontSize: 13 }}>{inv.whName(c.whId)}</td>
+                  <td className="num">{num(c.book, 0)}</td>
+                  <td className="num">{num(c.counted, 0)}</td>
+                  <td className="num">
+                    <b style={{ color: c.qty > 0 ? "var(--ok)" : "var(--err)" }}>
+                      {(c.qty > 0 ? "+" : "") + num(c.qty, 0)}
+                    </b>
+                  </td>
+                  <td style={{ fontSize: 13 }}>{c.note}</td>
+                  <td>
+                    <button
+                      className="btn btn-d btn-icon"
+                      onClick={() => setCart((prev) => prev.filter((x) => x.key !== c.key))}
+                    >
+                      <IcTrash size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        ) : (
+          <Empty>ยังไม่มีรายการปรับปรุง</Empty>
+        )}
+      </Card>
+
+      <Card
+        title="รายงานการปรับปรุงล่าสุด"
+        actions={
+          <>
+            <button className="btn btn-o btn-sm" onClick={printAdjustReport}>พิมพ์รายงาน</button>
+            <button className="btn btn-g btn-sm" onClick={printSheet}>พิมพ์ใบตรวจนับ</button>
+          </>
+        }
+      >
+        {recent.length ? (
+          <TableWrap>
+            <thead>
+              <tr>
+                <th>วันที่</th>
+                <th>เลขที่เอกสาร</th>
+                <th>สินค้า</th>
+                <th>คลัง</th>
+                <th className="num">ผลต่าง</th>
+                <th>สาเหตุ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map((t) => (
+                <tr key={t.id}>
+                  <td>{thDate(t.date)}</td>
+                  <td className="code-cell">{t.docNo}</td>
+                  <td>{inv.prodName(t.productId)}</td>
+                  <td style={{ fontSize: 13 }}>{inv.whName(t.whId)}</td>
+                  <td className="num">
+                    <b style={{ color: t.qty > 0 ? "var(--ok)" : "var(--err)" }}>
+                      {(t.qty > 0 ? "+" : "") + num(t.qty, 0)}
+                    </b>
+                  </td>
+                  <td style={{ fontSize: 13 }}>{t.note || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        ) : (
+          <Empty>ยังไม่มีรายการปรับปรุง</Empty>
+        )}
+      </Card>
+    </div>
+  );
+}
