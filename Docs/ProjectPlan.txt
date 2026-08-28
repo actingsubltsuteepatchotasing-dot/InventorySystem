@@ -88,6 +88,12 @@ txns         id, type, doc_no, date, product_id -> products(cascade),
   - ลบสินค้า -> รายการเคลื่อนไหวที่อ้างถึงถูกลบตาม (on delete cascade)
   - ลบคลังที่ยังมีรายการอ้างอยู่ไม่ได้ (on delete restrict)
 
+การเข้าถึงตารางต้องผ่าน 2 ด่าน (สำคัญ — เคยพลาดตรงนี้)
+  ด่าน 1  GRANT ระดับตาราง ให้ role authenticated
+          ไม่ผ่าน -> HTTP 403 / SQLSTATE 42501 "permission denied for table"
+  ด่าน 2  RLS policy
+          ไม่ผ่าน -> อ่านได้ผลว่าง หรือเขียนไม่ได้ ("new row violates ...")
+
 RLS: เปิดทั้ง 3 ตาราง อนุญาตเฉพาะ role = authenticated
      anon key เพียงอย่างเดียวอ่าน/เขียนไม่ได้ ต้อง login ก่อนเสมอ
 
@@ -105,7 +111,8 @@ Web-Workshop3/
 ├─ README.md
 │
 ├─ supabase/
-│  └─ schema.sql             ตาราง + index + RLS policy + วิธีสร้างผู้ใช้
+│  ├─ schema.sql             ตาราง + index + GRANT + RLS policy + วิธีสร้างผู้ใช้
+│  └─ fix-permissions.sql    แก้ปัญหา 403 (GRANT + RLS) พร้อม query ตรวจผล
 │
 ├─ app/
 │  ├─ layout.js              RootLayout + metadata + Providers
@@ -253,6 +260,20 @@ Docs/
 - ระบบต้องออนไลน์ตลอด ใช้งาน offline ไม่ได้แล้ว (ต่างจากรุ่น localStorage เดิม)
 
 
+# ปัญหาที่เคยเจอและวิธีแก้
+
+อาการ: login ผ่าน แต่ขึ้น "เชื่อมต่อฐานข้อมูลไม่สำเร็จ / ไม่มีสิทธิ์เข้าถึงข้อมูล"
+สาเหตุ: schema.sql รุ่นแรกตั้ง RLS policy อย่างเดียว ลืม GRANT ระดับตาราง
+วิธีแก้: รัน supabase/fix-permissions.sql ใน SQL Editor แล้วดูผล query 3 ชุดท้ายไฟล์
+        - rls_enabled ต้องเป็น true ครบ 3 แถว
+        - ต้องมี policy 3 แถว roles = {authenticated}
+        - authenticated ต้องมีสิทธิ์ SELECT/INSERT/UPDATE/DELETE ครบทั้ง 3 ตาราง
+
+อาการ: "Email not confirmed"
+วิธีแก้: Authentication > Users > แก้ผู้ใช้นั้น แล้วยืนยันอีเมล
+        หรือสร้างใหม่โดยติ๊ก Auto Confirm User
+
+
 # บันทึกการแก้ไข (Changelog)
 2026-08-27  (1) สร้างเวอร์ชันแรกเป็น HTML ไฟล์เดียว ครบทุกข้อกำหนดใน Overview
             (2) เพิ่ม vercel.json สำหรับ deploy แบบ static
@@ -275,3 +296,10 @@ Docs/
                 - เพิ่ม .env.local.example
             (7) ตรวจโครงสร้าง 33 ไฟล์ ผ่าน + ทดสอบตรรกะ 57 ข้อ ผ่าน
                 (ยังไม่ได้ทดสอบกับ Supabase จริง เพราะยังไม่มี URL/anon key)
+            (8) ทดสอบจริงแล้วเจอ 403 -> พบว่า schema.sql ลืม GRANT ระดับตาราง
+                - schema.sql: เพิ่ม grant usage on schema + grant all 3 ตาราง
+                - เพิ่ม supabase/fix-permissions.sql สำหรับโปรเจกต์ที่รันของเดิมไปแล้ว
+                - lib/supabase.js: เดิมกลืนข้อความ error จริงแล้วเดาสาเหตุเอง
+                  แก้ให้แนบ code/message/details/hint จาก PostgREST มาเสมอ
+                  และแยก 42501 เป็น GRANT ไม่พอ vs RLS ปฏิเสธ
+                - Shell.js: หน้าจอ error บอกขั้นตอนแก้เป็นข้อ ๆ แทนทางตัน
