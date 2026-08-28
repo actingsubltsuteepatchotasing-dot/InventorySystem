@@ -35,6 +35,7 @@ export default function ProductForm({ productId, onClose }) {
         }
   );
   const [dragOver, setDragOver] = useState(false);
+  const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
 
   const cats = useMemo(() => Array.from(new Set(db.products.map((p) => p.cat))), [db.products]);
@@ -50,7 +51,8 @@ export default function ProductForm({ productId, onClose }) {
     }
   }
 
-  function save() {
+  async function save() {
+    if (busy) return;
     const code = String(form.code).trim();
     const name = String(form.name).trim();
     const unit = String(form.unit).trim();
@@ -74,32 +76,36 @@ export default function ProductForm({ productId, onClose }) {
       img: form.img || "",
     };
 
-    inv.update((draft) => {
-      if (isNew) {
-        draft.products.push({ id: uid(), ...value });
-      } else {
-        const i = draft.products.findIndex((p) => p.id === productId);
-        if (i >= 0) draft.products[i] = { ...draft.products[i], ...value };
-      }
-    });
-
-    toast(isNew ? "เพิ่มสินค้าเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย");
-    onClose();
+    setBusy(true);
+    try {
+      await inv.saveProduct({ id: productId || uid(), ...value });
+      toast(isNew ? "เพิ่มสินค้าเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย");
+      onClose();
+    } catch (e) {
+      toast("บันทึกไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function remove() {
+  async function remove() {
+    if (busy) return;
     const used = db.txns.some((t) => t.productId === productId);
     const msg = used
       ? "สินค้านี้มีประวัติการเคลื่อนไหวอยู่ หากลบ ประวัติที่เกี่ยวข้องจะถูกลบไปด้วย\n\nยืนยันการลบ?"
       : "ยืนยันการลบสินค้า " + form.name + " ?";
     if (!window.confirm(msg)) return;
 
-    inv.update((draft) => {
-      draft.products = draft.products.filter((p) => p.id !== productId);
-      draft.txns = draft.txns.filter((t) => t.productId !== productId);
-    });
-    toast("ลบสินค้าเรียบร้อย");
-    onClose();
+    setBusy(true);
+    try {
+      await inv.removeProduct(productId);
+      toast("ลบสินค้าเรียบร้อย");
+      onClose();
+    } catch (e) {
+      toast("ลบไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -109,12 +115,12 @@ export default function ProductForm({ productId, onClose }) {
       footer={
         <>
           {!isNew ? (
-            <button className="btn btn-d" onClick={remove}>
+            <button className="btn btn-d" onClick={remove} disabled={busy}>
               ลบสินค้า
             </button>
           ) : null}
-          <button className="btn btn-p" onClick={save}>
-            บันทึกข้อมูล
+          <button className="btn btn-p" onClick={save} disabled={busy}>
+            {busy ? "กำลังบันทึก…" : "บันทึกข้อมูล"}
           </button>
         </>
       }

@@ -2,15 +2,32 @@
 
 ระบบควบคุมสินค้าคงคลัง — การยางแห่งประเทศไทย (Rubber Authority of Thailand)
 
-สร้างด้วย **Next.js 15 (App Router) + React 19** ไม่มี dependency อื่นนอกจาก `next` / `react` / `react-dom`
+สร้างด้วย **Next.js 15 (App Router) + React 19 + Supabase**
+ไม่มี dependency อื่นนอกจาก `next` / `react` / `react-dom` — ตัวเชื่อม Supabase เขียนเองด้วย `fetch`
 
-## เข้าสู่ระบบ
+## ตั้งค่าก่อนใช้งาน
 
-| ชื่อผู้ใช้ | รหัสผ่าน |
+ต้องทำ 3 ขั้นนี้ก่อน ไม่งั้นเข้าระบบไม่ได้
+
+**1. สร้างตาราง** — Supabase Dashboard > SQL Editor > วางไฟล์ [`supabase/schema.sql`](supabase/schema.sql) ทั้งไฟล์ > Run
+
+**2. สร้างผู้ใช้** — Authentication > Users > Add user
+ติ๊ก **Auto Confirm User** ด้วย ไม่งั้นจะติด "Email not confirmed"
+
+**3. ใส่ค่า environment** — หาที่ Project Settings > API
+
+| ตัวแปร | ค่าที่ใช้ |
 |---|---|
-| `admin` | `admin888` |
+| `NEXT_PUBLIC_SUPABASE_URL` | Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon public key |
 
-> รหัสผ่านเป็นแบบ Fixed อยู่ในโค้ดฝั่ง client — ใช้สำหรับสาธิตและใช้งานภายในเท่านั้น
+ตอน deploy ใส่ที่ Vercel > Project Settings > Environment Variables แล้ว **Redeploy หนึ่งครั้ง**
+(ตัวแปร `NEXT_PUBLIC_` ถูกฝังตอน build) ตอนรันในเครื่องให้คัดลอก `.env.local.example` เป็น `.env.local`
+
+> anon key เป็น public key เปิดเผยได้ ความปลอดภัยมาจาก RLS policy ที่อนุญาตเฉพาะผู้ที่ล็อกอินแล้ว
+> **ห้ามใช้ service_role key ในฝั่ง client เด็ดขาด**
+
+เข้าระบบครั้งแรกและฐานข้อมูลยังว่าง ระบบจะสร้างข้อมูลตัวอย่างให้อัตโนมัติ
 
 ## ความสามารถ
 
@@ -25,10 +42,11 @@
 
 ## การเก็บข้อมูล
 
-ระบบ **ไม่ใช้ฐานข้อมูล** ตามข้อกำหนดของโปรเจกต์ ข้อมูลทั้งหมดเก็บใน `localStorage`
-ของเบราว์เซอร์เครื่องที่ใช้งาน จึงไม่แชร์ข้ามเครื่องหรือข้ามผู้ใช้ และจะหายเมื่อล้าง cache
+ข้อมูลทั้งหมดอยู่บน **Supabase (Postgres)** แชร์กับผู้ใช้ทุกคนที่เข้าระบบ
+เปิด Row Level Security ทั้ง 3 ตาราง อนุญาตเฉพาะผู้ที่ล็อกอินแล้ว
 
-ใช้ปุ่ม **"ข้อมูล"** มุมขวาบนเพื่อส่งออก/นำเข้าไฟล์สำรอง `.json` เป็นระยะ
+ปุ่ม **"ข้อมูล"** มุมขวาบนใช้ส่งออก/นำเข้าไฟล์สำรอง `.json`, โหลดข้อมูลใหม่ และรีเซ็ต
+— การนำเข้าและรีเซ็ตมีผลกับฐานข้อมูลจริง จึงกระทบผู้ใช้ทุกคน
 
 ## Deploy
 

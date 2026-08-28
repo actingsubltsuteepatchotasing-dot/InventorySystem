@@ -9,12 +9,15 @@
 มีกราฟสรุปปริมาณขึ้นลงคงเหลือ
 
 
-# รหัสผ่านที่กำหนด ไม่ต้องใช่ Database
-username: admin
-password: admin888
+# การเข้าสู่ระบบ  (เดิม: รหัส Fixed admin/admin888 — เปลี่ยนแล้ว 2026-08-28)
+ใช้ Supabase Auth แบบ อีเมล + รหัสผ่าน
+เชื่อมด้วย Project URL + anon (public) key เท่านั้น
+สร้างผู้ใช้ที่ Supabase Dashboard > Authentication > Users (ต้องติ๊ก Auto Confirm User)
+ระบบไม่มีหน้าสมัครสมาชิก
 
  # Feature
- - Login แบบง่าย ด้วย รหัสแบบ Fixed
+ - Login ด้วยอีเมล + รหัสผ่าน ผ่าน Supabase Auth
+ - ข้อมูลสินค้าคงคลังเก็บบน Supabase Database (แชร์ทุกเครื่อง)
 
 
  # Deployment
@@ -25,18 +28,71 @@ password: admin888
   ผู้ใช้ไม่ต้องติดตั้ง Node.js หรือ npm ในเครื่องเลย แค่ push โค้ดหรือลากโฟลเดอร์ขึ้น Vercel
   (ถ้าอยากรันในเครื่องเองภายหลัง ค่อยใช้ `npm install` แล้ว `npm run dev`)
 
+- GitHub: git@github.com:actingsubltsuteepatchotasing-dot/InventorySystem.git
+
 
 # Stack ที่ใช้
-- Next.js 15 (App Router)
-- React 19
+- Next.js 15 (App Router) + React 19
 - JavaScript ล้วน (ไม่ใช้ TypeScript) เพื่อลดขั้นตอน
 - CSS ธรรมดาไฟล์เดียว (app/globals.css) ไม่ใช้ Tailwind / CSS-in-JS
+- Supabase (Auth + Postgres) เรียกผ่าน REST ด้วย fetch โดยตรง
 - ไม่มี dependency อื่นเลยนอกจาก next / react / react-dom
+  * ไม่ได้ติดตั้ง @supabase/supabase-js — เขียน client เองที่ lib/supabase.js
+    (แลกกับการต้องจัดการ refresh token เอง ซึ่งทำไว้แล้ว)
   * ไอคอนทั้งหมด = inline SVG เขียนเอง
   * บาร์โค๊ด = Code 128-B encoder เขียนเอง (lib/barcode.js)
   * กราฟ = inline SVG เขียนเอง (components/Charts.js) ไม่ใช้ Chart.js
   * แผนที่ = Google Maps Embed ผ่าน iframe (ไม่ต้องใช้ API key)
-- เก็บข้อมูลด้วย localStorage ตามข้อกำหนด "ไม่ต้องใช้ Database"
+
+
+# ตั้งค่าก่อนใช้งาน  (สำคัญ — ทำ 3 ขั้นนี้ก่อน ไม่งั้น login ไม่ได้)
+
+ขั้นที่ 1 — สร้างตารางใน Supabase
+  Supabase Dashboard > SQL Editor > New query
+  วางเนื้อหาไฟล์ supabase/schema.sql ทั้งไฟล์ แล้วกด Run
+  (รันซ้ำได้ปลอดภัย ใช้ if not exists)
+
+ขั้นที่ 2 — สร้างผู้ใช้
+  Authentication > Users > Add user
+    Email    : อีเมลที่ต้องการ (เช่น admin@raot.local)
+    Password : ตั้งรหัสที่ปลอดภัย
+    ☑ Auto Confirm User   <- ต้องติ๊ก ไม่งั้นจะติด "Email not confirmed"
+
+ขั้นที่ 3 — ใส่ค่า environment
+  หาค่าที่ Project Settings > API
+    Project URL              -> NEXT_PUBLIC_SUPABASE_URL
+    Project API keys > anon  -> NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  ตอน deploy : Vercel > Project Settings > Environment Variables
+               ใส่ทั้งสองค่า แล้ว Redeploy หนึ่งครั้ง
+               (ตัวแปร NEXT_PUBLIC_ ถูกฝังตอน build จึงต้อง build ใหม่)
+  ตอนรันในเครื่อง : คัดลอก .env.local.example เป็น .env.local แล้วใส่ค่า
+
+  หมายเหตุ: anon key เป็น public key เปิดเผยได้ ความปลอดภัยมาจาก RLS policy
+            ห้ามใช้ service_role key ในฝั่ง client เด็ดขาด
+
+เมื่อเข้าระบบครั้งแรกและฐานข้อมูลยังว่าง ระบบจะสร้างข้อมูลตัวอย่างให้อัตโนมัติ
+
+
+# โครงสร้างฐานข้อมูล (supabase/schema.sql)
+
+warehouses   id, code, name, province, lat, lng
+products     id, code(unique), name, unit, cat, price, min_qty, barcode, img, note
+txns         id, type, doc_no, date, product_id -> products(cascade),
+             qty, wh_id -> warehouses, wh_to -> warehouses,
+             note, ref, user_name, ts
+
+ข้อบังคับที่ตั้งไว้ในฐานข้อมูล (ไม่ใช่แค่ฝั่งหน้าจอ):
+  - type ต้องเป็น RECEIVE / ISSUE / TRANSFER / ADJUST เท่านั้น
+  - รายการ TRANSFER ต้องมี wh_to และ wh_to <> wh_id  (กันโอนเข้าคลังตัวเอง)
+  - ลบสินค้า -> รายการเคลื่อนไหวที่อ้างถึงถูกลบตาม (on delete cascade)
+  - ลบคลังที่ยังมีรายการอ้างอยู่ไม่ได้ (on delete restrict)
+
+RLS: เปิดทั้ง 3 ตาราง อนุญาตเฉพาะ role = authenticated
+     anon key เพียงอย่างเดียวอ่าน/เขียนไม่ได้ ต้อง login ก่อนเสมอ
+
+หมายเหตุชื่อคอลัมน์: ใช้ min_qty และ user_name แทน min / user
+เพราะ user เป็นคำสงวนของ SQL — การแปลงชื่อทำที่ lib/api.js
 
 
 # โครงสร้างไฟล์
@@ -44,33 +100,41 @@ Web-Workshop3/
 ├─ package.json              next / react / react-dom เท่านั้น
 ├─ next.config.mjs
 ├─ jsconfig.json             ตั้ง alias "@/" ชี้ราก project
-├─ .gitignore
+├─ .env.local.example        แม่แบบค่า Supabase (คัดลอกเป็น .env.local)
+├─ .gitignore                กัน .env*.local ไม่ให้ขึ้น git
+├─ README.md
+│
+├─ supabase/
+│  └─ schema.sql             ตาราง + index + RLS policy + วิธีสร้างผู้ใช้
 │
 ├─ app/
 │  ├─ layout.js              RootLayout + metadata + Providers
-│  ├─ page.js                ประตูเข้า: ยังไม่ล็อกอิน → Login, ล็อกอินแล้ว → Shell
+│  ├─ page.js                ยังไม่ล็อกอิน -> Login, ล็อกอินแล้ว -> Shell
 │  └─ globals.css            ธีมสีเขียว กยท. + responsive + @media print
 │
 ├─ lib/
-│  ├─ constants.js           AUTH, TYPES, ข้อมูลคลัง 10 แห่ง, สินค้า 12 รายการ
+│  ├─ constants.js           TYPES, ข้อมูลคลัง 10 แห่ง, สินค้า 12 รายการ
 │  ├─ format.js              num / thDate / uid / rng (ตัวสุ่มแบบ seed คงที่)
-│  ├─ db.js                  seed, load/save localStorage, stockMap, movement, เลขที่เอกสาร
-│  ├─ store.js               React Context (InventoryProvider + useInv)
+│  ├─ db.js                  seed + คำนวณยอดคงเหลือ (ฟังก์ชันบริสุทธิ์ทั้งหมด)
+│  ├─ supabase.js            client เรียก REST เอง: auth, refresh token, PostgREST
+│  ├─ api.js                 CRUD จริง + แปลงชื่อคอลัมน์ snake_case <-> camelCase
+│  ├─ auth.js                AuthProvider + useAuth (session, signIn, signOut)
+│  ├─ store.js               InventoryProvider + useInv (โหลด/แก้ไขข้อมูล)
 │  ├─ barcode.js             ตาราง Code 128 (107 รายการ) + encode128()
 │  ├─ image.js               ย่อรูปด้วย canvas ก่อนเก็บ (max 480px, jpeg 0.82)
 │  └─ csv.js                 ส่งออก CSV (มี BOM ให้ Excel อ่านไทยได้) และ JSON สำรอง
 │
 └─ components/
-   ├─ Providers.js           Toast > Print > Inventory
+   ├─ Providers.js           Toast > Print > Auth > Inventory
    ├─ Icons.js               ไอคอน SVG ทั้งหมด + โลโก้ กยท.
    ├─ Toast.js               ข้อความแจ้งเตือน
    ├─ Print.js               ระบบพิมพ์ (render ลง #printRoot แล้ว window.print())
    ├─ Modal.js               กล่องโต้ตอบ (ปิดด้วย Esc / คลิกพื้นหลัง)
    ├─ ui.js                  Card, Badge, Kpi, TableWrap, Barcode, Select ต่าง ๆ
    ├─ Charts.js              BarChart, LineChart, HBarChart, Legend
-   ├─ Login.js               หน้าเข้าสู่ระบบ
-   ├─ Shell.js               Sidebar + Topbar + สลับหน้าจอ
-   ├─ BackupModal.js         ส่งออก/นำเข้าไฟล์สำรอง, ล้างข้อมูล
+   ├─ Login.js               เข้าสู่ระบบด้วยอีเมล + รหัสผ่าน
+   ├─ Shell.js               Sidebar + Topbar + สลับหน้าจอ + สถานะโหลด/ผิดพลาด
+   ├─ BackupModal.js         ส่งออก/นำเข้า/รีเซ็ต (มีผลกับ Supabase ทั้งระบบ)
    └─ views/
       ├─ Dashboard.js        KPI 4 ช่อง + กราฟ 2 ตัว + ตาราง 2 ตาราง
       ├─ TxnScreen.js        ใช้ร่วมกัน 3 หน้าจอ: รับ / เบิก / โอน
@@ -85,31 +149,31 @@ Web-Workshop3/
 
 Docs/
 ├─ ProjectPlan.txt           ไฟล์นี้
-└─ standalone-index.html     เวอร์ชัน HTML ไฟล์เดียวก่อนหน้า (เก็บไว้อ้างอิง ไม่ได้ใช้แล้ว)
+└─ standalone-index.html     เวอร์ชัน HTML ไฟล์เดียวรุ่นแรก (เก็บอ้างอิง ไม่ได้ใช้แล้ว)
 
 
-# วิธี Deploy ขึ้น Vercel
-วิธีที่ 1 — ผ่าน Git (แนะนำ):
-  1. push โฟลเดอร์นี้ขึ้น GitHub
-  2. เข้า https://vercel.com/new แล้ว Import repository
-  3. Vercel ตรวจเจอ Next.js เอง — ไม่ต้องตั้งค่าอะไรเพิ่ม กด Deploy
-  4. Vercel รัน npm install + next build ให้บนคลาวด์
+# วิธีทำงานของข้อมูล
 
-วิธีที่ 2 — ลากวาง:
-  1. เข้า https://vercel.com/new
-  2. ลากโฟลเดอร์ Web-Workshop3 ทั้งโฟลเดอร์ไปวาง (อย่ารวม node_modules)
-  3. กด Deploy
+โหลด : เข้าระบบสำเร็จ -> InventoryProvider ดึง products/warehouses/txns ทั้งหมด
+       มาเก็บในหน่วยความจำครั้งเดียว (แบ่งหน้าครั้งละ 1000 แถว)
+       ทุกหน้าจอจึงเร็วเพราะคำนวณจากหน่วยความจำ ไม่ยิง query ซ้ำ
 
-ไม่ต้องมี vercel.json — Vercel ตรวจจับ Next.js จาก package.json ได้เอง
+เขียน : เขียนขึ้น Supabase ก่อนเสมอ ถ้าสำเร็จจึงอัปเดตหน่วยความจำ
+       ถ้าเขียนพลาด สถานะบนหน้าจอจะไม่เปลี่ยน และขึ้นข้อความแจ้งเตือน
+       (ไม่ใช้ optimistic update เพื่อกันหน้าจอกับฐานข้อมูลไม่ตรงกัน)
+
+เลขที่เอกสาร : คำนวณจากเลขสูงสุดที่มีอยู่จริงใน txns ไม่ใช้ตัวนับแยก
+              เพราะฐานข้อมูลใช้ร่วมกันหลายเครื่อง ตัวนับฝั่ง client จะไม่ตรงกัน
 
 
-# สถานะการพัฒนา — เสร็จสมบูรณ์ (2026-08-27)
+# สถานะการพัฒนา — เสร็จสมบูรณ์ (2026-08-28)
 
-[x] Login แบบ Fixed (admin / admin888) + คงสถานะด้วย sessionStorage
+[x] Login ด้วยอีเมล + รหัสผ่าน (Supabase Auth) + จำ session + ต่ออายุ token อัตโนมัติ
+[x] ข้อมูลทั้งหมดอยู่บน Supabase + RLS เฉพาะผู้ล็อกอิน
 [x] โทนสีเขียว กยท. (--brand #00693C, เขียวใบยาง #A8CF45)
 [x] หน้าจอ รับสินค้า (RECEIVE)      เอกสารหลายรายการ + เลขที่อัตโนมัติ RC-YYYYMM-NNNN
 [x] หน้าจอ เบิกสินค้า (ISSUE)       ตรวจสอบยอดคงเหลือก่อนเบิก      IS-YYYYMM-NNNN
-[x] หน้าจอ โอนสินค้า (TRANSFER)     ต้นทาง→ปลายทาง กันโอนเข้าตัวเอง TF-YYYYMM-NNNN
+[x] หน้าจอ โอนสินค้า (TRANSFER)     ต้นทาง->ปลายทาง กันโอนเข้าตัวเอง TF-YYYYMM-NNNN
 [x] หน้าจอ ปรับปรุงสินค้า (ADJUST)  ยอดบัญชี vs ยอดนับจริง + สาเหตุ AD-YYYYMM-NNNN
 [x] รายงานสรุปแต่ละหน้าจอ           มีทั้งในหน้าทำรายการ และในเมนูรายงาน (พิมพ์ + CSV)
 [x] หน้าจอข้อมูลสินค้า              เพิ่ม/แก้ไข/ลบ, ค้นหา, กรองหมวดหมู่
@@ -120,7 +184,7 @@ Docs/
 [x] กราฟสรุปปริมาณขึ้นลงคงเหลือ      กราฟเส้นแนวโน้ม, กราฟแท่งรับ/จ่าย,
                                      กราฟหมวดหมู่, Top 10 สินค้า
 [x] เสริม: แดชบอร์ด KPI, บัตรสินค้า (Stock Card), แจ้งเตือนต่ำกว่าจุดสั่งซื้อ,
-    สำรอง/กู้คืน JSON, ส่งออก CSV, responsive มือถือ (sidebar เลื่อนออก)
+    สำรอง/กู้คืน JSON, ส่งออก CSV, responsive มือถือ, ปุ่มโหลดข้อมูลใหม่
 
 
 # เมนูในระบบ
@@ -137,58 +201,77 @@ Docs/
 ทุกแท็บกรองได้ด้วย ช่วงวันที่ / คลังสินค้า / สินค้า และพิมพ์หรือส่งออก CSV ได้
 
 
-# ข้อมูลตัวอย่างที่สร้างให้ (แก้ไข/ลบได้ทั้งหมด)
+# ข้อมูลตัวอย่าง (สร้างอัตโนมัติเมื่อฐานข้อมูลว่าง — แก้ไข/ลบได้ทั้งหมด)
 - สินค้า 12 รายการ: น้ำยางข้น 60%, RSS3, STR 20, ยางเครพ, ถุงมือยาง, หมอนยางพารา,
   แผ่นยางปูพื้น, กรดฟอร์มิก, ปุ๋ย 20-8-20, ถ้วยรองน้ำยาง, มีดกรีดยาง, ถังเก็บน้ำยาง
 - คลัง 10 แห่ง 10 จังหวัด: กรุงเทพฯ, สุราษฎร์ธานี, สงขลา, นครศรีธรรมราช, ตรัง,
   ยะลา, ระยอง, บึงกาฬ, อุบลราชธานี, เชียงราย (มีพิกัด lat/lng สำหรับ Google Map)
-- รายการเคลื่อนไหว 431 รายการ ย้อนหลัง 8 เดือน (ใช้ตัวสุ่มแบบ seed คงที่
-  ข้อมูลจึงเหมือนกันทุกครั้งที่รีเซ็ต)
-- ปุ่ม "ข้อมูล" มุมขวาบน = ส่งออก/นำเข้าไฟล์สำรอง และล้างข้อมูลสร้างใหม่
+- รายการเคลื่อนไหว 431 รายการ ย้อนหลัง 8 เดือน (ใช้ตัวสุ่มแบบ seed คงที่)
+- ปุ่ม "ข้อมูล" มุมขวาบน = ส่งออก/นำเข้าไฟล์สำรอง, โหลดใหม่, ล้างและสร้างใหม่
+  ระวัง: นำเข้าและรีเซ็ตมีผลกับ Supabase จึงกระทบผู้ใช้ทุกคน ไม่ใช่แค่เครื่องตัวเอง
 
 
-# ผลการทดสอบ (2026-08-27)
+# ผลการทดสอบ (2026-08-28)
 
-ก. ตรวจโครงสร้างโค้ด 30 ไฟล์ — ผ่านทั้งหมด
+ก. ตรวจโครงสร้างโค้ด 33 ไฟล์ — ผ่านทั้งหมด
    - import ทุกเส้นทางมีไฟล์จริง และชื่อ named import มี export จริง
    - วงเล็บ/ปีกกาสมดุลทุกไฟล์
    - ไฟล์ที่ใช้ React hook ประกาศ "use client" ครบ
    - ไม่มีการเรียก localStorage/window/document ที่ระดับ module (กัน SSR พัง)
    - แท็ก void ใน JSX ปิดตัวเองครบ
 
-ข. ทดสอบตรรกะหลักด้วย Node 40 ข้อ — ผ่านทั้งหมด
-   บาร์โค๊ด Code 128-B        ตาราง 107 รายการ, จำนวนแท่งตรงสเปก, กรองอักขระนอก ASCII
-   ข้อมูลตั้งต้น              จำนวน/ความครบถ้วน/การอ้างอิง/การเรียงเวลา/สร้างซ้ำได้ผลเดิม
-   การคำนวณยอด               stockMap 120 คู่, ผลรวมรายสินค้า = รายคลัง (186,457),
-                              คำนวณด้วยมือตรงกับ stockMap
-   ตรรกะการโอน                ต้นทางลด/ปลายทางเพิ่ม/คลังอื่นไม่กระทบ,
-                              ยอดรวมทั้งองค์กรไม่เปลี่ยน
-   เลขที่เอกสาร               รูปแบบครบ 4 ประเภท, เดินหน้าทีละ 1, ขึ้นเดือนใหม่รีเซ็ต, ไม่ซ้ำ
-   การจัดรูปแบบ               คอมมา, ปี พ.ศ., uid ไม่ซ้ำ 500 ครั้ง, rng คงที่
+ข. ทดสอบตรรกะด้วย Node 57 ข้อ — ผ่านทั้งหมด
+   บาร์โค๊ด Code 128-B    ตาราง 107 รายการ, จำนวนแท่งตรงสเปก, กรองอักขระนอก ASCII
+   ข้อมูลตั้งต้น          จำนวน/ความครบถ้วน/การอ้างอิง/เรียงเวลา/สร้างซ้ำได้ผลเดิม
+   การคำนวณยอด           ผลรวมรายสินค้า = รายคลัง (186,457)
+   ตรรกะการโอน            ต้นทางลด/ปลายทางเพิ่ม/คลังอื่นไม่กระทบ,
+                          ยอดรวมทั้งองค์กรไม่เปลี่ยน
+   เลขที่เอกสาร           = เลขสูงสุดที่มีอยู่ + 1, ขยับเองหลังบันทึก,
+                          เดือนใหม่เริ่ม 0001, ไม่ซ้ำ
+   ความสอดคล้องกับ schema  ชื่อคอลัมน์ใน api.js ตรงกับ schema.sql ทุกตัว,
+                          ไม่ใช้คำสงวน user, RLS เปิดครบ 3 policy,
+                          จำกัดเฉพาะ authenticated, ไม่พาดพิง service_role
 
-ค. ยังไม่ได้รัน `next build` จริง
-   เพราะต้อง `npm install` ก่อน ซึ่งขัดกับข้อกำหนด "ไม่ต้องติดตั้งอะไรทั้งสิ้น"
-   Vercel จะ build ให้เองตอน deploy — ถ้าอยากตรวจก่อน ให้รัน:
-       npm install
-       npm run build
+ค. ยังไม่ได้รัน `next build` และยังไม่ได้ทดสอบกับ Supabase จริง
+   - build: ต้อง npm install ก่อน ซึ่งขัดข้อกำหนด "ไม่ต้องติดตั้งอะไร"
+     Vercel จะ build ให้เองตอน deploy
+   - Supabase: ยังไม่มี URL/anon key ของโปรเจกต์จริง จึงยังไม่ได้ยิง request จริง
+     เส้นทางที่ยังไม่ได้พิสูจน์: login, โหลดข้อมูล, บันทึกเอกสาร, refresh token
 
 
 # ข้อจำกัดที่ควรทราบ
-- ข้อมูลเก็บใน localStorage ของเบราว์เซอร์เครื่องที่ใช้งานเท่านั้น
-  ไม่แชร์ข้ามเครื่อง/ข้ามผู้ใช้ และล้าง cache แล้วข้อมูลจะหาย
-  (เป็นไปตามข้อกำหนด "ไม่ต้องใช้ Database")
-  ควรใช้ปุ่ม "ข้อมูล" > ส่งออกไฟล์สำรอง เป็นระยะ
-- รหัสผ่านเป็นแบบ Fixed อยู่ในโค้ดฝั่ง client ใช้สำหรับสาธิต/ใช้งานภายในเท่านั้น
-  ใครเปิด DevTools ก็เห็นรหัสได้ ไม่เหมาะกับการเปิดสาธารณะที่มีข้อมูลจริง
-- แผนที่ต้องเชื่อมต่ออินเทอร์เน็ต (Google Maps Embed) ส่วนอื่นทำงาน offline ได้
+- เลขที่เอกสารคำนวณฝั่ง client ถ้าผู้ใช้ 2 คนกดบันทึกพร้อมกันในเดือนเดียวกัน
+  อาจได้เลขซ้ำได้ (ฐานข้อมูลไม่ได้บังคับ unique ไว้)
+  ถ้าต้องการกันจริงจัง ให้เพิ่ม unique index บน doc_no หรือย้ายไปออกเลขด้วย
+  Postgres sequence / function ฝั่งเซิร์ฟเวอร์
+- ข้อมูลถูกโหลดมาทั้งหมดตอนเข้าระบบ เหมาะกับข้อมูลระดับหลักหมื่นแถว
+  ถ้าโตกว่านั้นควรเปลี่ยนไปโหลดเฉพาะช่วงที่ดูอยู่
+- รูปสินค้าเก็บเป็น data URL ในคอลัมน์ text ถ้ามีรูปเยอะควรย้ายไปใช้ Supabase Storage
+- ผู้ใช้ที่ล็อกอินแล้วทุกคนมีสิทธิ์เท่ากันทั้งหมด (อ่าน/เขียน/ลบได้ทุกอย่าง)
+  ยังไม่มีระบบแบ่งบทบาท เช่น ผู้ดูแล / เจ้าหน้าที่คลัง / ผู้อ่านอย่างเดียว
+- แผนที่ต้องเชื่อมต่ออินเทอร์เน็ต (Google Maps Embed)
+- ระบบต้องออนไลน์ตลอด ใช้งาน offline ไม่ได้แล้ว (ต่างจากรุ่น localStorage เดิม)
 
 
 # บันทึกการแก้ไข (Changelog)
 2026-08-27  (1) สร้างเวอร์ชันแรกเป็น HTML ไฟล์เดียว ครบทุกข้อกำหนดใน Overview
             (2) เพิ่ม vercel.json สำหรับ deploy แบบ static
-            (3) ผู้ใช้ยืนยันให้ใช้ NextJS ตามแผนเดิม → ย้ายทั้งระบบเป็น Next.js 15
-                + React 19 แยกเป็น 30 ไฟล์ตามโครงสร้างข้างบน
-                - ลบ vercel.json (Vercel ตรวจเจอ Next.js เอง)
-                - ย้าย index.html เดิมไปเก็บที่ Docs/standalone-index.html
-                - ตรรกะทั้งหมดยกมาครบ ไม่มีฟีเจอร์ใดหายไป
+            (3) ผู้ใช้ยืนยันให้ใช้ NextJS -> ย้ายทั้งระบบเป็น Next.js 15 + React 19
+                แยกเป็น 30 ไฟล์, ลบ vercel.json,
+                ย้าย index.html เดิมไป Docs/standalone-index.html
             (4) ตรวจโครงสร้าง 30 ไฟล์ ผ่าน + ทดสอบตรรกะ 40 ข้อ ผ่าน
+            (5) git init + push ขึ้น GitHub (commit 6a64db3)
+
+2026-08-28  (6) เปลี่ยนระบบ login จากรหัส Fixed เป็น Supabase Auth (อีเมล+รหัสผ่าน)
+                และย้ายข้อมูลสินค้าคงคลังทั้งหมดขึ้น Supabase Database
+                - เพิ่ม supabase/schema.sql (ตาราง + index + RLS 3 policy)
+                - เพิ่ม lib/supabase.js เรียก REST เอง ไม่ติดตั้ง @supabase/supabase-js
+                  เพื่อรักษาข้อกำหนด "ไม่เพิ่ม dependency"
+                - เพิ่ม lib/api.js (CRUD + แปลงชื่อคอลัมน์), lib/auth.js
+                - เขียน lib/store.js ใหม่ให้ทำงานแบบ async กับฐานข้อมูล
+                - เลิกใช้ตัวนับเลขเอกสาร เปลี่ยนไปคำนวณจาก txns จริง
+                  เพราะฐานข้อมูลใช้ร่วมกันหลายเครื่อง
+                - หน้าจอที่บันทึกข้อมูลมีสถานะ "กำลังบันทึก" และแจ้ง error ได้
+                - เพิ่ม .env.local.example
+            (7) ตรวจโครงสร้าง 33 ไฟล์ ผ่าน + ทดสอบตรรกะ 57 ข้อ ผ่าน
+                (ยังไม่ได้ทดสอบกับ Supabase จริง เพราะยังไม่มี URL/anon key)

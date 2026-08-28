@@ -4,8 +4,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 import { TYPES } from "@/lib/constants";
-import { commitDocNo, nextDocNo } from "@/lib/db";
+import { nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
@@ -16,8 +17,10 @@ import { Badge, Card, Empty, ProductSelect, TableWrap, WarehouseSelect } from ".
 export default function TxnScreen({ type }) {
   const inv = useInv();
   const { db } = inv;
+  const { user } = useAuth();
   const toast = useToast();
   const print = usePrint();
+  const [saving, setSaving] = useState(false);
 
   const T = TYPES[type];
   const isTransfer = type === "TRANSFER";
@@ -60,35 +63,37 @@ export default function TxnScreen({ type }) {
     toast("เพิ่ม " + inv.prodName(productId) + " จำนวน " + num(q, 0) + " แล้ว");
   }
 
-  function saveDoc() {
-    if (!cart.length) return;
+  async function saveDoc() {
+    if (!cart.length || saving) return;
+
     const doc = nextDocNo(db, type, date);
     const ts = new Date(date + "T09:00:00").getTime();
+    const rows = cart.map((c) => ({
+      id: uid(),
+      type,
+      docNo: doc,
+      date,
+      productId: c.productId,
+      qty: c.qty,
+      whId: c.whId,
+      whTo: c.whTo,
+      note: c.note,
+      ref: isTransfer ? "" : ref.trim(),
+      user: user && user.email ? user.email : "",
+      ts,
+    }));
 
-    inv.update((draft) => {
-      cart.forEach((c) => {
-        draft.txns.push({
-          id: uid(),
-          type,
-          docNo: doc,
-          date,
-          productId: c.productId,
-          qty: c.qty,
-          whId: c.whId,
-          whTo: c.whTo,
-          note: c.note,
-          ref: isTransfer ? "" : ref.trim(),
-          user: "admin",
-          ts,
-        });
-      });
-      commitDocNo(draft, type, date);
-      draft.txns.sort((a, b) => a.ts - b.ts);
-    });
-
-    toast("บันทึกเอกสาร " + doc + " (" + cart.length + " รายการ) เรียบร้อย");
-    setCart([]);
-    setRef("");
+    setSaving(true);
+    try {
+      await inv.addTxns(rows);
+      toast("บันทึกเอกสาร " + doc + " (" + rows.length + " รายการ) เรียบร้อย");
+      setCart([]);
+      setRef("");
+    } catch (e) {
+      toast("บันทึกไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const recent = useMemo(
@@ -252,10 +257,10 @@ export default function TxnScreen({ type }) {
         title="รายการในเอกสาร"
         actions={
           <>
-            <button className="btn btn-p" onClick={saveDoc} disabled={!cart.length}>
-              บันทึกเอกสาร
+            <button className="btn btn-p" onClick={saveDoc} disabled={!cart.length || saving}>
+              {saving ? "กำลังบันทึก…" : "บันทึกเอกสาร"}
             </button>
-            <button className="btn btn-g" onClick={() => setCart([])}>
+            <button className="btn btn-g" onClick={() => setCart([])} disabled={saving}>
               ล้างรายการ
             </button>
           </>

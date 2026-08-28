@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useInv } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
+import { useToast } from "./Toast";
 import {
   IcAdjust, IcBox, IcChart, IcDash, IcData, IcIn, IcMap, IcMenu, IcMove, IcOut, IcReport, Logo,
 } from "./Icons";
@@ -46,21 +48,50 @@ const NAV = [
 
 const ALL_ITEMS = NAV.flatMap((g) => g.items);
 
-export default function Shell({ onLogout }) {
-  const { db, ready } = useInv();
+export default function Shell() {
+  const { db, ready, error, seeded, reload } = useInv();
+  const { user, signOut } = useAuth();
+  const toast = useToast();
   const [view, setView] = useState("dash");
   const [menuOpen, setMenuOpen] = useState(false);
   const [backup, setBackup] = useState(false);
 
+  // แจ้งเมื่อระบบสร้างข้อมูลตัวอย่างให้อัตโนมัติเพราะฐานข้อมูลยังว่าง
+  useEffect(() => {
+    if (seeded) toast("ฐานข้อมูลยังว่าง — สร้างข้อมูลตัวอย่างให้เรียบร้อยแล้ว");
+  }, [seeded, toast]);
+
+  if (error) {
+    return (
+      <div className="boot">
+        <div className="boot-err">
+          <b>เชื่อมต่อฐานข้อมูลไม่สำเร็จ</b>
+          <p>{error}</p>
+        </div>
+        <div className="row" style={{ justifyContent: "center" }}>
+          <button className="btn btn-p" onClick={reload}>
+            ลองใหม่
+          </button>
+          <button className="btn btn-g" onClick={signOut}>
+            ออกจากระบบ
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!ready) {
     return (
-      <div style={{ display: "grid", placeItems: "center", minHeight: "100vh", color: "var(--fg-muted)" }}>
-        กำลังโหลดข้อมูล…
+      <div className="boot">
+        <div className="spinner" />
+        <span>กำลังโหลดข้อมูลจาก Supabase…</span>
       </div>
     );
   }
 
   const current = ALL_ITEMS.find((i) => i.id === view) || ALL_ITEMS[0];
+  const email = user && user.email ? user.email : "ผู้ใช้";
+  const initials = email.slice(0, 2).toUpperCase();
 
   function navigate(id) {
     setView(id);
@@ -121,11 +152,11 @@ export default function Shell({ onLogout }) {
               <IcData size={15} />
               ข้อมูล
             </button>
-            <div className="user-chip">
-              <span className="avatar">AD</span>
-              <span className="uname">admin</span>
+            <div className="user-chip" title={email}>
+              <span className="avatar">{initials}</span>
+              <span className="uname">{email}</span>
             </div>
-            <button className="btn btn-g btn-sm" onClick={onLogout}>
+            <button className="btn btn-g btn-sm" onClick={signOut}>
               ออกจากระบบ
             </button>
           </div>

@@ -4,8 +4,9 @@
 
 import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 import { ADJUST_REASONS } from "@/lib/constants";
-import { commitDocNo, nextDocNo } from "@/lib/db";
+import { nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
@@ -16,8 +17,10 @@ import { CountSheetBody } from "./printBodies";
 export default function AdjustScreen() {
   const inv = useInv();
   const { db } = inv;
+  const { user } = useAuth();
   const toast = useToast();
   const print = usePrint();
+  const [saving, setSaving] = useState(false);
 
   const [date, setDate] = useState(todayISO);
   const [whId, setWhId] = useState(db.warehouses[0].id);
@@ -45,34 +48,36 @@ export default function AdjustScreen() {
     toast("เพิ่มรายการปรับปรุง " + inv.prodName(productId));
   }
 
-  function saveDoc() {
-    if (!cart.length) return;
+  async function saveDoc() {
+    if (!cart.length || saving) return;
+
     const doc = nextDocNo(db, "ADJUST", date);
     const ts = new Date(date + "T09:00:00").getTime();
+    const rows = cart.map((c) => ({
+      id: uid(),
+      type: "ADJUST",
+      docNo: doc,
+      date,
+      productId: c.productId,
+      qty: c.qty,
+      whId: c.whId,
+      whTo: "",
+      note: c.note,
+      ref: "นับได้ " + c.counted + " / บัญชี " + c.book,
+      user: user && user.email ? user.email : "",
+      ts,
+    }));
 
-    inv.update((draft) => {
-      cart.forEach((c) => {
-        draft.txns.push({
-          id: uid(),
-          type: "ADJUST",
-          docNo: doc,
-          date,
-          productId: c.productId,
-          qty: c.qty,
-          whId: c.whId,
-          whTo: "",
-          note: c.note,
-          ref: "นับได้ " + c.counted + " / บัญชี " + c.book,
-          user: "admin",
-          ts,
-        });
-      });
-      commitDocNo(draft, "ADJUST", date);
-      draft.txns.sort((a, b) => a.ts - b.ts);
-    });
-
-    toast("บันทึกเอกสารปรับปรุง " + doc + " เรียบร้อย");
-    setCart([]);
+    setSaving(true);
+    try {
+      await inv.addTxns(rows);
+      toast("บันทึกเอกสารปรับปรุง " + doc + " เรียบร้อย");
+      setCart([]);
+    } catch (e) {
+      toast("บันทึกไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const recent = useMemo(
@@ -202,8 +207,12 @@ export default function AdjustScreen() {
         title="รายการปรับปรุง"
         actions={
           <>
-            <button className="btn btn-p" onClick={saveDoc} disabled={!cart.length}>บันทึกเอกสาร</button>
-            <button className="btn btn-g" onClick={() => setCart([])}>ล้างรายการ</button>
+            <button className="btn btn-p" onClick={saveDoc} disabled={!cart.length || saving}>
+              {saving ? "กำลังบันทึก…" : "บันทึกเอกสาร"}
+            </button>
+            <button className="btn btn-g" onClick={() => setCart([])} disabled={saving}>
+              ล้างรายการ
+            </button>
           </>
         }
       >

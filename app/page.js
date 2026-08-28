@@ -1,52 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { SESSION_KEY } from "@/lib/constants";
+import { useAuth } from "@/lib/auth";
 import Login from "@/components/Login";
 import Shell from "@/components/Shell";
-import { useToast } from "@/components/Toast";
 
 export default function Page() {
+  const { user, checking } = useAuth();
   const [mounted, setMounted] = useState(false);
-  const [logged, setLogged] = useState(false);
-  const toast = useToast();
 
-  // อ่านสถานะล็อกอินหลัง mount เท่านั้น เพื่อไม่ให้ SSR กับ client ไม่ตรงกัน
-  useEffect(() => {
-    try {
-      if (sessionStorage.getItem(SESSION_KEY) === "1") setLogged(true);
-    } catch (e) {
-      // เบราว์เซอร์ปิด storage ไว้ — ให้ล็อกอินใหม่ตามปกติ
-    }
-    setMounted(true);
-  }, []);
+  // แตะ localStorage ได้เฉพาะฝั่ง client จึงรอให้ mount เสร็จก่อน
+  useEffect(() => setMounted(true), []);
 
-  if (!mounted) {
-    return <div style={{ minHeight: "100vh", background: "var(--bg)" }} />;
-  }
-
-  if (!logged) {
+  if (!mounted || checking) {
     return (
-      <Login
-        onSuccess={() => {
-          try {
-            sessionStorage.setItem(SESSION_KEY, "1");
-          } catch (e) {}
-          setLogged(true);
-          toast("ยินดีต้อนรับเข้าสู่ระบบ");
-        }}
-      />
+      <div className="boot">
+        <div className="spinner" />
+        <span>กำลังตรวจสอบสิทธิ์…</span>
+      </div>
     );
   }
 
-  return (
-    <Shell
-      onLogout={() => {
-        try {
-          sessionStorage.removeItem(SESSION_KEY);
-        } catch (e) {}
-        setLogged(false);
-      }}
-    />
-  );
+  return user ? <Shell /> : <Login />;
 }

@@ -1,8 +1,8 @@
 "use client";
 
-// สำรองและกู้คืนข้อมูล — ระบบไม่ใช้ Database จึงควรส่งออกไฟล์สำรองเก็บไว้เป็นระยะ
+// สำรองและกู้คืนข้อมูล — ข้อมูลจริงอยู่บน Supabase การนำเข้า/รีเซ็ตจะเขียนทับบนฐานข้อมูล
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useInv } from "@/lib/store";
 import { downloadJSON } from "@/lib/csv";
 import { num, todayISO } from "@/lib/format";
@@ -14,38 +14,64 @@ export default function BackupModal({ onClose }) {
   const { db } = inv;
   const toast = useToast();
   const fileRef = useRef(null);
+  const [busy, setBusy] = useState("");
 
-  function importFile(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (!data.products || !data.warehouses || !data.txns) {
-          throw new Error("รูปแบบไฟล์ไม่ถูกต้อง");
-        }
-        if (!window.confirm("การนำเข้าจะแทนที่ข้อมูลปัจจุบันทั้งหมด ยืนยันหรือไม่?")) return;
-        inv.replace(data);
-        toast("นำเข้าข้อมูลเรียบร้อย");
-        onClose();
-      } catch (err) {
-        toast("ไฟล์ไม่ถูกต้อง: " + err.message, "err");
+  async function importFile(file) {
+    if (!file || busy) return;
+
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+      if (!data.products || !data.warehouses || !data.txns) {
+        throw new Error("รูปแบบไฟล์ไม่ถูกต้อง");
       }
-    };
-    reader.onerror = () => toast("อ่านไฟล์ไม่สำเร็จ", "err");
-    reader.readAsText(file);
+    } catch (e) {
+      toast("ไฟล์ไม่ถูกต้อง: " + e.message, "err");
+      return;
+    }
+
+    if (!window.confirm("การนำเข้าจะลบข้อมูลบน Supabase ทั้งหมดแล้วเขียนทับ ยืนยันหรือไม่?")) return;
+
+    setBusy("import");
+    try {
+      await inv.importAll(data);
+      toast("นำเข้าข้อมูลขึ้น Supabase เรียบร้อย");
+      onClose();
+    } catch (e) {
+      toast("นำเข้าไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function reset() {
+    if (busy) return;
+    if (!window.confirm("ข้อมูลบน Supabase ทั้งหมดจะถูกลบและสร้างข้อมูลตัวอย่างใหม่ ยืนยันหรือไม่?")) {
+      return;
+    }
+    setBusy("reset");
+    try {
+      await inv.resetSeed();
+      toast("สร้างข้อมูลตัวอย่างใหม่เรียบร้อย");
+      onClose();
+    } catch (e) {
+      toast("รีเซ็ตไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setBusy("");
+    }
   }
 
   return (
     <Modal title="สำรองและกู้คืนข้อมูล" onClose={onClose} maxWidth={560}>
       <p style={{ color: "var(--fg-muted)", fontSize: 14, marginBottom: 16 }}>
-        ระบบนี้ไม่ใช้ฐานข้อมูล — ข้อมูลทั้งหมดถูกเก็บไว้ในเบราว์เซอร์ของเครื่องนี้ (localStorage)
-        แนะนำให้ส่งออกไฟล์สำรองเก็บไว้เป็นระยะ
+        ข้อมูลทั้งหมดเก็บอยู่บน Supabase และแชร์กับผู้ใช้ทุกคนที่เข้าระบบ
+        การนำเข้าหรือรีเซ็ตจะมีผลกับทุกคน ไม่ใช่เฉพาะเครื่องนี้
       </p>
 
       <div className="grid" style={{ gap: 11 }}>
         <button
           className="btn btn-o"
+          disabled={!!busy}
           onClick={() => {
             downloadJSON(db, "raot-inventory-backup-" + todayISO() + ".json");
             toast("ส่งออกไฟล์สำรองแล้ว");
@@ -54,27 +80,30 @@ export default function BackupModal({ onClose }) {
           ส่งออกไฟล์สำรอง (.json)
         </button>
 
-        <button className="btn btn-o" onClick={() => fileRef.current && fileRef.current.click()}>
-          นำเข้าไฟล์สำรอง
+        <button
+          className="btn btn-o"
+          disabled={!!busy}
+          onClick={() => fileRef.current && fileRef.current.click()}
+        >
+          {busy === "import" ? "กำลังนำเข้า…" : "นำเข้าไฟล์สำรอง (เขียนทับทั้งหมด)"}
         </button>
         <input
           ref={fileRef}
           type="file"
           accept="application/json,.json"
           hidden
-          onChange={(e) => importFile(e.target.files[0])}
+          onChange={(e) => {
+            importFile(e.target.files[0]);
+            e.target.value = "";
+          }}
         />
 
-        <button
-          className="btn btn-d"
-          onClick={() => {
-            if (!window.confirm("ข้อมูลทั้งหมดจะถูกลบและสร้างข้อมูลตัวอย่างใหม่ ยืนยันหรือไม่?")) return;
-            inv.reset();
-            toast("สร้างข้อมูลตัวอย่างใหม่เรียบร้อย");
-            onClose();
-          }}
-        >
-          ล้างข้อมูลและสร้างข้อมูลตัวอย่างใหม่
+        <button className="btn btn-o" disabled={!!busy} onClick={inv.reload}>
+          โหลดข้อมูลใหม่จาก Supabase
+        </button>
+
+        <button className="btn btn-d" disabled={!!busy} onClick={reset}>
+          {busy === "reset" ? "กำลังรีเซ็ต…" : "ล้างข้อมูลและสร้างข้อมูลตัวอย่างใหม่"}
         </button>
       </div>
 
