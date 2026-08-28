@@ -73,20 +73,18 @@ export default function Shell() {
           <b>วิธีแก้ตามลำดับ</b>
           <ol>
             <li>
-              เปิด Supabase Dashboard &gt; SQL Editor แล้วรันไฟล์{" "}
-              <code>supabase/fix-permissions.sql</code> ทั้งไฟล์
-              — ไฟล์นี้ให้สิทธิ์ระดับตารางแก่ role <code>authenticated</code> และสร้าง RLS policy ใหม่
-              (รันซ้ำได้ ไม่แตะข้อมูลเดิม)
+              เปิด Supabase Dashboard &gt; SQL Editor แล้วรัน{" "}
+              <code>supabase/schema.sql</code> ทั้งไฟล์ (สร้างตารางที่ยังไม่มี — รันซ้ำได้ ไม่ลบข้อมูล)
             </li>
             <li>
-              ดูผลลัพธ์ 3 ตารางท้ายไฟล์: <code>rls_enabled</code> ต้องเป็น <code>true</code> ครบ 3 แถว,
-              มี policy 3 แถว, และ <code>authenticated</code> ต้องมีสิทธิ์ครบทั้ง 3 ตาราง
+              จากนั้นรัน <code>supabase/fix-permissions.sql</code> ทั้งไฟล์ — ให้สิทธิ์ระดับตารางแก่
+              role <code>authenticated</code> และสร้าง RLS policy
             </li>
             <li>
-              ถ้ายังไม่ผ่าน ให้รัน <code>supabase/schema.sql</code> ทั้งไฟล์อีกครั้ง
-              (เผื่อรอบแรกหยุดกลางคัน แล้วตารางถูกสร้างไม่ครบ)
+              ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทั้ง 3 แถว
+              ถ้าแถวไหนไม่ผ่าน ข้อความจะบอกว่าขาดอะไร
             </li>
-            <li>กลับมาที่หน้านี้แล้วกด “ลองใหม่”</li>
+            <li>กลับมาที่หน้านี้แล้วกด “ลองใหม่” (ไม่ต้อง deploy ใหม่)</li>
           </ol>
         </div>
 

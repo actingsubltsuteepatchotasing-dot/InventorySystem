@@ -1,71 +1,104 @@
 -- ============================================================================
 -- แก้ปัญหา "ไม่มีสิทธิ์เข้าถึงข้อมูล" / HTTP 403 / SQLSTATE 42501
 --
--- รันไฟล์นี้ใน Supabase Dashboard > SQL Editor
--- ปลอดภัยที่จะรันซ้ำกี่ครั้งก็ได้ และไม่แตะข้อมูลที่มีอยู่
+-- รันไฟล์นี้ใน Supabase Dashboard > SQL Editor  (วางทั้งไฟล์ แล้วกด Run)
 --
--- ไฟล์นี้ทำ 2 อย่างที่ schema.sql รุ่นแรกตกไป:
---   1. GRANT สิทธิ์ระดับตารางให้ role authenticated
---   2. สร้าง RLS policy ใหม่ (เผื่อรอบแรกรันไม่ผ่าน)
+-- ปลอดภัย: รันซ้ำกี่ครั้งก็ได้ ไม่แตะข้อมูลที่มีอยู่
+-- และออกแบบให้ "ล้มไม่ได้" — ถ้าตารางใดยังไม่มี จะข้ามไปพร้อมแจ้งเตือน
+-- แทนที่จะ error แล้ว rollback ทั้งไฟล์ (SQL Editor รันเป็น transaction เดียว)
+--
+-- ดูผลที่แท็บ Results ด้านล่าง และที่ Messages (บรรทัด NOTICE)
 -- ============================================================================
 
--- ---------------------------------------------------- 1. สิทธิ์ระดับตาราง
-grant usage on schema public to anon, authenticated;
+do $$
+declare
+  t          text;
+  tables     text[] := array['warehouses', 'products', 'txns'];
+  missing    text[] := '{}';
+  policy_nm  text;
+begin
+  -- สิทธิ์ใช้งาน schema (ต้องมีก่อน ไม่งั้นแตะตารางไม่ได้เลย)
+  execute 'grant usage on schema public to anon, authenticated';
 
-grant all privileges on table public.warehouses to authenticated;
-grant all privileges on table public.products   to authenticated;
-grant all privileges on table public.txns       to authenticated;
+  foreach t in array tables loop
+    if to_regclass('public.' || t) is null then
+      missing := missing || t;
+      raise notice 'ข้าม "%": ยังไม่มีตารางนี้ — ต้องรัน schema.sql ก่อน', t;
+      continue;
+    end if;
 
--- เผื่อสร้างตารางเพิ่มในอนาคต ให้ได้สิทธิ์อัตโนมัติ
-alter default privileges in schema public
-  grant all on tables to authenticated;
+    -- ด่านที่ 1: สิทธิ์ระดับตาราง (ไม่มี = 42501 permission denied for table)
+    execute format('grant all privileges on table public.%I to authenticated', t);
 
--- ---------------------------------------------------- 2. RLS policy
-alter table public.warehouses enable row level security;
-alter table public.products   enable row level security;
-alter table public.txns       enable row level security;
+    -- ด่านที่ 2: RLS + policy
+    execute format('alter table public.%I enable row level security', t);
 
-drop policy if exists "warehouses: authenticated full access" on public.warehouses;
-create policy "warehouses: authenticated full access"
-  on public.warehouses for all
-  to authenticated
-  using (true) with check (true);
+    policy_nm := t || ': authenticated full access';
+    execute format('drop policy if exists %L on public.%I', policy_nm, t);
+    execute format(
+      'create policy %L on public.%I for all to authenticated using (true) with check (true)',
+      policy_nm, t
+    );
 
-drop policy if exists "products: authenticated full access" on public.products;
-create policy "products: authenticated full access"
-  on public.products for all
-  to authenticated
-  using (true) with check (true);
+    raise notice 'ตั้งค่า "%" เรียบร้อย (grant + rls + policy)', t;
+  end loop;
 
-drop policy if exists "txns: authenticated full access" on public.txns;
-create policy "txns: authenticated full access"
-  on public.txns for all
-  to authenticated
-  using (true) with check (true);
+  -- เผื่อสร้างตารางเพิ่มในอนาคต ให้ได้สิทธิ์อัตโนมัติ
+  execute 'alter default privileges in schema public grant all on tables to authenticated';
+
+  if array_length(missing, 1) is not null then
+    raise notice '--------------------------------------------------------';
+    raise notice 'ยังขาดตาราง: %', array_to_string(missing, ', ');
+    raise notice 'ให้รัน supabase/schema.sql ทั้งไฟล์ก่อน แล้วค่อยรันไฟล์นี้ซ้ำ';
+    raise notice '--------------------------------------------------------';
+  end if;
+end
+$$;
+
 
 -- ============================================================================
--- ตรวจผลลัพธ์ — ผลที่ควรได้อยู่ในคอมเมนต์ใต้แต่ละ query
+-- สรุปผล — ดูตารางนี้ตารางเดียวพอ
+--
+-- ทุกแถวต้องเป็น:  ตาราง=มี   rls=true   policies>=1   grants=4   ผล=ผ่าน
+-- ถ้าแถวไหนขึ้น "ไม่ผ่าน" ให้คัดลอกผลทั้งตารางไปแจ้งได้เลย
 -- ============================================================================
 
--- (ก) ตารางครบ 3 ตาราง และ RLS เปิดทั้งหมด (rowsecurity ต้องเป็น true)
-select tablename, rowsecurity as rls_enabled
-from pg_tables
-where schemaname = 'public'
-  and tablename in ('products', 'warehouses', 'txns')
-order by tablename;
-
--- (ข) ต้องได้ policy 3 แถว roles = {authenticated} และ cmd = ALL
-select tablename, policyname, roles, cmd
-from pg_policies
-where schemaname = 'public'
-order by tablename;
-
--- (ค) ต้องเห็น authenticated มีสิทธิ์ SELECT/INSERT/UPDATE/DELETE ครบทั้ง 3 ตาราง
---     ถ้าตารางไหนไม่ขึ้นเลย แปลว่า GRANT ยังไม่ผ่าน
-select table_name, grantee, string_agg(privilege_type, ', ' order by privilege_type) as privileges
-from information_schema.role_table_grants
-where table_schema = 'public'
-  and table_name in ('products', 'warehouses', 'txns')
-  and grantee in ('anon', 'authenticated')
-group by table_name, grantee
-order by table_name, grantee;
+select
+  x.name                                        as "ตาราง",
+  (to_regclass('public.' || x.name) is not null) as "มีตาราง",
+  coalesce((
+    select c.relrowsecurity
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = x.name
+  ), false)                                      as "rls_เปิด",
+  (
+    select count(*)
+    from pg_policies p
+    where p.schemaname = 'public' and p.tablename = x.name
+  )                                              as "จำนวน_policy",
+  (
+    select count(*)
+    from information_schema.role_table_grants g
+    where g.table_schema = 'public'
+      and g.table_name = x.name
+      and g.grantee = 'authenticated'
+      and g.privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+  )                                              as "สิทธิ์_authenticated",
+  case
+    when to_regclass('public.' || x.name) is null then 'ไม่ผ่าน — ยังไม่มีตาราง ให้รัน schema.sql'
+    when (
+      select count(*)
+      from information_schema.role_table_grants g
+      where g.table_schema = 'public' and g.table_name = x.name
+        and g.grantee = 'authenticated'
+        and g.privilege_type in ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+    ) < 4 then 'ไม่ผ่าน — GRANT ไม่ครบ'
+    when (
+      select count(*) from pg_policies p
+      where p.schemaname = 'public' and p.tablename = x.name
+    ) = 0 then 'ไม่ผ่าน — ไม่มี RLS policy'
+    else 'ผ่าน'
+  end                                            as "ผล"
+from (values ('warehouses'), ('products'), ('txns')) as x(name)
+order by x.name;
