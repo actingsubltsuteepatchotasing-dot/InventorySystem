@@ -210,6 +210,30 @@ table { border-collapse: collapse; width: 100%; }
   line-height: 1.6;
 }
 .boot-err b { display: block; margin-bottom: 6px; font-size: 15px; }
+.boot-err p { word-break: break-word; }
+
+.boot-help {
+  max-width: 620px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--fg-muted);
+}
+.boot-help b { display: block; margin-bottom: 8px; color: var(--fg); font-size: 14.5px; }
+.boot-help ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.boot-help code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--brand-50);
+  color: var(--brand-d);
+  padding: 1px 5px;
+  border-radius: 4px;
+  word-break: break-all;
+}
 
 .user-chip .uname {
   max-width: 190px;

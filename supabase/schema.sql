@@ -62,6 +62,22 @@ create index if not exists txns_product_idx    on public.txns (product_id);
 create index if not exists txns_wh_idx         on public.txns (wh_id);
 create index if not exists txns_type_date_idx  on public.txns (type, date);
 
+-- ------------------------------------------------------------ สิทธิ์ระดับตาราง
+-- สำคัญ: การเข้าถึงตารางต้องผ่าน 2 ด่าน
+--   ด่าน 1  GRANT ระดับตาราง  -> ไม่ผ่านจะได้ HTTP 403 / SQLSTATE 42501
+--                                "permission denied for table ..."
+--   ด่าน 2  RLS policy         -> ไม่ผ่านจะอ่านได้ผลลัพธ์ว่าง หรือเขียนไม่ได้
+--
+-- ปกติ Supabase ตั้ง default privileges ให้ anon/authenticated อยู่แล้ว
+-- แต่บางโปรเจกต์ (หรือถ้าสร้างตารางด้วย role อื่น) จะไม่ได้สิทธิ์นี้
+-- จึงสั่งให้ชัดเจนตรงนี้ รันซ้ำได้ปลอดภัย
+
+grant usage on schema public to anon, authenticated;
+
+grant all privileges on table public.warehouses to authenticated;
+grant all privileges on table public.products   to authenticated;
+grant all privileges on table public.txns       to authenticated;
+
 -- ---------------------------------------------------------- Row Level Security
 -- อนุญาตเฉพาะผู้ใช้ที่ล็อกอินแล้วเท่านั้น (role = authenticated)
 -- anon key เพียงอย่างเดียวจะอ่าน/เขียนไม่ได้ ต้องมี JWT จากการ login ก่อน
