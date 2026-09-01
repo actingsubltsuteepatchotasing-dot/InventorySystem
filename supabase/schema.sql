@@ -322,10 +322,12 @@ begin
   loop
     execute format('alter table public.%I enable row level security', t);
 
+    -- ชื่อ policy เป็น identifier ต้องใช้ %I (ครอบด้วย " )
+    -- ถ้าใช้ %L จะได้ string literal ' ' ซึ่ง Postgres ปฏิเสธด้วย error 42601
     nm := t || ': authenticated full access';
-    execute format('drop policy if exists %L on public.%I', nm, t);
+    execute format('drop policy if exists %I on public.%I', nm, t);
     execute format(
-      'create policy %L on public.%I for all to authenticated using (true) with check (true)',
+      'create policy %I on public.%I for all to authenticated using (true) with check (true)',
       nm, t
     );
   end loop;
