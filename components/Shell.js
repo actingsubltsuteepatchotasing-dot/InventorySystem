@@ -9,6 +9,7 @@ import {
   IcOut, IcReport, Logo,
 } from "./Icons";
 import BackupModal from "./BackupModal";
+import { SetupBanner } from "./SetupNotice";
 import Dashboard from "./views/Dashboard";
 import TxnScreen from "./views/TxnScreen";
 import AdjustScreen from "./views/AdjustScreen";
@@ -193,6 +194,7 @@ export default function Shell() {
         </div>
 
         <div className="content">
+          <SetupBanner />
           {view === "dash" && <Dashboard onNavigate={navigate} />}
           {view === "receive" && <TxnScreen key="receive" type="RECEIVE" />}
           {view === "issue" && <TxnScreen key="issue" type="ISSUE" />}

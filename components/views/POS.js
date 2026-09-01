@@ -16,6 +16,7 @@ import { usePrint } from "../Print";
 import { IcBox, IcPlus, IcPrint, IcTrash } from "../Icons";
 import { Badge, Card, Empty, TableWrap, WarehouseSelect } from "../ui";
 import { ReceiptBody } from "./printBodies";
+import SetupNotice from "../SetupNotice";
 
 export default function POS() {
   const inv = useInv();
@@ -206,6 +207,10 @@ export default function POS() {
   }
 
   /* -------------------------------------------------------------- UI */
+
+  if (!inv.salesReady) {
+    return <SetupNotice feature="หน้าจอขายสินค้า (POS)" tables={["sales", "sale_items"]} />;
+  }
 
   return (
     <div className="pos">

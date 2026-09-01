@@ -12,6 +12,7 @@ import { usePrint } from "../Print";
 import { IcBox, IcPin, IcPlus, IcTrash } from "../Icons";
 import Modal from "../Modal";
 import { Badge, Card, Empty, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
+import SetupNotice from "../SetupNotice";
 
 const kindOf = (id) => LOCATION_KINDS.find((k) => k.id === id) || LOCATION_KINDS[0];
 
@@ -101,6 +102,15 @@ export default function Locations() {
         </table>
       ),
     });
+  }
+
+  if (!inv.locationsReady) {
+    return (
+      <SetupNotice
+        feature="หน้าจอผังที่เก็บสินค้า"
+        tables={["locations", "product_locations"]}
+      />
+    );
   }
 
   return (

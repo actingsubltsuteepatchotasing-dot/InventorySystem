@@ -351,6 +351,15 @@ Docs/
         - ต้องมี policy 3 แถว roles = {authenticated}
         - authenticated ต้องมีสิทธิ์ SELECT/INSERT/UPDATE/DELETE ครบทั้ง 3 ตาราง
 
+อาการ: PGRST205 "Could not find the table 'public.xxx' in the schema cache"
+สาเหตุ: 1) ยังไม่ได้รัน schema.sql เวอร์ชันที่มีตารางนั้น หรือ
+        2) รันแล้วแต่ PostgREST ยังไม่รีเฟรช schema cache
+วิธีแก้: รัน supabase/schema.sql ทั้งไฟล์ (ท้ายไฟล์มี notify pgrst, 'reload schema' แล้ว)
+        ถ้ายังไม่หาย ให้รันคำสั่งนี้เดี่ยว ๆ แล้วรอ 5 วินาที:
+            notify pgrst, 'reload schema';
+หมายเหตุ: ตั้งแต่ 2026-08-28 ระบบไม่พังทั้งแอปแล้ว ถ้าตารางของฟีเจอร์ใหม่หายไป
+        จะปิดเฉพาะหน้าจอนั้นและขึ้นวิธีแก้ให้ ส่วนอื่นใช้งานต่อได้
+
 อาการ: "Email not confirmed"
 วิธีแก้: Authentication > Users > แก้ผู้ใช้นั้น แล้วยืนยันอีเมล
         หรือสร้างใหม่โดยติ๊ก Auto Confirm User
@@ -402,3 +411,13 @@ Docs/
                 - ระบบเติมผังที่เก็บให้อัตโนมัติถ้าฐานข้อมูลเดิมยังไม่มี (seedLocationsIfEmpty)
                 - ทดสอบเพิ่ม 68 ข้อ ผ่านทั้งหมด
                 * ต้องรัน supabase/schema.sql ซ้ำหนึ่งครั้งเพื่อสร้างตารางใหม่
+           (12) แก้ข้อผิดพลาดออกแบบ: ตารางใหม่ที่ยังไม่มีทำให้ทั้งระบบใช้ไม่ได้
+                (ผู้ใช้เจอ PGRST205 แล้วเข้าระบบไม่ได้เลย ทั้งที่ฟีเจอร์เดิมควรใช้ได้)
+                - loadAll() แยกตารางหลัก (products/warehouses/txns) ออกจากตารางเสริม
+                  ตารางเสริมที่ยังไม่มีจะคืนค่าว่างและบันทึกชื่อไว้ใน missingTables
+                - error จาก supabase.js แนบ code/status/missingTable ให้ผู้เรียกแยกกรณีได้
+                - เพิ่ม components/SetupNotice.js: การ์ดอธิบายวิธีแก้แทนหน้าจอที่ยังใช้ไม่ได้
+                  และแถบเตือนบาง ๆ บนหน้าจออื่น
+                - seedIfEmpty ข้ามตารางที่ยังไม่มี ไม่ให้ล้มทั้งชุด
+                - schema.sql และ fix-permissions.sql เพิ่ม notify pgrst, 'reload schema'
+                  เพื่อบังคับให้ PostgREST เห็นตารางใหม่ทันที
