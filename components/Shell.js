@@ -5,7 +5,8 @@ import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "./Toast";
 import {
-  IcAdjust, IcBox, IcChart, IcDash, IcData, IcIn, IcMap, IcMenu, IcMove, IcOut, IcReport, Logo,
+  IcAdjust, IcBox, IcCart, IcChart, IcDash, IcData, IcGrid, IcIn, IcMap, IcMenu, IcMove,
+  IcOut, IcReport, Logo,
 } from "./Icons";
 import BackupModal from "./BackupModal";
 import Dashboard from "./views/Dashboard";
@@ -13,6 +14,8 @@ import TxnScreen from "./views/TxnScreen";
 import AdjustScreen from "./views/AdjustScreen";
 import Products from "./views/Products";
 import Provinces from "./views/Provinces";
+import Locations from "./views/Locations";
+import POS from "./views/POS";
 import Reports from "./views/Reports";
 import Graphs from "./views/Graphs";
 
@@ -31,10 +34,17 @@ const NAV = [
     ],
   },
   {
+    group: "ขายหน้าร้าน",
+    items: [
+      { id: "pos", Icon: IcCart, title: "ขายสินค้า (POS)", sub: "ยิงบาร์โค๊ด ขาย และออกใบเสร็จ" },
+    ],
+  },
+  {
     group: "ข้อมูลหลัก",
     items: [
       { id: "products", Icon: IcBox, title: "ข้อมูลสินค้า", sub: "รายละเอียด รูปภาพ และบาร์โค๊ด" },
       { id: "provinces", Icon: IcMap, title: "สินค้าตามจังหวัด", sub: "แผนที่และยอดคงเหลือรายจังหวัด" },
+      { id: "locations", Icon: IcGrid, title: "ผังที่เก็บสินค้า", sub: "กำหนดตำแหน่งจัดเก็บแบบเป็นภาพ" },
     ],
   },
   {
@@ -81,7 +91,7 @@ export default function Shell() {
               role <code>authenticated</code> และสร้าง RLS policy
             </li>
             <li>
-              ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทั้ง 3 แถว
+              ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทุกแถว
               ถ้าแถวไหนไม่ผ่าน ข้อความจะบอกว่าขาดอะไร
             </li>
             <li>กลับมาที่หน้านี้แล้วกด “ลองใหม่” (ไม่ต้อง deploy ใหม่)</li>
@@ -152,7 +162,7 @@ export default function Shell() {
           <div>
             คลังที่ใช้งาน: <b>{db.warehouses.length} คลังทั่วประเทศ</b>
           </div>
-          <div style={{ marginTop: 4, opacity: 0.75 }}>เวอร์ชัน 1.0 · ข้อมูลเก็บในเครื่อง</div>
+          <div style={{ marginTop: 4, opacity: 0.75 }}>เวอร์ชัน 2.0 · ข้อมูลอยู่บน Supabase</div>
         </div>
       </aside>
 
@@ -188,6 +198,8 @@ export default function Shell() {
           {view === "issue" && <TxnScreen key="issue" type="ISSUE" />}
           {view === "transfer" && <TxnScreen key="transfer" type="TRANSFER" />}
           {view === "adjust" && <AdjustScreen />}
+          {view === "pos" && <POS />}
+          {view === "locations" && <Locations />}
           {view === "products" && <Products />}
           {view === "provinces" && <Provinces />}
           {view === "reports" && <Reports />}

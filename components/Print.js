@@ -33,12 +33,17 @@ export function PrintProvider({ children }) {
   return (
     <PrintContext.Provider value={value}>
       <div className="no-print">{children}</div>
-      <div id="printRoot">{doc ? <PrintDoc {...doc} /> : null}</div>
+      <div id="printRoot" className={doc && doc.receipt ? "mode-receipt" : ""}>
+        {doc ? <PrintDoc {...doc} /> : null}
+      </div>
     </PrintContext.Provider>
   );
 }
 
-function PrintDoc({ title, subtitle, body, signers = true }) {
+function PrintDoc({ title, subtitle, body, signers = true, receipt = false }) {
+  // ใบเสร็จมีหัวกระดาษและช่องลงนามในตัวเองอยู่แล้ว จึงไม่ใส่หัวเอกสารมาตรฐานซ้ำ
+  if (receipt) return body;
+
   return (
     <>
       <div className="pr-head">

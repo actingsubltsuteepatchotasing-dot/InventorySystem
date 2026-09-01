@@ -37,7 +37,7 @@ export default function Dashboard({ onNavigate }) {
       db.txns.forEach((t) => {
         if (t.date.slice(0, 7) !== mo.key) return;
         if (t.type === "RECEIVE") i += t.qty;
-        else if (t.type === "ISSUE") o += t.qty;
+        else if (t.type === "ISSUE" || t.type === "SALE") o += t.qty;
         else if (t.type === "ADJUST") {
           if (t.qty > 0) i += t.qty;
           else o += -t.qty;

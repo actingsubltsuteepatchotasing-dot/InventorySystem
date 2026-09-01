@@ -68,6 +68,21 @@ export const IcData = (p) => (
     <path d="M7 10l5 5 5-5M12 15V3" />
   </Ico>
 );
+export const IcCart = (p) => (
+  <Ico {...p}>
+    <circle cx="9" cy="20" r="1.6" />
+    <circle cx="18" cy="20" r="1.6" />
+    <path d="M2 3h3l2.6 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 7H6" />
+  </Ico>
+);
+export const IcGrid = (p) => (
+  <Ico {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+  </Ico>
+);
 export const IcPrint = (p) => (
   <Ico {...p}>
     <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />

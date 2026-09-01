@@ -1,0 +1,495 @@
+"use client";
+
+// หน้าจอขายสินค้าแบบ POS
+// เพิ่มสินค้าได้ 3 ทาง: ยิงบาร์โค๊ด / คีย์รหัสเอง / กดเลือกจากการ์ดสินค้า
+// บันทึกแล้วตัดสต็อกทันที และพิมพ์ใบเสร็จรับเงินได้
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInv } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
+import { PAY_METHODS, VAT_RATE } from "@/lib/constants";
+import { findByScan, nextDocNo, saleTotals } from "@/lib/db";
+import { resizeImage } from "@/lib/image";
+import { num, thDate, todayISO, uid } from "@/lib/format";
+import { useToast } from "../Toast";
+import { usePrint } from "../Print";
+import { IcBox, IcPlus, IcPrint, IcTrash } from "../Icons";
+import { Badge, Card, Empty, TableWrap, WarehouseSelect } from "../ui";
+import { ReceiptBody } from "./printBodies";
+
+export default function POS() {
+  const inv = useInv();
+  const { db } = inv;
+  const { user } = useAuth();
+  const toast = useToast();
+  const print = usePrint();
+
+  const scanRef = useRef(null);
+  const imgRef = useRef(null);
+  const imgTargetRef = useRef(null);
+
+  const [whId, setWhId] = useState(db.warehouses[0] ? db.warehouses[0].id : "");
+  const [scan, setScan] = useState("");
+  const [search, setSearch] = useState("");
+  const [lines, setLines] = useState([]);
+  const [customer, setCustomer] = useState("");
+  const [discount, setDiscount] = useState("");
+  const [payMethod, setPayMethod] = useState("CASH");
+  const [paid, setPaid] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [lastSale, setLastSale] = useState(null);
+
+  const cashierName = user && user.email ? user.email : "";
+  const totals = saleTotals(lines, discount, VAT_RATE);
+  const paidNum = parseFloat(paid);
+  const change = Number.isFinite(paidNum) ? paidNum - totals.total : 0;
+  const docNo = nextDocNo(db, "SALE", todayISO());
+
+  // โฟกัสช่องยิงบาร์โค๊ดไว้เสมอ เครื่องสแกนจะพิมพ์เข้าช่องนี้ได้ทันที
+  useEffect(() => {
+    if (scanRef.current) scanRef.current.focus();
+  }, [whId]);
+
+  const catalog = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return db.products
+      .filter((p) => !q || (p.name + p.code + p.barcode + p.cat).toLowerCase().includes(q))
+      .slice(0, 60);
+  }, [db.products, search]);
+
+  /* ------------------------------------------------------- ตะกร้า */
+
+  function addProduct(p, qty = 1) {
+    if (!p) return;
+    const available = inv.stockOf(p.id, whId);
+    const inCart = lines.filter((l) => l.productId === p.id).reduce((s, l) => s + l.qty, 0);
+
+    if (inCart + qty > available) {
+      toast(
+        "สต็อกไม่พอ — " + p.name + " คงเหลือ " + num(available, 0) + " " + p.unit,
+        "err"
+      );
+      return;
+    }
+
+    setLines((prev) => {
+      const i = prev.findIndex((l) => l.productId === p.id);
+      if (i >= 0) {
+        return prev.map((l, k) => (k === i ? { ...l, qty: l.qty + qty } : l));
+      }
+      return [...prev, { key: uid(), productId: p.id, qty, price: p.price }];
+    });
+    toast("เพิ่ม " + p.name);
+  }
+
+  /** รับค่าจากเครื่องสแกน หรือจากการพิมพ์รหัสเอง แล้วกด Enter */
+  function handleScan(e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+
+    const text = scan.trim();
+    if (!text) return;
+
+    const p = findByScan(db, text);
+    if (!p) {
+      toast("ไม่พบสินค้าที่มีบาร์โค๊ดหรือรหัส “" + text + "”", "err");
+    } else {
+      addProduct(p, 1);
+    }
+    setScan("");
+  }
+
+  function setQty(key, qty) {
+    const n = parseFloat(qty);
+    setLines((prev) =>
+      prev.map((l) => (l.key === key ? { ...l, qty: Number.isFinite(n) && n > 0 ? n : l.qty } : l))
+    );
+  }
+
+  function clearAll() {
+    setLines([]);
+    setCustomer("");
+    setDiscount("");
+    setPaid("");
+    setPayMethod("CASH");
+    if (scanRef.current) scanRef.current.focus();
+  }
+
+  /* ------------------------------------------------ เพิ่มรูปสินค้าจาก POS */
+
+  async function onPickImage(e) {
+    const file = e.target.files[0];
+    const productId = imgTargetRef.current;
+    e.target.value = "";
+    if (!file || !productId) return;
+
+    try {
+      const img = await resizeImage(file);
+      const p = inv.prod(productId);
+      await inv.saveProduct({ ...p, img });
+      toast("เพิ่มรูป " + p.name + " แล้ว");
+    } catch (err) {
+      toast("เพิ่มรูปไม่สำเร็จ: " + err.message, "err");
+    }
+  }
+
+  /* --------------------------------------------------------- บันทึกบิล */
+
+  async function checkout() {
+    if (!lines.length || saving) return;
+    if (!whId) return toast("กรุณาเลือกคลังที่ขาย", "err");
+
+    if (!Number.isFinite(paidNum) || paidNum < totals.total) {
+      return toast("รับเงินไม่ครบ — ต้องรับอย่างน้อย ฿" + num(totals.total, 2), "err");
+    }
+
+    // ตรวจสต็อกอีกครั้งก่อนตัดจริง
+    for (const l of lines) {
+      const p = inv.prod(l.productId);
+      if (l.qty > inv.stockOf(l.productId, whId)) {
+        return toast("สต็อกไม่พอสำหรับ " + (p ? p.name : ""), "err");
+      }
+    }
+
+    const date = todayISO();
+    const ts = Date.now();
+    const saleId = uid();
+
+    const sale = {
+      id: saleId,
+      docNo: nextDocNo(db, "SALE", date),
+      date,
+      whId,
+      customer: customer.trim(),
+      subtotal: totals.subtotal,
+      discount: totals.discount,
+      vat: totals.vat,
+      total: totals.total,
+      paid: paidNum,
+      change: Math.round((paidNum - totals.total) * 100) / 100,
+      payMethod,
+      user: cashierName,
+      note: "",
+      ts,
+    };
+
+    const items = lines.map((l) => ({
+      id: uid(),
+      txnId: uid(),
+      saleId,
+      productId: l.productId,
+      qty: l.qty,
+      price: l.price,
+      amount: Math.round(l.qty * l.price * 100) / 100,
+    }));
+
+    setSaving(true);
+    try {
+      await inv.addSale(sale, items);
+      toast("บันทึกการขาย " + sale.docNo + " เรียบร้อย");
+      setLastSale({ sale, items });
+      clearAll();
+      printReceipt(sale, items);
+    } catch (e) {
+      toast("บันทึกไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function printReceipt(sale, items) {
+    print({
+      receipt: true,
+      title: "ใบเสร็จรับเงิน",
+      body: <ReceiptBody inv={inv} sale={sale} items={items} />,
+    });
+  }
+
+  /* -------------------------------------------------------------- UI */
+
+  return (
+    <div className="pos">
+      {/* ---------------- ซ้าย: ค้นหา + แคตตาล็อกสินค้า ---------------- */}
+      <div className="pos-left">
+        <Card
+          title="ขายสินค้า"
+          actions={<Badge>เลขที่บิล {docNo}</Badge>}
+        >
+          <div className="form-grid" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
+            <div className="field">
+              <label className="lbl" htmlFor="pos_wh">คลังที่ขาย</label>
+              <WarehouseSelect db={db} id="pos_wh" value={whId} onChange={setWhId} />
+            </div>
+            <div className="field">
+              <label className="lbl" htmlFor="pos_cust">ชื่อลูกค้า (ไม่บังคับ)</label>
+              <input
+                className="inp"
+                id="pos_cust"
+                value={customer}
+                onChange={(e) => setCustomer(e.target.value)}
+                placeholder="ลูกค้าทั่วไป"
+              />
+            </div>
+          </div>
+
+          <div className="scan-box">
+            <label className="lbl" htmlFor="pos_scan">
+              ยิงบาร์โค๊ด หรือพิมพ์รหัสสินค้า แล้วกด Enter
+            </label>
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <input
+                ref={scanRef}
+                className="inp scan-input"
+                id="pos_scan"
+                value={scan}
+                onChange={(e) => setScan(e.target.value)}
+                onKeyDown={handleScan}
+                placeholder="8850001000017 หรือ P001"
+                autoComplete="off"
+              />
+              <button
+                className="btn btn-o"
+                onClick={() => handleScan({ key: "Enter", preventDefault() {} })}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                เพิ่ม
+              </button>
+            </div>
+            <p className="scan-hint">
+              เครื่องสแกนบาร์โค๊ดทั่วไปทำงานเหมือนแป้นพิมพ์ — เพียงให้เคอร์เซอร์อยู่ในช่องนี้
+              แล้วยิงได้เลย ระบบจะเพิ่มสินค้าลงบิลทันที
+            </p>
+          </div>
+        </Card>
+
+        <Card
+          title="เลือกสินค้า"
+          actions={<Badge>{catalog.length} รายการ</Badge>}
+        >
+          <input
+            className="inp"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหาชื่อ / รหัส / บาร์โค๊ด…"
+            style={{ marginBottom: 14 }}
+          />
+
+          {catalog.length ? (
+            <div className="pos-grid">
+              {catalog.map((p) => {
+                const stock = inv.stockOf(p.id, whId);
+                return (
+                  <div className={"pos-card" + (stock <= 0 ? " out" : "")} key={p.id}>
+                    <button
+                      className="pos-card-btn"
+                      onClick={() => addProduct(p, 1)}
+                      disabled={stock <= 0}
+                      title={stock <= 0 ? "สินค้าหมดในคลังนี้" : "กดเพื่อเพิ่มลงบิล"}
+                    >
+                      <span className="pos-ph">
+                        {p.img ? (
+                          <img src={p.img} alt={p.name} />
+                        ) : (
+                          <IcBox size={30} stroke={1.5} />
+                        )}
+                      </span>
+                      <span className="pos-nm">{p.name}</span>
+                      <span className="pos-meta">
+                        {p.code} · คงเหลือ {num(stock, 0)} {p.unit}
+                      </span>
+                      <span className="pos-price">฿{num(p.price, 2)}</span>
+                    </button>
+
+                    {!p.img ? (
+                      <button
+                        className="pos-addimg"
+                        onClick={() => {
+                          imgTargetRef.current = p.id;
+                          if (imgRef.current) imgRef.current.click();
+                        }}
+                        title="เพิ่มรูปสินค้า"
+                      >
+                        <IcPlus size={12} /> เพิ่มรูป
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <Empty>ไม่พบสินค้าที่ตรงกับคำค้น</Empty>
+          )}
+
+          <input ref={imgRef} type="file" accept="image/*" hidden onChange={onPickImage} />
+        </Card>
+      </div>
+
+      {/* ---------------- ขวา: บิลปัจจุบัน ---------------- */}
+      <div className="pos-right">
+        <Card
+          title="รายการในบิล"
+          actions={
+            <>
+              <Badge kind={lines.length ? "info" : "gray"}>{lines.length} รายการ</Badge>
+              <button className="btn btn-g btn-sm" onClick={clearAll} disabled={saving || !lines.length}>
+                ล้างบิล
+              </button>
+            </>
+          }
+        >
+          {lines.length ? (
+            <TableWrap>
+              <thead>
+                <tr>
+                  <th>สินค้า</th>
+                  <th className="num" style={{ width: 92 }}>จำนวน</th>
+                  <th className="num">ราคา</th>
+                  <th className="num">รวม</th>
+                  <th style={{ width: 44 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l) => {
+                  const p = inv.prod(l.productId);
+                  return (
+                    <tr key={l.key}>
+                      <td>
+                        <b>{p ? p.name : ""}</b>
+                        <br />
+                        <span className="code-cell" style={{ color: "var(--fg-faint)" }}>
+                          {p ? p.code : ""}
+                        </span>
+                      </td>
+                      <td className="num">
+                        <input
+                          className="inp num qty-input"
+                          type="number"
+                          min="1"
+                          step="any"
+                          value={l.qty}
+                          onChange={(e) => setQty(l.key, e.target.value)}
+                        />
+                      </td>
+                      <td className="num">{num(l.price, 2)}</td>
+                      <td className="num">
+                        <b>{num(l.qty * l.price, 2)}</b>
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-d btn-icon"
+                          onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
+                        >
+                          <IcTrash size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </TableWrap>
+          ) : (
+            <Empty>ยังไม่มีสินค้าในบิล — ยิงบาร์โค๊ดหรือกดเลือกสินค้าทางซ้าย</Empty>
+          )}
+
+          <div className="pos-sum">
+            <div className="sum-row">
+              <span>ยอดรวมสินค้า</span>
+              <b>{num(totals.subtotal, 2)}</b>
+            </div>
+            <div className="sum-row">
+              <span>ส่วนลด</span>
+              <input
+                className="inp num sum-input"
+                type="number"
+                min="0"
+                step="any"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div className="sum-row">
+              <span>ภาษีมูลค่าเพิ่ม {Math.round(VAT_RATE * 100)}%</span>
+              <b>{num(totals.vat, 2)}</b>
+            </div>
+            <div className="sum-row total">
+              <span>ยอดสุทธิ</span>
+              <b>฿{num(totals.total, 2)}</b>
+            </div>
+
+            <div className="sum-row">
+              <span>วิธีชำระ</span>
+              <select
+                className="sel sum-input"
+                value={payMethod}
+                onChange={(e) => setPayMethod(e.target.value)}
+              >
+                {PAY_METHODS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sum-row">
+              <span>รับเงิน</span>
+              <input
+                className="inp num sum-input"
+                type="number"
+                min="0"
+                step="any"
+                value={paid}
+                onChange={(e) => setPaid(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div className="sum-row change">
+              <span>เงินทอน</span>
+              <b style={{ color: change < 0 ? "var(--err)" : "var(--ok)" }}>
+                {num(Math.max(0, change), 2)}
+              </b>
+            </div>
+
+            <div className="row" style={{ marginTop: 6 }}>
+              {[100, 500, 1000].map((v) => (
+                <button
+                  key={v}
+                  className="btn btn-g btn-sm"
+                  onClick={() => setPaid(String((parseFloat(paid) || 0) + v))}
+                >
+                  +{v}
+                </button>
+              ))}
+              <button
+                className="btn btn-g btn-sm"
+                onClick={() => setPaid(String(Math.ceil(totals.total)))}
+              >
+                พอดี
+              </button>
+            </div>
+
+            <button
+              className="btn btn-p"
+              style={{ width: "100%", padding: 13, fontSize: 16, marginTop: 12 }}
+              onClick={checkout}
+              disabled={!lines.length || saving}
+            >
+              {saving ? "กำลังบันทึก…" : "ชำระเงินและพิมพ์ใบเสร็จ"}
+            </button>
+
+            {lastSale ? (
+              <button
+                className="btn btn-o"
+                style={{ width: "100%", marginTop: 8 }}
+                onClick={() => printReceipt(lastSale.sale, lastSale.items)}
+              >
+                <IcPrint size={15} />
+                พิมพ์ใบเสร็จล่าสุดซ้ำ ({lastSale.sale.docNo})
+              </button>
+            ) : null}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}

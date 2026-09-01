@@ -1,6 +1,6 @@
 "use client";
 
-// หน้าจอรายงาน 7 แท็บ — กรองด้วยช่วงวันที่ / คลัง / สินค้า พิมพ์และส่งออก CSV ได้ทุกแท็บ
+// หน้าจอรายงาน 9 แท็บ — กรองด้วยช่วงวันที่ / คลัง / สินค้า พิมพ์และส่งออก CSV ได้ทุกแท็บ
 
 import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
@@ -11,7 +11,8 @@ import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { Badge, Card, Empty, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
-import { CountSheetBody } from "./printBodies";
+import { PAY_METHODS } from "@/lib/constants";
+import { CountSheetBody, ReceiptBody } from "./printBodies";
 
 const TABS = [
   { id: "stock", label: "สรุปยอดคงเหลือ" },
@@ -19,6 +20,8 @@ const TABS = [
   { id: "ISSUE", label: "รายงานเบิกสินค้า" },
   { id: "TRANSFER", label: "รายงานโอนสินค้า" },
   { id: "ADJUST", label: "รายงานปรับปรุง" },
+  { id: "SALE", label: "รายงานการขาย" },
+  { id: "bills", label: "บิลขาย / ใบเสร็จ" },
   { id: "count", label: "ใบตรวจนับสินค้า" },
   { id: "card", label: "บัตรสินค้า (Stock Card)" },
 ];
@@ -91,10 +94,130 @@ export default function Reports() {
       {tab === "stock" && <StockReport {...{ inv, db, filter, FilterBar, print, toast }} />}
       {tab === "count" && <CountReport {...{ inv, db, filter, FilterBar, print }} />}
       {tab === "card" && <StockCard {...{ inv, db, filter, FilterBar, print, toast }} />}
-      {["RECEIVE", "ISSUE", "TRANSFER", "ADJUST"].includes(tab) && (
+      {tab === "bills" && <BillsReport {...{ inv, db, filter, FilterBar, print, toast }} />}
+      {["RECEIVE", "ISSUE", "TRANSFER", "ADJUST", "SALE"].includes(tab) && (
         <TxnReport key={tab} type={tab} {...{ inv, db, inRange, filter, FilterBar, print, toast }} />
       )}
     </>
+  );
+}
+
+/* ------------------------------------------- บิลขาย / พิมพ์ใบเสร็จซ้ำ */
+function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
+  const bills = useMemo(
+    () =>
+      db.sales
+        .filter((s) => {
+          if (filter.from && s.date < filter.from) return false;
+          if (filter.to && s.date > filter.to) return false;
+          if (filter.whId && s.whId !== filter.whId) return false;
+          if (filter.productId) {
+            return inv.itemsOfSale(s.id).some((i) => i.productId === filter.productId);
+          }
+          return true;
+        })
+        .sort((a, b) => b.ts - a.ts),
+    [db.sales, db.saleItems, filter.from, filter.to, filter.whId, filter.productId, inv]
+  );
+
+  const totalSales = bills.reduce((s, b) => s + b.total, 0);
+  const totalVat = bills.reduce((s, b) => s + b.vat, 0);
+  const payName = (id) => {
+    const m = PAY_METHODS.find((x) => x.id === id);
+    return m ? m.name : id;
+  };
+
+  return (
+    <Card
+      title="บิลขาย / ใบเสร็จรับเงิน"
+      actions={
+        <button
+          className="btn btn-g btn-sm"
+          onClick={() => {
+            if (!bills.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
+            downloadCSV(
+              ["วันที่", "เลขที่บิล", "คลัง", "ลูกค้า", "ยอดรวม", "ส่วนลด", "VAT", "ยอดสุทธิ", "วิธีชำระ", "ผู้ขาย"],
+              bills.map((b) => [
+                b.date, b.docNo, inv.whName(b.whId), b.customer || "ลูกค้าทั่วไป",
+                b.subtotal, b.discount, b.vat, b.total, payName(b.payMethod), b.user,
+              ]),
+              "บิลขาย.csv"
+            );
+            toast("ส่งออกไฟล์ CSV แล้ว");
+          }}
+        >
+          ส่งออก CSV
+        </button>
+      }
+    >
+      {FilterBar}
+
+      <div className="row" style={{ marginBottom: 13 }}>
+        <Badge kind="info">{bills.length} บิล</Badge>
+        <Badge kind="ok">ยอดขายรวม ฿{num(totalSales, 2)}</Badge>
+        <Badge>VAT รวม ฿{num(totalVat, 2)}</Badge>
+      </div>
+
+      {bills.length ? (
+        <TableWrap>
+          <thead>
+            <tr>
+              <th>วันที่</th>
+              <th>เลขที่บิล</th>
+              <th>คลัง</th>
+              <th>ลูกค้า</th>
+              <th className="num">รายการ</th>
+              <th className="num">ยอดสุทธิ</th>
+              <th>วิธีชำระ</th>
+              <th>ผู้ขาย</th>
+              <th style={{ width: 110 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {bills.map((b) => {
+              const items = inv.itemsOfSale(b.id);
+              return (
+                <tr key={b.id}>
+                  <td>{thDate(b.date)}</td>
+                  <td className="code-cell">{b.docNo}</td>
+                  <td style={{ fontSize: 13 }}>{inv.whName(b.whId)}</td>
+                  <td>{b.customer || "ลูกค้าทั่วไป"}</td>
+                  <td className="num">{items.length}</td>
+                  <td className="num">
+                    <b>{num(b.total, 2)}</b>
+                  </td>
+                  <td>{payName(b.payMethod)}</td>
+                  <td style={{ fontSize: 12.5 }}>{b.user}</td>
+                  <td>
+                    <button
+                      className="btn btn-o btn-sm"
+                      onClick={() =>
+                        print({
+                          receipt: true,
+                          title: "ใบเสร็จรับเงิน",
+                          body: <ReceiptBody inv={inv} sale={b} items={items} />,
+                        })
+                      }
+                    >
+                      พิมพ์ใบเสร็จ
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={5}>รวม {bills.length} บิล</td>
+              <td className="num">{num(totalSales, 2)}</td>
+              <td colSpan={3} />
+            </tr>
+          </tfoot>
+        </TableWrap>
+      ) : (
+        <Empty>ไม่พบบิลขายในช่วงเวลาที่เลือก</Empty>
+      )}
+    </Card>
   );
 }
 
