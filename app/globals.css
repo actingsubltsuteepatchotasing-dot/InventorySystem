@@ -629,6 +629,33 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
   overflow-x: auto;
 }
 
+/* ---------- ส่วนย่อยในกล่องโต้ตอบ ---------- */
+.sec-title { font-size: 15.5px; margin-bottom: 6px; }
+.sec-desc { color: var(--fg-muted); font-size: 13.5px; line-height: 1.65; margin-bottom: 14px; }
+.sec-hr { border: 0; border-top: 1px solid var(--border); margin: 22px 0 18px; }
+
+.check-list { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 7px; }
+.check-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+  font-size: 13.5px;
+}
+.check-list li.ok { border-color: #cfe8da; background: var(--ok-bg); }
+.check-list li.bad { border-color: #ebc4c1; background: var(--err-bg); }
+.check-list .mark { font-weight: 800; font-size: 15px; line-height: 1.4; flex: none; }
+.check-list li.ok .mark { color: var(--ok); }
+.check-list li.bad .mark { color: var(--err); }
+.check-list .txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.check-list .txt b { font-weight: 700; }
+.check-list .txt .code-cell { font-size: 11.5px; color: var(--fg-faint); }
+.check-list .detail { font-size: 12.5px; color: var(--fg-muted); word-break: break-word; }
+.check-list li.bad .detail { color: var(--err); }
+
 /* ---------- ผังที่เก็บสินค้า ---------- */
 .warehouse-map {
   display: flex;

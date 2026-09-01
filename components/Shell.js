@@ -84,16 +84,15 @@ export default function Shell() {
           <b>วิธีแก้ตามลำดับ</b>
           <ol>
             <li>
-              เปิด Supabase Dashboard &gt; SQL Editor แล้วรัน{" "}
-              <code>supabase/schema.sql</code> ทั้งไฟล์ (สร้างตารางที่ยังไม่มี — รันซ้ำได้ ไม่ลบข้อมูล)
+              เปิด Supabase Dashboard &gt; SQL Editor &gt; New query
             </li>
             <li>
-              จากนั้นรัน <code>supabase/fix-permissions.sql</code> ทั้งไฟล์ — ให้สิทธิ์ระดับตารางแก่
-              role <code>authenticated</code> และสร้าง RLS policy
+              วางไฟล์ <code>supabase/schema.sql</code> ทั้งไฟล์ แล้วกด Run
+              — ไฟล์เดียวจบ ทั้งสร้างตาราง ให้สิทธิ์ และตั้ง RLS
+              (รันซ้ำได้ ไม่ลบข้อมูลเดิม)
             </li>
             <li>
-              ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทุกแถว
-              ถ้าแถวไหนไม่ผ่าน ข้อความจะบอกว่าขาดอะไร
+              ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทั้ง 7 แถว
             </li>
             <li>กลับมาที่หน้านี้แล้วกด “ลองใหม่” (ไม่ต้อง deploy ใหม่)</li>
           </ol>

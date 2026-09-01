@@ -2,12 +2,20 @@
 -- ระบบควบคุมสินค้าคงคลัง การยางแห่งประเทศไทย
 -- Schema สำหรับ Supabase — รันไฟล์นี้ใน SQL Editor ของโปรเจกต์ Supabase
 --
+-- ไฟล์เดียวจบทุกขั้นตอน — ไม่ต้องรันไฟล์อื่นอีก
+--
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
--- รันซ้ำได้ปลอดภัย ไม่ลบข้อมูลเดิม
--- ถ้ามีฐานข้อมูลเดิมอยู่แล้ว การรันไฟล์นี้ซ้ำจะเพิ่มตารางใหม่ให้เอง
--- (locations / product_locations / sales / sale_items) และขยาย constraint
--- ของ txns ให้รองรับประเภท SALE
+-- ไฟล์นี้ทำให้ครบทุกอย่าง:
+--   1. สร้างตารางทั้ง 7 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
+--   3. สร้างฟังก์ชัน stock_of() และ create_sale()
+--   4. GRANT สิทธิ์ระดับตารางให้ role authenticated
+--   5. เปิด RLS และสร้าง policy ครบทุกตาราง
+--   6. สั่ง PostgREST รีเฟรช schema cache
+--   7. แสดงตารางสรุปผลว่าครบหรือไม่
+--
+-- รันซ้ำกี่ครั้งก็ได้ ปลอดภัย ไม่ลบข้อมูลเดิม
 -- ============================================================================
 
 -- ---------------------------------------------------------------- ตารางหลัก
@@ -169,13 +177,43 @@ create index if not exists sale_items_sale_idx on public.sale_items (sale_id);
 -- security invoker = RLS ยังทำงานตามปกติ ผู้เรียกต้องล็อกอินแล้วเท่านั้น
 -- ============================================================================
 
+-- คำนวณยอดคงเหลือของสินค้าหนึ่งในคลังหนึ่ง ณ ปัจจุบัน
+-- ใช้กติกาเดียวกับฝั่งแอป (lib/db.js stockMap) เพื่อให้ผลตรงกันเสมอ
+create or replace function public.stock_of(p_product text, p_wh text)
+returns numeric
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+  select coalesce(sum(
+    case
+      when t.type = 'RECEIVE'              and t.wh_id = p_wh then  t.qty
+      when t.type in ('ISSUE', 'SALE')     and t.wh_id = p_wh then -t.qty
+      when t.type = 'ADJUST'               and t.wh_id = p_wh then  t.qty
+      when t.type = 'TRANSFER'             and t.wh_id = p_wh then -t.qty
+      when t.type = 'TRANSFER'             and t.wh_to = p_wh then  t.qty
+      else 0
+    end
+  ), 0)
+  from public.txns t
+  where t.product_id = p_product
+    and (t.wh_id = p_wh or t.wh_to = p_wh);
+$$;
+
 create or replace function public.create_sale(p_sale jsonb, p_items jsonb)
 returns void
 language plpgsql
 security invoker
+set search_path = public, pg_temp
 as $$
 declare
-  it jsonb;
+  it        jsonb;
+  v_wh      text := p_sale ->> 'wh_id';
+  v_pid     text;
+  v_qty     numeric;
+  v_have    numeric;
+  v_name    text;
 begin
   insert into public.sales (
     id, doc_no, date, wh_id, customer,
@@ -202,12 +240,27 @@ begin
 
   for it in select * from jsonb_array_elements(p_items)
   loop
+    v_pid := it ->> 'product_id';
+    v_qty := (it ->> 'qty')::numeric;
+
+    -- ล็อกเฉพาะคู่ (สินค้า, คลัง) นี้จนจบ transaction
+    -- กันกรณีแคชเชียร์สองเครื่องขายชิ้นสุดท้ายพร้อมกันแล้วสต็อกติดลบ
+    perform pg_advisory_xact_lock(hashtext(v_pid || '|' || v_wh));
+
+    v_have := public.stock_of(v_pid, v_wh);
+    if v_have < v_qty then
+      select name into v_name from public.products where id = v_pid;
+      raise exception 'สต็อกไม่พอ: % คงเหลือ % แต่ต้องการ %',
+        coalesce(v_name, v_pid), v_have, v_qty
+        using errcode = 'P0001';
+    end if;
+
     insert into public.sale_items (id, sale_id, product_id, qty, price, amount)
     values (
       it ->> 'id',
       p_sale ->> 'id',
-      it ->> 'product_id',
-      (it ->> 'qty')::numeric,
+      v_pid,
+      v_qty,
       (it ->> 'price')::numeric,
       (it ->> 'amount')::numeric
     );
@@ -221,9 +274,9 @@ begin
       'SALE',
       p_sale ->> 'doc_no',
       (p_sale ->> 'date')::date,
-      it ->> 'product_id',
-      (it ->> 'qty')::numeric,
-      p_sale ->> 'wh_id',
+      v_pid,
+      v_qty,
+      v_wh,
       null,
       'ขายหน้าร้าน',
       p_sale ->> 'doc_no',
@@ -251,6 +304,7 @@ grant all privileges on table public.sales             to authenticated;
 grant all privileges on table public.sale_items        to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb) to authenticated;
+grant execute on function public.stock_of(text, text)        to authenticated;
 
 -- ---------------------------------------------------------- Row Level Security
 -- อนุญาตเฉพาะผู้ใช้ที่ล็อกอินแล้วเท่านั้น (role = authenticated)

@@ -4,6 +4,7 @@
 
 import { useRef, useState } from "react";
 import { useInv } from "@/lib/store";
+import { healthCheck } from "@/lib/api";
 import { downloadJSON } from "@/lib/csv";
 import { num, todayISO } from "@/lib/format";
 import Modal from "./Modal";
@@ -15,6 +16,23 @@ export default function BackupModal({ onClose }) {
   const toast = useToast();
   const fileRef = useRef(null);
   const [busy, setBusy] = useState("");
+  const [checks, setChecks] = useState(null);
+
+  async function runCheck() {
+    if (busy) return;
+    setBusy("check");
+    setChecks(null);
+    try {
+      const r = await healthCheck();
+      setChecks(r);
+      const bad = r.filter((x) => !x.ok).length;
+      toast(bad ? "ตรวจพบปัญหา " + bad + " รายการ" : "ตรวจสอบครบ ทุกรายการปกติ", bad ? "warn" : "");
+    } catch (e) {
+      toast("ตรวจสอบไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function importFile(file) {
     if (!file || busy) return;
@@ -62,8 +80,53 @@ export default function BackupModal({ onClose }) {
   }
 
   return (
-    <Modal title="สำรองและกู้คืนข้อมูล" onClose={onClose} maxWidth={560}>
-      <p style={{ color: "var(--fg-muted)", fontSize: 14, marginBottom: 16 }}>
+    <Modal title="ข้อมูลและระบบ" onClose={onClose} maxWidth={620}>
+      {/* ---------------- ตรวจสอบระบบ ---------------- */}
+      <h4 className="sec-title">ตรวจสอบระบบ</h4>
+      <p className="sec-desc">
+        ตรวจว่าฐานข้อมูลมีตารางและฟังก์ชันครบหรือยัง โดยไม่ต้องเปิด Supabase — อ่านอย่างเดียว
+        ไม่แก้ไขข้อมูลใด ๆ
+      </p>
+
+      <button className="btn btn-o" disabled={!!busy} onClick={runCheck} style={{ width: "100%" }}>
+        {busy === "check" ? "กำลังตรวจสอบ…" : "ตรวจสอบระบบตอนนี้"}
+      </button>
+
+      {checks ? (
+        <>
+          <ul className="check-list">
+            {checks.map((c) => (
+              <li key={c.name} className={c.ok ? "ok" : "bad"}>
+                <span className="mark">{c.ok ? "✓" : "✕"}</span>
+                <span className="txt">
+                  <b>{c.label}</b>
+                  <span className="code-cell">{c.name}</span>
+                  <span className="detail">{c.detail}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {checks.some((c) => !c.ok) ? (
+            <div className="setup-tip" style={{ marginTop: 12 }}>
+              <b>วิธีแก้</b>
+              <p>
+                เปิด Supabase Dashboard &gt; SQL Editor &gt; New query แล้ววางไฟล์{" "}
+                <code>supabase/schema.sql</code> ทั้งไฟล์ กด Run — ไฟล์เดียวจบทุกอย่าง
+                รันซ้ำได้ ไม่ลบข้อมูลเดิม
+              </p>
+              <p>ถ้ารันแล้วยังไม่ผ่าน ให้รันคำสั่งนี้แล้วรอ 5 วินาที:</p>
+              <pre>notify pgrst, &#39;reload schema&#39;;</pre>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      <hr className="sec-hr" />
+
+      {/* ---------------- สำรองข้อมูล ---------------- */}
+      <h4 className="sec-title">สำรองและกู้คืนข้อมูล</h4>
+      <p className="sec-desc">
         ข้อมูลทั้งหมดเก็บอยู่บน Supabase และแชร์กับผู้ใช้ทุกคนที่เข้าระบบ
         การนำเข้าหรือรีเซ็ตจะมีผลกับทุกคน ไม่ใช่เฉพาะเครื่องนี้
       </p>
