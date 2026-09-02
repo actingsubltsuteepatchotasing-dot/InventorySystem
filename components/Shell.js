@@ -183,13 +183,6 @@ export default function Shell() {
               <IcData size={15} />
               ข้อมูล
             </button>
-            <div className="user-chip" title={email}>
-              <span className="avatar">{initials}</span>
-              <span className="uname">{email}</span>
-            </div>
-            <button className="btn btn-g btn-sm" onClick={signOut}>
-              ออกจากระบบ
-            </button>
           </div>
         </div>
 
@@ -210,6 +203,18 @@ export default function Shell() {
       </main>
 
       {backup ? <BackupModal onClose={() => setBackup(false)} /> : null}
+
+      {/* แถบผู้ใช้ลอยมุมขวาล่าง — ซ้อนอยู่เหนือปุ่มผู้ช่วย AI */}
+      <div className="user-dock no-print">
+        <div className="user-chip" title={email}>
+          <span className="avatar">{initials}</span>
+          <span className="uname">{email}</span>
+        </div>
+        <button className="btn btn-g btn-sm" onClick={signOut}>
+          ออกจากระบบ
+        </button>
+      </div>
+
       <ChatWidget />
     </div>
   );
