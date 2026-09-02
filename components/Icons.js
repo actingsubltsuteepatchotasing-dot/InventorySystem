@@ -83,6 +83,21 @@ export const IcGrid = (p) => (
     <rect x="14" y="14" width="7" height="7" rx="1.5" />
   </Ico>
 );
+export const IcChat = (p) => (
+  <Ico {...p}>
+    <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-2.9-.4L3 21l1.6-4.6A8.2 8.2 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z" />
+    <path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" />
+  </Ico>
+);
+export const IcSend = (p) => (
+  <Ico {...p}><path d="M4 12l16-8-6 16-2.5-6.5L4 12z" /></Ico>
+);
+export const IcSparkle = (p) => (
+  <Ico {...p}>
+    <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" />
+    <path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z" />
+  </Ico>
+);
 export const IcPrint = (p) => (
   <Ico {...p}>
     <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />

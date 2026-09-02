@@ -9,6 +9,7 @@ import {
   IcOut, IcReport, Logo,
 } from "./Icons";
 import BackupModal from "./BackupModal";
+import ChatWidget from "./ChatWidget";
 import { SetupBanner } from "./SetupNotice";
 import Dashboard from "./views/Dashboard";
 import TxnScreen from "./views/TxnScreen";
@@ -209,6 +210,7 @@ export default function Shell() {
       </main>
 
       {backup ? <BackupModal onClose={() => setBackup(false)} /> : null}
+      <ChatWidget />
     </div>
   );
 }
