@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
-import { askChat } from "@/lib/chatClient";
+import { askChat, chatStatus } from "@/lib/chatClient";
 import { summarize } from "@/lib/inventorySummary";
 import { uid } from "@/lib/format";
 import { IcChat, IcClose, IcSend, IcSparkle, IcTrash } from "./Icons";
@@ -30,6 +30,8 @@ export default function ChatWidget() {
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState(null);
+  // null = ยังไม่ได้เช็ค, true/false = ผลการเช็คตอนเปิดแผง
+  const [aiReady, setAiReady] = useState(null);
 
   const bodyRef = useRef(null);
   const inputRef = useRef(null);
@@ -53,6 +55,25 @@ export default function ChatWidget() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
+
+  // เช็คว่าผู้ช่วยพร้อมใช้หรือยังตอนเปิดแผง เพื่อบอกผู้ใช้ทันที
+  // ไม่ต้องรอให้พิมพ์คำถามแล้วค่อยรู้ว่ายังไม่ได้ตั้งค่า
+  // (GET ไม่เรียก Gemini จึงไม่เสียโควตา แม้ StrictMode จะยิงซ้ำในโหมด dev)
+  useEffect(() => {
+    if (!open || aiReady !== null) return;
+    let alive = true;
+    chatStatus()
+      .then((st) => {
+        if (alive) setAiReady(st.configured && st.allowed);
+      })
+      .catch(() => {
+        // เช็คไม่ได้ก็ปล่อยให้ใช้งานต่อ เดี๋ยวตอนส่งจริงจะรู้เอง
+        if (alive) setAiReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open, aiReady]);
 
   // โฟกัสช่องพิมพ์เมื่อเปิด และยกเลิกคำขอค้างเมื่อปิด
   useEffect(() => {
@@ -196,7 +217,19 @@ export default function ChatWidget() {
       </div>
 
       <div className="chat-body" ref={bodyRef} role="log" aria-live="polite" aria-busy={pending}>
-        {messages.length === 0 ? (
+        {aiReady === false ? (
+          <div className="chat-setup">
+            <b>ผู้ช่วย AI ยังไม่พร้อมใช้งาน</b>
+            <p>
+              ผู้ดูแลระบบต้องเพิ่ม <code>GEMINI_API_KEY</code> ที่ Vercel &gt; Settings &gt;
+              Environment Variables แล้ว Redeploy หนึ่งครั้ง
+            </p>
+            <p className="muted">
+              ระบบส่วนอื่นใช้งานได้ตามปกติ — หน้าจอรับ/เบิก/โอน/ขาย และรายงานทั้งหมด
+              ไม่ได้พึ่งผู้ช่วย AI
+            </p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="chat-intro">
             <p>
               สวัสดีครับ ผมเป็นผู้ช่วยประจำระบบคลังสินค้า ถามได้ทั้ง<b>วิธีใช้งานระบบ</b>
@@ -249,6 +282,7 @@ export default function ChatWidget() {
         ) : null}
       </div>
 
+      {aiReady === false ? null : (
       <form
         className="chat-input"
         onSubmit={(e) => {
@@ -278,6 +312,7 @@ export default function ChatWidget() {
           <IcSend size={16} />
         </button>
       </form>
+      )}
     </div>
   );
 }

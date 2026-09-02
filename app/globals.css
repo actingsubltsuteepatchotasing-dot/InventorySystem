@@ -1016,6 +1016,29 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
 }
 .chat-input .btn-icon { width: 40px; height: 40px; flex: none; }
 
+/* แจ้งเตือนเมื่อยังไม่ได้ตั้งค่า GEMINI_API_KEY */
+.chat-setup {
+  background: var(--warn-bg);
+  border: 1px solid #f0d9b0;
+  border-radius: 11px;
+  padding: 14px 16px;
+  color: var(--warn);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+.chat-setup b { display: block; margin-bottom: 7px; font-size: 14.5px; }
+.chat-setup p { margin-bottom: 8px; }
+.chat-setup p:last-child { margin-bottom: 0; }
+.chat-setup .muted { color: var(--fg-muted); font-size: 12.5px; }
+.chat-setup code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
 /* ---------- Scrim (มือถือ) ---------- */
 .scrim { position: fixed; inset: 0; background: rgba(10, 30, 20, 0.45); z-index: 55; }
 

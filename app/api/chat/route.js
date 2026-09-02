@@ -13,6 +13,9 @@ export const maxDuration = 30;
 /** เก็บสถิติการใช้งานต่อผู้ใช้ไว้ในหน่วยความจำของ instance นี้ */
 const rateStore = new Map();
 
+const NOT_CONFIGURED_MSG =
+  "ยังไม่ได้ตั้งค่าผู้ช่วย AI — ผู้ดูแลระบบต้องเพิ่ม GEMINI_API_KEY ที่ Vercel > Settings > Environment Variables แล้ว Redeploy หนึ่งครั้ง";
+
 const MAX_SUMMARY = 20000;
 const MAX_MESSAGES = 20;
 const MAX_TEXT = 4000;
@@ -34,7 +37,14 @@ export async function POST(request) {
     return fail("FORBIDDEN", "บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้ผู้ช่วย AI กรุณาติดต่อผู้ดูแลระบบ", 403);
   }
 
-  // ---------- 3. โควตาการใช้งาน ----------
+  // ---------- 3. ตั้งค่าคีย์ครบหรือยัง ----------
+  // ต้องตรวจก่อนนับโควตา ไม่งั้นผู้ใช้จะเผาโควตาทิ้งกับปัญหาที่ไม่ใช่ความผิดเขา
+  // แล้วได้ข้อความ "ถามถี่เกินไป" ซึ่งชี้ผิดทาง
+  if (!isConfigured()) {
+    return fail("NOT_CONFIGURED", NOT_CONFIGURED_MSG, 503);
+  }
+
+  // ---------- 4. โควตาการใช้งาน ----------
   const rate = checkRate(rateStore, user.id, Date.now());
   if (!rate.ok) {
     return Response.json(
@@ -49,7 +59,7 @@ export async function POST(request) {
     );
   }
 
-  // ---------- 4. อ่านและตรวจ payload ----------
+  // ---------- 5. อ่านและตรวจ payload ----------
   let payload;
   try {
     payload = await request.json();
@@ -78,15 +88,6 @@ export async function POST(request) {
     return fail("BAD_REQUEST", "ข้อความสุดท้ายต้องเป็นคำถามของผู้ใช้", 400);
   }
 
-  // ---------- 5. ตั้งค่าคีย์ครบหรือยัง ----------
-  if (!isConfigured()) {
-    return fail(
-      "NOT_CONFIGURED",
-      "ยังไม่ได้ตั้งค่าผู้ช่วย AI — ผู้ดูแลระบบต้องเพิ่ม GEMINI_API_KEY ที่ Vercel > Settings > Environment Variables แล้ว Redeploy หนึ่งครั้ง",
-      503
-    );
-  }
-
   // ---------- 6. เรียก Gemini ----------
   const result = await callGemini(messages, summary);
 
@@ -95,4 +96,21 @@ export async function POST(request) {
   }
 
   return Response.json({ text: result.text, truncated: !!result.truncated });
+}
+
+/**
+ * เช็คว่าผู้ช่วย AI พร้อมใช้หรือยัง — ใช้ตอนเปิดแผงแชท
+ * ไม่เรียก Gemini จึงไม่เสียโควตา และไม่นับรวมกับ rate limit
+ * ต้องมี force-dynamic (ประกาศไว้ด้านบน) ไม่งั้น Next.js จะ prerender
+ * เป็น static ตอน build แล้วค้างคำตอบไว้จนกว่าจะ redeploy
+ */
+export async function GET(request) {
+  const user = await verifyBearer(bearerFrom(request));
+  if (!user) {
+    return fail("UNAUTHENTICATED", "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่", 401);
+  }
+  if (!isAllowed(user.email)) {
+    return Response.json({ configured: false, allowed: false });
+  }
+  return Response.json({ configured: isConfigured(), allowed: true });
 }
