@@ -138,6 +138,33 @@ powershell -ExecutionPolicy Bypass -File tools/make-icons.ps1 -CropX 77 -CropY 7
 
 ถ้าอยากกลับไปใช้โลโก้ใบยาง กยท. ที่วาดด้วยโค้ด ให้รัน `node tools/make-icons.mjs` แทน
 
+## พรีวิวตอนแชร์ลิงก์ (Open Graph)
+
+ส่งลิงก์เว็บใน **LINE**, Facebook หรือ X แล้วจะขึ้นการ์ดพรีวิวพร้อมรูป ชื่อ และคำอธิบาย
+แทนลิงก์เปล่า ๆ
+
+รูปการ์ดคือ `public/og-image.png` (1200x630) ประกาศไว้ใน `app/layout.js`
+
+**ถ้าใช้โดเมนของตัวเอง ต้องตั้ง env ตัวนี้** ไม่งั้นการ์ดจะชี้ไปโดเมน Vercel:
+
+```
+NEXT_PUBLIC_SITE_URL=https://stock.example.co.th
+```
+
+ถ้าใช้โดเมนของ Vercel เฉย ๆ ไม่ต้องตั้งอะไร ระบบหยิบให้เอง
+(LINE ไม่รับ path แบบสัมพัทธ์ `og:image` จึงต้องเป็น URL เต็มพร้อมโดเมนเสมอ)
+
+**สร้างรูปการ์ดใหม่** — แก้ข้อความหรือเปลี่ยนภาพแล้วรันบน Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/make-og-image.ps1
+```
+
+> ไฟล์ `tools/make-og-image.ps1` ต้องบันทึกเป็น **UTF-8 with BOM** เท่านั้น
+> PowerShell 5.1 อ่านไฟล์ที่ไม่มี BOM เป็น ANSI แล้วข้อความไทยที่วาดลงรูปจะเพี้ยนทั้งหมด
+
+> LINE แคชผลพรีวิวไว้ ถ้าแก้แล้วยังเห็นของเก่า ให้ลองแชร์ลิงก์ที่ต่อ `?v=2` ท้าย URL
+
 ## Deploy
 
 Deploy บน **Vercel** — ไม่ต้องตั้งค่าอะไรเพิ่ม Vercel ตรวจจับ Next.js จาก `package.json`
