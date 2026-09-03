@@ -124,8 +124,13 @@ service worker จึงแคชเฉพาะไฟล์หน้าตา�
 powershell -ExecutionPolicy Bypass -File tools/make-icons.ps1 -CropX 77 -CropY 77 -CropSize 400
 ```
 
-ได้ไฟล์ 5 ไฟล์: `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`,
-`app/icon.png`, `app/apple-icon.png`
+ได้ไฟล์ 6 ไฟล์: `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`,
+`app/icon.png`, `app/apple-icon.png` และ `app/favicon.ico`
+
+`favicon.ico` คือไอคอนบนแท็บ บรรจุ 16/32/48px ที่เรนเดอร์แยกทีละขนาดไว้ในไฟล์เดียว
+คมกว่าปล่อยให้เบราว์เซอร์ย่อจาก `icon.png` 192px เอง
+และใช้กรอบครอปแคบกว่า (250) เพราะที่ 16px ถ้าครอปกว้างจะอ่านตัวอักษรไม่ออกเลย
+ปรับได้ด้วย `-FaviconCrop`
 
 สคริปต์ใช้ `System.Drawing` ที่มากับ Windows จึงไม่ต้องติดตั้งอะไรเพิ่ม
 ถ้าไม่ใส่ `-Crop*` มันจะตัดขอบขาวรอบภาพให้อัตโนมัติ ส่วน `-NoTrim` คือใช้ทั้งภาพตามเดิม
