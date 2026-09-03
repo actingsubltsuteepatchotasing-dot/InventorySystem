@@ -126,6 +126,41 @@ create unique index if not exists product_locations_unique
 create index if not exists product_locations_loc_idx  on public.product_locations (location_id);
 create index if not exists product_locations_prod_idx on public.product_locations (product_id);
 
+-- ------------------------------------------- ที่เก็บสินค้าบนรายการเคลื่อนไหว
+-- กติกาของระบบ: ระบุคลังที่ไหน ต้องระบุที่เก็บที่นั่นด้วยเสมอ
+--
+-- คอลัมน์เป็น null ได้เพื่อให้ฐานข้อมูลเดิมที่มีข้อมูลอยู่แล้วอัปเกรดผ่าน
+-- และให้กู้คืนไฟล์สำรองรุ่นเก่าที่ยังไม่มีที่เก็บได้ ส่วนการบังคับกรอกอยู่ที่หน้าจอ
+alter table public.txns add column if not exists loc_id text;
+alter table public.txns add column if not exists loc_to text;
+
+-- ต้องมี unique (id, wh_id) ก่อน ถึงจะอ้างเป็น foreign key คู่ได้
+create unique index if not exists locations_id_wh_key on public.locations (id, wh_id);
+
+-- foreign key คู่ (ที่เก็บ, คลัง) บังคับว่าที่เก็บที่ระบุต้องอยู่ในคลังนั้นจริง
+-- MATCH SIMPLE: ถ้าคอลัมน์ใดเป็น null จะข้ามการตรวจ
+-- แถวเก่าที่ loc_id เป็น null จึงผ่านได้ แต่แถวใหม่ที่ระบุที่เก็บจะถูกตรวจเสมอ
+do $$
+begin
+  alter table public.txns drop constraint if exists txns_loc_in_wh;
+  alter table public.txns add constraint txns_loc_in_wh
+    foreign key (loc_id, wh_id) references public.locations (id, wh_id) on delete restrict;
+
+  alter table public.txns drop constraint if exists txns_loc_to_in_wh_to;
+  alter table public.txns add constraint txns_loc_to_in_wh_to
+    foreign key (loc_to, wh_to) references public.locations (id, wh_id) on delete restrict;
+
+  -- ที่เก็บปลายทางใช้ได้เฉพาะการโอนเท่านั้น
+  alter table public.txns drop constraint if exists txns_loc_to_transfer_only;
+  alter table public.txns add constraint txns_loc_to_transfer_only
+    check (loc_to is null or type = 'TRANSFER');
+
+  raise notice 'เพิ่มที่เก็บสินค้าบนรายการเคลื่อนไหวเรียบร้อย';
+end
+$$;
+
+create index if not exists txns_loc_idx on public.txns (loc_id);
+
 -- ------------------------------------------------------- การขายหน้าร้าน (POS)
 
 create table if not exists public.sales (
@@ -148,6 +183,17 @@ create table if not exists public.sales (
 
   constraint sales_pay_method_check check (pay_method in ('CASH', 'TRANSFER', 'CARD'))
 );
+
+-- ที่เก็บที่หยิบของไปขาย — เหตุผลเดียวกับ txns ข้างบน
+alter table public.sales add column if not exists loc_id text;
+
+do $$
+begin
+  alter table public.sales drop constraint if exists sales_loc_in_wh;
+  alter table public.sales add constraint sales_loc_in_wh
+    foreign key (loc_id, wh_id) references public.locations (id, wh_id) on delete restrict;
+end
+$$;
 
 create unique index if not exists sales_doc_no_key on public.sales (doc_no);
 create index if not exists sales_ts_idx  on public.sales (ts);
@@ -214,9 +260,12 @@ declare
   v_qty     numeric;
   v_have    numeric;
   v_name    text;
+  v_loc     text;
+  v_bin     numeric;
+  v_bincode text;
 begin
   insert into public.sales (
-    id, doc_no, date, wh_id, customer,
+    id, doc_no, date, wh_id, loc_id, customer,
     subtotal, discount, vat, total, paid, change_amt,
     pay_method, user_name, note, ts
   )
@@ -225,6 +274,7 @@ begin
     p_sale ->> 'doc_no',
     (p_sale ->> 'date')::date,
     p_sale ->> 'wh_id',
+    nullif(p_sale ->> 'loc_id', ''),
     coalesce(p_sale ->> 'customer', ''),
     (p_sale ->> 'subtotal')::numeric,
     (p_sale ->> 'discount')::numeric,
@@ -242,6 +292,15 @@ begin
   loop
     v_pid := it ->> 'product_id';
     v_qty := (it ->> 'qty')::numeric;
+    v_loc := nullif(it ->> 'loc_id', '');
+
+    -- ทุกรายการที่ขายต้องบอกว่าหยิบมาจากช่องเก็บไหน
+    if v_loc is null then
+      raise exception 'ไม่ได้ระบุที่เก็บของสินค้า %', v_pid using errcode = 'P0001';
+    end if;
+    if not exists (select 1 from public.locations where id = v_loc and wh_id = v_wh) then
+      raise exception 'ที่เก็บ % ไม่ได้อยู่ในคลังที่ขาย', v_loc using errcode = 'P0001';
+    end if;
 
     -- ล็อกเฉพาะคู่ (สินค้า, คลัง) นี้จนจบ transaction
     -- กันกรณีแคชเชียร์สองเครื่องขายชิ้นสุดท้ายพร้อมกันแล้วสต็อกติดลบ
@@ -253,6 +312,30 @@ begin
       raise exception 'สต็อกไม่พอ: % คงเหลือ % แต่ต้องการ %',
         coalesce(v_name, v_pid), v_have, v_qty
         using errcode = 'P0001';
+    end if;
+
+    -- ตัดของออกจากช่องเก็บด้วย ไม่ใช่แค่ยอดรวมของคลัง
+    -- for update กันสองเครื่องหยิบของช่องเดียวกันพร้อมกัน
+    select qty into v_bin
+    from public.product_locations
+    where product_id = v_pid and location_id = v_loc
+    for update;
+
+    if v_bin is null or v_bin < v_qty then
+      select code into v_bincode from public.locations where id = v_loc;
+      select name into v_name  from public.products  where id = v_pid;
+      raise exception 'ของในช่องเก็บ % ไม่พอ: % มีอยู่ % แต่ต้องการ %',
+        coalesce(v_bincode, v_loc), coalesce(v_name, v_pid), coalesce(v_bin, 0), v_qty
+        using errcode = 'P0001';
+    end if;
+
+    if v_bin = v_qty then
+      delete from public.product_locations
+      where product_id = v_pid and location_id = v_loc;
+    else
+      update public.product_locations
+      set qty = qty - v_qty
+      where product_id = v_pid and location_id = v_loc;
     end if;
 
     insert into public.sale_items (id, sale_id, product_id, qty, price, amount)
@@ -267,7 +350,8 @@ begin
 
     -- ตัดสต็อกด้วยรายการชนิด SALE เพื่อให้ยอดคงเหลือคำนวณจากที่เดียวเสมอ
     insert into public.txns (
-      id, type, doc_no, date, product_id, qty, wh_id, wh_to, note, ref, user_name, ts
+      id, type, doc_no, date, product_id, qty, wh_id, wh_to,
+      loc_id, loc_to, note, ref, user_name, ts
     )
     values (
       it ->> 'txn_id',
@@ -277,6 +361,8 @@ begin
       v_pid,
       v_qty,
       v_wh,
+      null,
+      v_loc,
       null,
       'ขายหน้าร้าน',
       p_sale ->> 'doc_no',

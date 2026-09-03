@@ -6,12 +6,13 @@ import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { ADJUST_REASONS } from "@/lib/constants";
-import { nextDocNo } from "@/lib/db";
+import { firstLocOf, nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcTrash } from "../Icons";
-import { Badge, Card, Empty, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, Empty, ProductSelect, TableWrap, WhLocFields } from "../ui";
+import SetupNotice from "../SetupNotice";
 import { CountSheetBody } from "./printBodies";
 
 export default function AdjustScreen() {
@@ -24,28 +25,35 @@ export default function AdjustScreen() {
 
   const [date, setDate] = useState(todayISO);
   const [whId, setWhId] = useState(db.warehouses[0].id);
+  const [locId, setLocId] = useState(() => firstLocOf(db, db.warehouses[0].id));
   const [productId, setProductId] = useState(db.products[0].id);
   const [counted, setCounted] = useState("");
   const [reason, setReason] = useState(ADJUST_REASONS[0]);
   const [cart, setCart] = useState([]);
 
   const docNo = nextDocNo(db, "ADJUST", date);
-  const book = inv.stockOf(productId, whId);
+
+  // ตรวจนับกันทีละช่องเก็บ ยอดตามบัญชีจึงเป็นยอดในช่องนั้น ไม่ใช่ทั้งคลัง
+  // ทำแบบนี้ผลต่างจะไม่มีทางทำให้ของในช่องติดลบ เพราะยอดใหม่คือยอดที่นับได้จริง
+  const book = inv.placedIn(productId, locId);
+  const whBalance = inv.stockOf(productId, whId);
   const countedNum = parseFloat(counted);
   const diff = isNaN(countedNum) ? 0 : countedNum - book;
 
   function addLine() {
+    const err = inv.checkWhLoc(whId, locId);
+    if (err) return toast(err, "err");
     if (isNaN(countedNum) || countedNum < 0) return toast("กรุณาระบุยอดนับได้จริง", "err");
     if (diff === 0) return toast("ยอดตรงกับบัญชี ไม่ต้องปรับปรุง", "warn");
-    if (cart.some((c) => c.productId === productId && c.whId === whId)) {
-      return toast("มีรายการสินค้านี้ในเอกสารแล้ว", "warn");
+    if (cart.some((c) => c.productId === productId && c.locId === locId)) {
+      return toast("มีรายการสินค้านี้ในที่เก็บนี้ในเอกสารแล้ว", "warn");
     }
     setCart((prev) => [
       ...prev,
-      { key: uid(), productId, whId, book, counted: countedNum, qty: diff, note: reason },
+      { key: uid(), productId, whId, locId, book, counted: countedNum, qty: diff, note: reason },
     ]);
     setCounted("");
-    toast("เพิ่มรายการปรับปรุง " + inv.prodName(productId));
+    toast("เพิ่มรายการปรับปรุง " + inv.prodName(productId) + " ที่ " + inv.locName(locId));
   }
 
   async function saveDoc() {
@@ -62,6 +70,8 @@ export default function AdjustScreen() {
       qty: c.qty,
       whId: c.whId,
       whTo: "",
+      locId: c.locId,
+      locTo: "",
       note: c.note,
       ref: "นับได้ " + c.counted + " / บัญชี " + c.book,
       user: user && user.email ? user.email : "",
@@ -101,7 +111,7 @@ export default function AdjustScreen() {
               <th>เลขที่เอกสาร</th>
               <th>รหัส</th>
               <th>รายการสินค้า</th>
-              <th>คลัง</th>
+              <th>คลัง · ที่เก็บ</th>
               <th style={{ textAlign: "right" }}>ผลต่าง</th>
               <th>สาเหตุ</th>
             </tr>
@@ -116,7 +126,7 @@ export default function AdjustScreen() {
                   <td>{t.docNo}</td>
                   <td>{p ? p.code : ""}</td>
                   <td>{inv.prodName(t.productId)}</td>
-                  <td>{inv.whName(t.whId)}</td>
+                  <td>{inv.whLocName(t.whId, t.locId)}</td>
                   <td style={{ textAlign: "right" }}>
                     {(t.qty > 0 ? "+" : "") + num(t.qty, 0)}
                   </td>
@@ -139,6 +149,12 @@ export default function AdjustScreen() {
     });
   }
 
+  if (!inv.locationsReady) {
+    return (
+      <SetupNotice feature="หน้าจอปรับปรุงสินค้า" tables={["locations", "product_locations"]} />
+    );
+  }
+
   return (
     <div className="stack">
       <Card
@@ -154,17 +170,28 @@ export default function AdjustScreen() {
             <label className="lbl" htmlFor="a_doc">เลขที่เอกสาร</label>
             <input className="inp" id="a_doc" value={docNo} readOnly />
           </div>
-          <div className="field span2">
-            <label className="lbl" htmlFor="a_wh">คลังสินค้า</label>
-            <WarehouseSelect db={db} id="a_wh" value={whId} onChange={setWhId} />
-          </div>
+          <WhLocFields
+            db={db}
+            idPrefix="a"
+            whId={whId}
+            locId={locId}
+            locLabel="ที่เก็บที่ตรวจนับ"
+            onChange={(w, l) => {
+              setWhId(w);
+              setLocId(l);
+            }}
+          />
           <div className="field span2">
             <label className="lbl" htmlFor="a_prod">สินค้า</label>
             <ProductSelect db={db} id="a_prod" value={productId} onChange={setProductId} />
           </div>
           <div className="field">
-            <label className="lbl">ยอดตามบัญชี</label>
+            <label className="lbl">ยอดตามบัญชีในที่เก็บนี้</label>
             <input className="inp num" readOnly value={num(book, 0)} />
+          </div>
+          <div className="field">
+            <label className="lbl">คงเหลือทั้งคลัง</label>
+            <input className="inp num" readOnly value={num(whBalance, 0)} />
           </div>
           <div className="field">
             <label className="lbl" htmlFor="a_count">ยอดนับได้จริง</label>
@@ -235,7 +262,7 @@ export default function AdjustScreen() {
                 <tr key={c.key}>
                   <td>{i + 1}</td>
                   <td>{inv.prodName(c.productId)}</td>
-                  <td style={{ fontSize: 13 }}>{inv.whName(c.whId)}</td>
+                  <td style={{ fontSize: 13 }}>{inv.whLocName(c.whId, c.locId)}</td>
                   <td className="num">{num(c.book, 0)}</td>
                   <td className="num">{num(c.counted, 0)}</td>
                   <td className="num">
@@ -288,7 +315,7 @@ export default function AdjustScreen() {
                   <td>{thDate(t.date)}</td>
                   <td className="code-cell">{t.docNo}</td>
                   <td>{inv.prodName(t.productId)}</td>
-                  <td style={{ fontSize: 13 }}>{inv.whName(t.whId)}</td>
+                  <td style={{ fontSize: 13 }}>{inv.whLocName(t.whId, t.locId)}</td>
                   <td className="num">
                     <b style={{ color: t.qty > 0 ? "var(--ok)" : "var(--err)" }}>
                       {(t.qty > 0 ? "+" : "") + num(t.qty, 0)}

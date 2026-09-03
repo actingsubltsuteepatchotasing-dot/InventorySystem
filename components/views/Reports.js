@@ -10,7 +10,7 @@ import { num, thDate, todayISO } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
-import { Badge, Card, Empty, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, Empty, ProductSelect, TableWrap, WhLocFields } from "../ui";
 import { PAY_METHODS } from "@/lib/constants";
 import { CountSheetBody, ReceiptBody } from "./printBodies";
 
@@ -42,15 +42,18 @@ export default function Reports() {
   const [from, setFrom] = useState(threeMonthsAgo);
   const [to, setTo] = useState(todayISO);
   const [whId, setWhId] = useState("");
+  const [locId, setLocId] = useState("");
   const [productId, setProductId] = useState("");
 
-  const filter = { from, to, whId, productId };
+  const filter = { from, to, whId, locId, productId };
 
   const inRange = (t) => {
     if (from && t.date < from) return false;
     if (to && t.date > to) return false;
     if (productId && t.productId !== productId) return false;
     if (whId && t.whId !== whId && t.whTo !== whId) return false;
+    // กรองที่เก็บ: นับทั้งขาออกจากช่องนั้นและขาเข้าช่องนั้น (การโอน)
+    if (locId && t.locId !== locId && t.locTo !== locId) return false;
     return true;
   };
 
@@ -64,9 +67,20 @@ export default function Reports() {
         <label className="lbl" htmlFor="r_to">ถึงวันที่</label>
         <input className="inp" type="date" id="r_to" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
-      <div style={{ minWidth: 200 }}>
-        <label className="lbl" htmlFor="r_wh">คลังสินค้า</label>
-        <WarehouseSelect db={db} id="r_wh" value={whId} onChange={setWhId} includeAll />
+      <div className="form-grid" style={{ margin: 0, minWidth: 420, flex: "1 1 420px" }}>
+        <WhLocFields
+          db={db}
+          idPrefix="r"
+          whId={whId}
+          locId={locId}
+          includeAll
+          whAllLabel="ทุกคลัง"
+          locAllLabel="ทุกที่เก็บ"
+          onChange={(w, l) => {
+            setWhId(w);
+            setLocId(l);
+          }}
+        />
       </div>
       <div style={{ minWidth: 220 }}>
         <label className="lbl" htmlFor="r_prod">สินค้า</label>
@@ -111,13 +125,14 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
           if (filter.from && s.date < filter.from) return false;
           if (filter.to && s.date > filter.to) return false;
           if (filter.whId && s.whId !== filter.whId) return false;
+          if (filter.locId && s.locId !== filter.locId) return false;
           if (filter.productId) {
             return inv.itemsOfSale(s.id).some((i) => i.productId === filter.productId);
           }
           return true;
         })
         .sort((a, b) => b.ts - a.ts),
-    [db.sales, db.saleItems, filter.from, filter.to, filter.whId, filter.productId, inv]
+    [db.sales, db.saleItems, filter.from, filter.to, filter.whId, filter.locId, filter.productId, inv]
   );
 
   const totalSales = bills.reduce((s, b) => s + b.total, 0);
@@ -138,7 +153,7 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
             downloadCSV(
               ["วันที่", "เลขที่บิล", "คลัง", "ลูกค้า", "ยอดรวม", "ส่วนลด", "VAT", "ยอดสุทธิ", "วิธีชำระ", "ผู้ขาย"],
               bills.map((b) => [
-                b.date, b.docNo, inv.whName(b.whId), b.customer || "ลูกค้าทั่วไป",
+                b.date, b.docNo, inv.whLocName(b.whId, b.locId), b.customer || "ลูกค้าทั่วไป",
                 b.subtotal, b.discount, b.vat, b.total, payName(b.payMethod), b.user,
               ]),
               "บิลขาย.csv"
@@ -164,7 +179,7 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
             <tr>
               <th>วันที่</th>
               <th>เลขที่บิล</th>
-              <th>คลัง</th>
+              <th>คลัง · ที่เก็บ</th>
               <th>ลูกค้า</th>
               <th className="num">รายการ</th>
               <th className="num">ยอดสุทธิ</th>
@@ -180,7 +195,7 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
                 <tr key={b.id}>
                   <td>{thDate(b.date)}</td>
                   <td className="code-cell">{b.docNo}</td>
-                  <td style={{ fontSize: 13 }}>{inv.whName(b.whId)}</td>
+                  <td style={{ fontSize: 13 }}>{inv.whLocName(b.whId, b.locId)}</td>
                   <td>{b.customer || "ลูกค้าทั่วไป"}</td>
                   <td className="num">{items.length}</td>
                   <td className="num">
@@ -228,10 +243,14 @@ function StockReport({ inv, db, filter, FilterBar, print, toast }) {
       db.products
         .filter((p) => !filter.productId || p.id === filter.productId)
         .map((p) => {
-          const q = filter.whId ? inv.stockOf(p.id, filter.whId) : inv.stockTotal(p.id);
+          const q = filter.locId
+            ? inv.placedIn(p.id, filter.locId)
+            : filter.whId
+              ? inv.stockOf(p.id, filter.whId)
+              : inv.stockTotal(p.id);
           return { p, q, v: q * p.price };
         }),
-    [db.products, filter.productId, filter.whId, inv]
+    [db.products, filter.productId, filter.whId, filter.locId, db.placements, inv]
   );
 
   const totalQty = rows.reduce((s, r) => s + r.q, 0);
@@ -248,7 +267,8 @@ function StockReport({ inv, db, filter, FilterBar, print, toast }) {
               print({
                 title: "รายงานสรุปยอดคงเหลือ",
                 subtitle:
-                  (filter.whId ? inv.whName(filter.whId) : "ทุกคลัง") + " · ณ วันที่ " + thDate(todayISO()),
+                  (filter.whId ? inv.whLocName(filter.whId, filter.locId) : "ทุกคลัง") +
+                  " · ณ วันที่ " + thDate(todayISO()),
                 body: (
                   <table>
                     <thead>
@@ -457,7 +477,7 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
                 subtitle:
                   (p ? p.code + " · " + p.name : "") +
                   " · " +
-                  (wid ? inv.whName(wid) : "ทุกคลัง") +
+                  (wid ? inv.whLocName(wid, filter.locId) : "ทุกคลัง") +
                   " · " +
                   thDate(filter.from) +
                   " ถึง " +
@@ -469,7 +489,7 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
                         <th>วันที่</th>
                         <th>เลขที่เอกสาร</th>
                         <th>ประเภท</th>
-                        <th>คลัง</th>
+                        <th>คลัง · ที่เก็บ</th>
                         <th style={{ textAlign: "right" }}>รับ</th>
                         <th style={{ textAlign: "right" }}>จ่าย</th>
                         <th style={{ textAlign: "right" }}>คงเหลือ</th>
@@ -489,7 +509,7 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
                           <td>{thDate(r.t.date)}</td>
                           <td>{r.t.docNo}</td>
                           <td>{TYPES[r.t.type].name}</td>
-                          <td>{inv.whName(r.t.whId)}</td>
+                          <td>{inv.whLocName(r.t.whId, r.t.locId)}</td>
                           <td style={{ textAlign: "right" }}>{r.mv > 0 ? num(r.mv, 0) : ""}</td>
                           <td style={{ textAlign: "right" }}>{r.mv < 0 ? num(-r.mv, 0) : ""}</td>
                           <td style={{ textAlign: "right" }}>{num(r.bal, 0)}</td>
@@ -509,7 +529,7 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
               downloadCSV(
                 ["วันที่", "เลขที่เอกสาร", "ประเภท", "คลัง", "รับ", "จ่าย", "คงเหลือ"],
                 rows.map((r) => [
-                  r.t.date, r.t.docNo, TYPES[r.t.type].name, inv.whName(r.t.whId),
+                  r.t.date, r.t.docNo, TYPES[r.t.type].name, inv.whLocName(r.t.whId, r.t.locId),
                   r.mv > 0 ? r.mv : "", r.mv < 0 ? -r.mv : "", r.bal,
                 ]),
                 "บัตรสินค้า.csv"
@@ -525,7 +545,7 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
       {FilterBar}
       <div className="row" style={{ marginBottom: 13 }}>
         <Badge kind="info">{p ? p.code + " · " + p.name : ""}</Badge>
-        <Badge>{wid ? inv.whName(wid) : "ทุกคลัง"}</Badge>
+        <Badge>{wid ? inv.whLocName(wid, filter.locId) : "ทุกคลัง"}</Badge>
         <Badge kind="ok">ยอดยกมา {num(opening, 0)}</Badge>
         <Badge kind="ok">ยอดคงเหลือ {num(closing, 0)}</Badge>
       </div>
@@ -536,7 +556,7 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
             <th>วันที่</th>
             <th>เลขที่เอกสาร</th>
             <th>ประเภท</th>
-            <th>คลัง</th>
+            <th>คลัง · ที่เก็บ</th>
             <th className="num">รับ</th>
             <th className="num">จ่าย</th>
             <th className="num">คงเหลือ</th>
@@ -560,8 +580,8 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
                   <span className={"bdg " + TYPES[r.t.type].badge}>{TYPES[r.t.type].name}</span>
                 </td>
                 <td style={{ fontSize: 13 }}>
-                  {inv.whName(r.t.whId)}
-                  {r.t.whTo ? " → " + inv.whName(r.t.whTo) : ""}
+                  {inv.whLocName(r.t.whId, r.t.locId)}
+                  {r.t.whTo ? " → " + inv.whLocName(r.t.whTo, r.t.locTo) : ""}
                 </td>
                 <td className="num">{r.mv > 0 ? num(r.mv, 0) : ""}</td>
                 <td className="num">{r.mv < 0 ? num(-r.mv, 0) : ""}</td>
@@ -611,7 +631,7 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
               print({
                 title: "รายงาน" + T.name,
                 subtitle:
-                  (filter.whId ? inv.whName(filter.whId) + " · " : "") +
+                  (filter.whId ? inv.whLocName(filter.whId, filter.locId) + " · " : "") +
                   thDate(filter.from) + " ถึง " + thDate(filter.to),
                 body: (
                   <table>
@@ -639,7 +659,10 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
                             <td>{p ? p.code : ""}</td>
                             <td>{inv.prodName(t.productId)}</td>
                             <td>{p ? p.unit : ""}</td>
-                            <td>{inv.whName(t.whId) + (isTransfer ? " → " + inv.whName(t.whTo) : "")}</td>
+                            <td>
+                              {inv.whLocName(t.whId, t.locId) +
+                                (isTransfer ? " → " + inv.whLocName(t.whTo, t.locTo) : "")}
+                            </td>
                             <td style={{ textAlign: "right" }}>{num(t.qty, 0)}</td>
                             <td style={{ textAlign: "right" }}>
                               {num(Math.abs(t.qty) * (p ? p.price : 0), 0)}
@@ -667,11 +690,14 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
             onClick={() => {
               if (!list.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
               downloadCSV(
-                ["วันที่", "เลขที่เอกสาร", "รหัสสินค้า", "รายการสินค้า", "หน่วย", "คลัง", "คลังปลายทาง", "จำนวน", "ผู้ทำรายการ", "หมายเหตุ"],
+                ["วันที่", "เลขที่เอกสาร", "รหัสสินค้า", "รายการสินค้า", "หน่วย", "คลัง", "ที่เก็บ",
+                  "คลังปลายทาง", "ที่เก็บปลายทาง", "จำนวน", "ผู้ทำรายการ", "หมายเหตุ"],
                 list.map((t) => {
                   const p = inv.prod(t.productId);
                   return [t.date, t.docNo, p ? p.code : "", inv.prodName(t.productId), p ? p.unit : "",
-                    inv.whName(t.whId), t.whTo ? inv.whName(t.whTo) : "", t.qty, t.user, t.note || t.ref || ""];
+                    inv.whName(t.whId), t.locId ? inv.locName(t.locId) : "",
+                    t.whTo ? inv.whName(t.whTo) : "", t.locTo ? inv.locName(t.locTo) : "",
+                    t.qty, t.user, t.note || t.ref || ""];
                 }),
                 "รายงาน" + T.name + ".csv"
               );
@@ -717,8 +743,8 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
                   <td>{inv.prodName(t.productId)}</td>
                   <td>{p ? p.unit : ""}</td>
                   <td style={{ fontSize: 13 }}>
-                    {inv.whName(t.whId)}
-                    {isTransfer ? <b> → {inv.whName(t.whTo)}</b> : null}
+                    {inv.whLocName(t.whId, t.locId)}
+                    {isTransfer ? <b> → {inv.whLocName(t.whTo, t.locTo)}</b> : null}
                   </td>
                   <td className="num">
                     <b style={type === "ADJUST" ? { color: t.qty > 0 ? "var(--ok)" : "var(--err)" } : undefined}>

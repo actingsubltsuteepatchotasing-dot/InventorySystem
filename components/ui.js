@@ -3,6 +3,7 @@
 // ชิ้นส่วน UI ที่ใช้ซ้ำทั่วระบบ
 
 import { encode128 } from "@/lib/barcode";
+import { firstLocOf, locsOf } from "@/lib/db";
 import { num } from "@/lib/format";
 
 /** การ์ดพร้อมหัวข้อและปุ่มด้านขวา */
@@ -133,6 +134,93 @@ export function WarehouseSelect({ db, value, onChange, id, includeAll, allLabel 
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * เลือกที่เก็บสินค้าภายในคลังที่เลือกไว้
+ *
+ * รายการที่เก็บขึ้นกับคลังเสมอ จึงต้องส่ง whId เข้ามาด้วยทุกครั้ง
+ * ถ้าคลังนั้นยังไม่มีช่องเก็บ จะขึ้นข้อความบอกแทนที่จะปล่อยให้เลือกค่าว่างเงียบ ๆ
+ */
+export function LocationSelect({
+  db,
+  whId,
+  value,
+  onChange,
+  id,
+  includeAll,
+  allLabel = "ทุกที่เก็บ",
+  disabled,
+}) {
+  const bins = whId ? locsOf(db, whId) : [];
+  const empty = !!whId && bins.length === 0;
+
+  return (
+    <select
+      className="sel"
+      id={id}
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled || empty || (!whId && !includeAll)}
+    >
+      {includeAll ? <option value="">{allLabel}</option> : null}
+      {empty ? <option value="">— คลังนี้ยังไม่มีที่เก็บ —</option> : null}
+      {!whId && !includeAll ? <option value="">— เลือกคลังก่อน —</option> : null}
+      {bins.map((l) => (
+        <option key={l.id} value={l.id}>
+          {l.code}
+          {l.name ? " · " + l.name : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * คู่ "คลังสินค้า + ที่เก็บ" ที่ต้องไปด้วยกันเสมอ
+ *
+ * เปลี่ยนคลังเมื่อไร ที่เก็บจะถูกตั้งเป็นช่องแรกของคลังใหม่ให้ทันที
+ * ไม่งั้นจะเหลือที่เก็บของคลังเดิมค้างไว้ ซึ่งเป็นคู่ที่ใช้ไม่ได้
+ * (ในโหมดตัวกรอง includeAll จะรีเซ็ตเป็น "ทุกที่เก็บ" แทน)
+ */
+export function WhLocFields({
+  db,
+  idPrefix,
+  whId,
+  locId,
+  onChange,
+  whLabel = "คลังสินค้า",
+  locLabel = "ที่เก็บสินค้า",
+  includeAll,
+  whAllLabel,
+  locAllLabel,
+  span,
+}) {
+  return (
+    <>
+      <Field label={whLabel} htmlFor={idPrefix + "_wh"} span={span}>
+        <WarehouseSelect
+          db={db}
+          id={idPrefix + "_wh"}
+          value={whId}
+          includeAll={includeAll}
+          allLabel={whAllLabel}
+          onChange={(w) => onChange(w, includeAll ? "" : firstLocOf(db, w))}
+        />
+      </Field>
+      <Field label={locLabel} htmlFor={idPrefix + "_loc"} span={span}>
+        <LocationSelect
+          db={db}
+          whId={whId}
+          id={idPrefix + "_loc"}
+          value={locId}
+          includeAll={includeAll}
+          allLabel={locAllLabel}
+          onChange={(l) => onChange(whId, l)}
+        />
+      </Field>
+    </>
   );
 }
 

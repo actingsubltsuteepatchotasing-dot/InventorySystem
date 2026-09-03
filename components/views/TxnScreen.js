@@ -6,13 +6,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { TYPES } from "@/lib/constants";
-import { nextDocNo } from "@/lib/db";
+import { firstLocOf, nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import { Badge, Card, Empty, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, Empty, ProductSelect, TableWrap, WhLocFields } from "../ui";
+import SetupNotice from "../SetupNotice";
 
 export default function TxnScreen({ type }) {
   const inv = useInv();
@@ -27,7 +28,11 @@ export default function TxnScreen({ type }) {
 
   const [date, setDate] = useState(todayISO);
   const [whFrom, setWhFrom] = useState(db.warehouses[0].id);
-  const [whTo, setWhTo] = useState(db.warehouses[1] ? db.warehouses[1].id : db.warehouses[0].id);
+  const [locFrom, setLocFrom] = useState(() => firstLocOf(db, db.warehouses[0].id));
+
+  const whToInit = db.warehouses[1] ? db.warehouses[1].id : db.warehouses[0].id;
+  const [whTo, setWhTo] = useState(whToInit);
+  const [locTo, setLocTo] = useState(() => firstLocOf(db, whToInit));
   const [ref, setRef] = useState("");
   const [productId, setProductId] = useState(db.products[0].id);
   const [qty, setQty] = useState("");
@@ -36,12 +41,15 @@ export default function TxnScreen({ type }) {
 
   const docNo = nextDocNo(db, type, date);
 
-  // ยอดคงเหลือปัจจุบันของสินค้า+คลังที่เลือก (หักของที่อยู่ในตะกร้าแล้ว)
+  // ยอดคงเหลือของสินค้าใน "ช่องเก็บ" ที่เลือก ไม่ใช่ทั้งคลัง
+  // เพราะการเบิกและการโอนหยิบของออกจากช่องนั้นจริง ๆ
+  // (หักของที่ค้างอยู่ในตะกร้าซึ่งยังไม่ได้บันทึกออกไปแล้ว)
   const inCart = cart
-    .filter((c) => c.productId === productId && c.whId === whFrom)
+    .filter((c) => c.productId === productId && c.locId === locFrom)
     .reduce((s, c) => s + c.qty, 0);
   const balance = inv.stockOf(productId, whFrom);
-  const available = balance - inCart;
+  const inBin = inv.placedIn(productId, locFrom);
+  const available = inBin - inCart;
 
   useEffect(() => {
     setCart([]);
@@ -50,17 +58,41 @@ export default function TxnScreen({ type }) {
   function addLine() {
     const q = parseFloat(qty);
     if (!(q > 0)) return toast("กรุณาระบุจำนวนให้มากกว่า 0", "err");
-    if (isTransfer && whFrom === whTo) return toast("คลังต้นทางและปลายทางต้องไม่ใช่คลังเดียวกัน", "err");
-    if (type !== "RECEIVE" && q > available) {
-      return toast("ยอดคงเหลือไม่พอ — คงเหลือใช้ได้ " + num(available, 0) + " หน่วย", "err");
+
+    // คลังกับที่เก็บต้องมาเป็นคู่เสมอ ตรวจก่อนทุกครั้ง
+    const errFrom = inv.checkWhLoc(whFrom, locFrom, isTransfer ? "คลังต้นทาง" : "คลังสินค้า");
+    if (errFrom) return toast(errFrom, "err");
+
+    if (isTransfer) {
+      const errTo = inv.checkWhLoc(whTo, locTo, "คลังปลายทาง");
+      if (errTo) return toast(errTo, "err");
+      if (whFrom === whTo) return toast("คลังต้นทางและปลายทางต้องไม่ใช่คลังเดียวกัน", "err");
+      if (locFrom === locTo) return toast("ที่เก็บต้นทางและปลายทางต้องไม่ใช่ช่องเดียวกัน", "err");
     }
+
+    if (type !== "RECEIVE" && q > available) {
+      return toast(
+        "ของในที่เก็บ " + inv.locName(locFrom) + " ไม่พอ — ใช้ได้ " + num(available, 0) + " หน่วย",
+        "err"
+      );
+    }
+
     setCart((prev) => [
       ...prev,
-      { key: uid(), productId, qty: q, note: note.trim(), whId: whFrom, whTo: isTransfer ? whTo : "" },
+      {
+        key: uid(),
+        productId,
+        qty: q,
+        note: note.trim(),
+        whId: whFrom,
+        whTo: isTransfer ? whTo : "",
+        locId: locFrom,
+        locTo: isTransfer ? locTo : "",
+      },
     ]);
     setQty("");
     setNote("");
-    toast("เพิ่ม " + inv.prodName(productId) + " จำนวน " + num(q, 0) + " แล้ว");
+    toast("เพิ่ม " + inv.prodName(productId) + " จำนวน " + num(q, 0) + " ที่ " + inv.locName(locFrom));
   }
 
   async function saveDoc() {
@@ -77,6 +109,8 @@ export default function TxnScreen({ type }) {
       qty: c.qty,
       whId: c.whId,
       whTo: c.whTo,
+      locId: c.locId,
+      locTo: c.locTo,
       note: c.note,
       ref: isTransfer ? "" : ref.trim(),
       user: user && user.email ? user.email : "",
@@ -118,7 +152,7 @@ export default function TxnScreen({ type }) {
               <th>รหัส</th>
               <th>รายการสินค้า</th>
               <th>หน่วย</th>
-              <th>{isTransfer ? "ต้นทาง → ปลายทาง" : "คลัง"}</th>
+              <th>{isTransfer ? "ต้นทาง → ปลายทาง" : "คลัง · ที่เก็บ"}</th>
               <th style={{ textAlign: "right" }}>จำนวน</th>
             </tr>
           </thead>
@@ -133,7 +167,10 @@ export default function TxnScreen({ type }) {
                   <td>{p ? p.code : ""}</td>
                   <td>{inv.prodName(t.productId)}</td>
                   <td>{p ? p.unit : ""}</td>
-                  <td>{inv.whName(t.whId) + (isTransfer ? " → " + inv.whName(t.whTo) : "")}</td>
+                  <td>
+                    {inv.whLocName(t.whId, t.locId) +
+                      (isTransfer ? " → " + inv.whLocName(t.whTo, t.locTo) : "")}
+                  </td>
                   <td style={{ textAlign: "right" }}>{num(Math.abs(t.qty), 0)}</td>
                 </tr>
               );
@@ -156,15 +193,23 @@ export default function TxnScreen({ type }) {
     const list = db.txns.filter((t) => t.type === type).sort((a, b) => b.ts - a.ts);
     if (!list.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
     downloadCSV(
-      ["วันที่", "เลขที่เอกสาร", "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "คลัง", "คลังปลายทาง", "ผู้ทำรายการ", "หมายเหตุ"],
+      ["วันที่", "เลขที่เอกสาร", "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "คลัง", "ที่เก็บ",
+        "คลังปลายทาง", "ที่เก็บปลายทาง", "ผู้ทำรายการ", "หมายเหตุ"],
       list.map((t) => {
         const p = inv.prod(t.productId);
         return [t.date, t.docNo, p ? p.code : "", inv.prodName(t.productId), t.qty,
-          inv.whName(t.whId), t.whTo ? inv.whName(t.whTo) : "", t.user, t.note || ""];
+          inv.whName(t.whId), t.locId ? inv.locName(t.locId) : "",
+          t.whTo ? inv.whName(t.whTo) : "", t.locTo ? inv.locName(t.locTo) : "",
+          t.user, t.note || ""];
       }),
       "รายงาน" + T.name + ".csv"
     );
     toast("ส่งออกไฟล์ CSV แล้ว");
+  }
+
+  // ทุกรายการต้องระบุที่เก็บ ถ้ายังไม่มีตารางผังคลังก็บันทึกอะไรไม่ได้
+  if (!inv.locationsReady) {
+    return <SetupNotice feature={"หน้าจอ" + T.name} tables={["locations", "product_locations"]} />;
   }
 
   return (
@@ -179,15 +224,31 @@ export default function TxnScreen({ type }) {
             <label className="lbl" htmlFor="f_doc">เลขที่เอกสาร</label>
             <input className="inp" id="f_doc" value={docNo} readOnly />
           </div>
-          <div className="field">
-            <label className="lbl" htmlFor="f_wh">{isTransfer ? "คลังต้นทาง" : "คลังสินค้า"}</label>
-            <WarehouseSelect db={db} id="f_wh" value={whFrom} onChange={setWhFrom} />
-          </div>
+          <WhLocFields
+            db={db}
+            idPrefix="f_from"
+            whId={whFrom}
+            locId={locFrom}
+            whLabel={isTransfer ? "คลังต้นทาง" : "คลังสินค้า"}
+            locLabel={isTransfer ? "ที่เก็บต้นทาง" : "ที่เก็บสินค้า"}
+            onChange={(w, l) => {
+              setWhFrom(w);
+              setLocFrom(l);
+            }}
+          />
           {isTransfer ? (
-            <div className="field">
-              <label className="lbl" htmlFor="f_wh2">คลังปลายทาง</label>
-              <WarehouseSelect db={db} id="f_wh2" value={whTo} onChange={setWhTo} />
-            </div>
+            <WhLocFields
+              db={db}
+              idPrefix="f_to"
+              whId={whTo}
+              locId={locTo}
+              whLabel="คลังปลายทาง"
+              locLabel="ที่เก็บปลายทาง"
+              onChange={(w, l) => {
+                setWhTo(w);
+                setLocTo(l);
+              }}
+            />
           ) : (
             <div className="field">
               <label className="lbl" htmlFor="f_ref">
@@ -231,8 +292,14 @@ export default function TxnScreen({ type }) {
             />
           </div>
           <div className="field">
-            <label className="lbl">คงเหลือปัจจุบัน</label>
+            <label className="lbl">
+              {type === "RECEIVE" ? "คงเหลือในที่เก็บนี้" : "หยิบได้จากที่เก็บนี้"}
+            </label>
             <input className="inp num" readOnly value={num(available, 0)} />
+          </div>
+          <div className="field">
+            <label className="lbl">คงเหลือทั้งคลัง</label>
+            <input className="inp num" readOnly value={num(balance, 0)} />
           </div>
           <div className="field span2">
             <label className="lbl" htmlFor="f_note">หมายเหตุ</label>
@@ -273,7 +340,7 @@ export default function TxnScreen({ type }) {
                 <th style={{ width: 44 }}>#</th>
                 <th>สินค้า</th>
                 <th>หน่วย</th>
-                <th>{isTransfer ? "ต้นทาง → ปลายทาง" : "คลัง"}</th>
+                <th>{isTransfer ? "ต้นทาง → ปลายทาง" : "คลัง · ที่เก็บ"}</th>
                 <th className="num">จำนวน</th>
                 <th>หมายเหตุ</th>
                 <th style={{ width: 52 }} />
@@ -292,8 +359,8 @@ export default function TxnScreen({ type }) {
                     </td>
                     <td>{p ? p.unit : ""}</td>
                     <td style={{ fontSize: 13 }}>
-                      {inv.whName(c.whId)}
-                      {isTransfer ? <b> → {inv.whName(c.whTo)}</b> : null}
+                      {inv.whLocName(c.whId, c.locId)}
+                      {isTransfer ? <b> → {inv.whLocName(c.whTo, c.locTo)}</b> : null}
                     </td>
                     <td className="num">
                       <b>{num(c.qty, 0)}</b>
@@ -341,7 +408,7 @@ export default function TxnScreen({ type }) {
                 <th>วันที่</th>
                 <th>เลขที่เอกสาร</th>
                 <th>สินค้า</th>
-                <th>{isTransfer ? "ต้นทาง → ปลายทาง" : "คลัง"}</th>
+                <th>{isTransfer ? "ต้นทาง → ปลายทาง" : "คลัง · ที่เก็บ"}</th>
                 <th className="num">จำนวน</th>
                 <th>ผู้ทำรายการ</th>
               </tr>
@@ -353,8 +420,8 @@ export default function TxnScreen({ type }) {
                   <td className="code-cell">{t.docNo}</td>
                   <td>{inv.prodName(t.productId)}</td>
                   <td style={{ fontSize: 13 }}>
-                    {inv.whName(t.whId)}
-                    {isTransfer ? <b> → {inv.whName(t.whTo)}</b> : null}
+                    {inv.whLocName(t.whId, t.locId)}
+                    {isTransfer ? <b> → {inv.whLocName(t.whTo, t.locTo)}</b> : null}
                   </td>
                   <td className="num">{num(Math.abs(t.qty), 0)}</td>
                   <td>{t.user}</td>

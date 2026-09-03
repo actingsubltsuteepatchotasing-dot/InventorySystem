@@ -21,10 +21,18 @@ export default function Provinces() {
   const items = useMemo(
     () =>
       db.products
-        .map((p) => ({ p, q: inv.stockOf(p.id, w.id) }))
+        .map((p) => ({
+          p,
+          q: inv.stockOf(p.id, w.id),
+          // ของรายการหนึ่งอาจกระจายอยู่หลายช่องในคลังเดียวกัน จึงต้องรวบมาแสดงทั้งหมด
+          bins: inv
+            .locsOf(w.id)
+            .map((l) => ({ loc: l, qty: inv.placedIn(p.id, l.id) }))
+            .filter((b) => b.qty > 0),
+        }))
         .filter((x) => x.q !== 0)
         .sort((a, b) => b.q - a.q),
-    [db.products, inv, w.id]
+    [db.products, db.placements, db.locations, inv, w.id]
   );
 
   const totalQty = items.reduce((s, x) => s + x.q, 0);
@@ -44,6 +52,7 @@ export default function Provinces() {
               <th>ลำดับ</th>
               <th>รหัส</th>
               <th>รายการสินค้า</th>
+              <th>ที่เก็บ</th>
               <th>หน่วย</th>
               <th style={{ textAlign: "right" }}>คงเหลือ</th>
               <th style={{ textAlign: "right" }}>มูลค่า (บาท)</th>
@@ -55,6 +64,11 @@ export default function Provinces() {
                 <td>{i + 1}</td>
                 <td>{x.p.code}</td>
                 <td>{x.p.name}</td>
+                <td>
+                  {x.bins.length
+                    ? x.bins.map((b) => b.loc.code + " (" + num(b.qty, 0) + ")").join(", ")
+                    : "ยังไม่ระบุที่เก็บ"}
+                </td>
                 <td>{x.p.unit}</td>
                 <td style={{ textAlign: "right" }}>{num(x.q, 0)}</td>
                 <td style={{ textAlign: "right" }}>{num(x.q * x.p.price, 0)}</td>
@@ -63,7 +77,7 @@ export default function Provinces() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={4}>รวม {items.length} รายการ</td>
+              <td colSpan={5}>รวม {items.length} รายการ</td>
               <td style={{ textAlign: "right" }}>{num(totalQty, 0)}</td>
               <td style={{ textAlign: "right" }}>{num(totalValue, 0)}</td>
             </tr>
@@ -160,6 +174,7 @@ export default function Provinces() {
               <tr>
                 <th>รหัส</th>
                 <th>รายการสินค้า</th>
+                <th>ที่เก็บ</th>
                 <th>หมวดหมู่</th>
                 <th>หน่วย</th>
                 <th className="num">คงเหลือ</th>
@@ -172,6 +187,11 @@ export default function Provinces() {
                 <tr key={x.p.id}>
                   <td className="code-cell">{x.p.code}</td>
                   <td>{x.p.name}</td>
+                  <td style={{ fontSize: 13 }}>
+                    {x.bins.length
+                      ? x.bins.map((b) => b.loc.code + " (" + num(b.qty, 0) + ")").join(", ")
+                      : "ยังไม่ระบุที่เก็บ"}
+                  </td>
                   <td>{x.p.cat}</td>
                   <td>{x.p.unit}</td>
                   <td className="num">
@@ -188,7 +208,7 @@ export default function Provinces() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={4}>รวม {items.length} รายการ</td>
+                <td colSpan={5}>รวม {items.length} รายการ</td>
                 <td className="num">{num(totalQty, 0)}</td>
                 <td className="num">{num(totalValue, 0)}</td>
                 <td />

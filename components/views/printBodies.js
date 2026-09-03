@@ -6,14 +6,42 @@ import { PAY_METHODS, VAT_RATE } from "@/lib/constants";
 import { num, thDateTime } from "@/lib/format";
 import { Barcode } from "../ui";
 
-/** ใบตรวจนับสินค้า — พิมพ์ยอดตามบัญชีมาให้ เว้นช่องสำหรับกรอกยอดนับจริง */
+/**
+ * ใบตรวจนับสินค้า — พิมพ์ยอดตามบัญชีมาให้ เว้นช่องสำหรับกรอกยอดนับจริง
+ *
+ * แยกบรรทัดตามช่องเก็บ เพราะคนเดินนับของนับทีละช่อง ไม่ได้นับรวมทั้งคลัง
+ * สินค้าที่มีของในคลังแต่ยังไม่ได้ระบุที่เก็บจะขึ้นท้ายตารางไว้ให้ตามหา
+ */
 export function CountSheetBody({ db, inv, whId }) {
+  const rows = [];
+
+  inv.locsOf(whId).forEach((l) => {
+    inv
+      .placementsIn(l.id)
+      .slice()
+      .sort((a, b) => {
+        const pa = inv.prod(a.productId);
+        const pb = inv.prod(b.productId);
+        return (pa ? pa.code : "").localeCompare(pb ? pb.code : "");
+      })
+      .forEach((pl) => {
+        const p = inv.prod(pl.productId);
+        if (p) rows.push({ loc: l, p, qty: pl.qty });
+      });
+  });
+
+  db.products.forEach((p) => {
+    const rest = inv.stockOf(p.id, whId) - inv.placedQty(p.id, whId);
+    if (rest > 0) rows.push({ loc: null, p, qty: rest });
+  });
+
   return (
     <>
       <table>
         <thead>
           <tr>
             <th>ลำดับ</th>
+            <th>ที่เก็บ</th>
             <th>รหัสสินค้า</th>
             <th>รายการสินค้า</th>
             <th>หน่วยนับ</th>
@@ -24,22 +52,33 @@ export function CountSheetBody({ db, inv, whId }) {
           </tr>
         </thead>
         <tbody>
-          {db.products.map((p, i) => (
-            <tr key={p.id}>
+          {rows.map((r, i) => (
+            <tr key={(r.loc ? r.loc.id : "none") + "|" + r.p.id}>
               <td>{i + 1}</td>
-              <td>{p.code}</td>
-              <td>{p.name}</td>
-              <td>{p.unit}</td>
-              <td style={{ textAlign: "right" }}>{num(inv.stockOf(p.id, whId), 0)}</td>
+              <td>{r.loc ? r.loc.code : "ยังไม่ระบุที่เก็บ"}</td>
+              <td>{r.p.code}</td>
+              <td>{r.p.name}</td>
+              <td>{r.p.unit}</td>
+              <td style={{ textAlign: "right" }}>{num(r.qty, 0)}</td>
               <td />
               <td />
               <td />
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={5}>รวม {rows.length} บรรทัด</td>
+            <td style={{ textAlign: "right" }}>
+              {num(rows.reduce((s, r) => s + r.qty, 0), 0)}
+            </td>
+            <td colSpan={3} />
+          </tr>
+        </tfoot>
       </table>
       <div className="pr-note">
         หมายเหตุ: กรอกยอดที่นับได้จริงลงในช่อง “นับได้จริง” แล้วนำผลต่างไปบันทึกในหน้าจอปรับปรุงสินค้า
+        โดยเลือกที่เก็บให้ตรงกับบรรทัดที่นับ
       </div>
     </>
   );
@@ -51,6 +90,7 @@ export function CountSheetBody({ db, inv, whId }) {
  */
 export function ReceiptBody({ inv, sale, items }) {
   const wh = inv.wh(sale.whId);
+  const binLabel = sale.locId ? inv.locName(sale.locId) : "";
   const pay = PAY_METHODS.find((m) => m.id === sale.payMethod);
 
   return (
@@ -85,6 +125,12 @@ export function ReceiptBody({ inv, sale, items }) {
           <span>ผู้ขาย</span>
           <b>{sale.user || "-"}</b>
         </div>
+        {binLabel ? (
+          <div>
+            <span>ที่เก็บ</span>
+            <b>{binLabel}</b>
+          </div>
+        ) : null}
       </div>
 
       <table className="rc-items">

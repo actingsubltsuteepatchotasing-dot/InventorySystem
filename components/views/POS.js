@@ -8,13 +8,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { PAY_METHODS, VAT_RATE } from "@/lib/constants";
-import { findByScan, nextDocNo, saleTotals } from "@/lib/db";
+import { bestBinFor, findByScan, firstLocOf, nextDocNo, saleTotals } from "@/lib/db";
 import { resizeImage } from "@/lib/image";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcBox, IcPlus, IcPrint, IcTrash } from "../Icons";
-import { Badge, Card, Empty, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, Empty, LocationSelect, TableWrap, WhLocFields } from "../ui";
 import { ReceiptBody } from "./printBodies";
 import SetupNotice from "../SetupNotice";
 
@@ -30,6 +30,9 @@ export default function POS() {
   const imgTargetRef = useRef(null);
 
   const [whId, setWhId] = useState(db.warehouses[0] ? db.warehouses[0].id : "");
+  const [locId, setLocId] = useState(() =>
+    db.warehouses[0] ? firstLocOf(db, db.warehouses[0].id) : ""
+  );
   const [scan, setScan] = useState("");
   const [search, setSearch] = useState("");
   const [lines, setLines] = useState([]);
@@ -51,6 +54,12 @@ export default function POS() {
     if (scanRef.current) scanRef.current.focus();
   }, [whId]);
 
+  // เปลี่ยนคลังเมื่อไร ต้องล้างบิล เพราะทุกบรรทัดผูกกับช่องเก็บของคลังเดิม
+  // ถ้าปล่อยไว้จะได้บิลที่หยิบของจากช่องของคนละคลัง
+  useEffect(() => {
+    setLines([]);
+  }, [whId]);
+
   const catalog = useMemo(() => {
     const q = search.trim().toLowerCase();
     return db.products
@@ -62,25 +71,52 @@ export default function POS() {
 
   function addProduct(p, qty = 1) {
     if (!p) return;
-    const available = inv.stockOf(p.id, whId);
-    const inCart = lines.filter((l) => l.productId === p.id).reduce((s, l) => s + l.qty, 0);
 
-    if (inCart + qty > available) {
+    const errWh = inv.checkWhLoc(whId, locId, "คลังที่ขาย");
+    if (errWh) return toast(errWh, "err");
+
+    // หยิบจากช่องที่มีของรายการนี้มากที่สุด ถ้าไม่มีเลยก็ใช้ช่องเริ่มต้นของบิล
+    const bin = bestBinFor(db, p.id, whId) || locId;
+    const inBin = inv.placedIn(p.id, bin);
+    const inCart = lines
+      .filter((l) => l.productId === p.id && l.locId === bin)
+      .reduce((s, l) => s + l.qty, 0);
+
+    if (inCart + qty > inBin) {
       toast(
-        "สต็อกไม่พอ — " + p.name + " คงเหลือ " + num(available, 0) + " " + p.unit,
+        "ของในช่อง " + inv.locName(bin) + " ไม่พอ — " + p.name +
+          " มีอยู่ " + num(inBin, 0) + " " + p.unit,
         "err"
       );
       return;
     }
 
     setLines((prev) => {
-      const i = prev.findIndex((l) => l.productId === p.id);
+      const i = prev.findIndex((l) => l.productId === p.id && l.locId === bin);
       if (i >= 0) {
         return prev.map((l, k) => (k === i ? { ...l, qty: l.qty + qty } : l));
       }
-      return [...prev, { key: uid(), productId: p.id, qty, price: p.price }];
+      return [...prev, { key: uid(), productId: p.id, locId: bin, qty, price: p.price }];
     });
-    toast("เพิ่ม " + p.name);
+    toast("เพิ่ม " + p.name + " จาก " + inv.locName(bin));
+  }
+
+  /** ย้ายบรรทัดหนึ่งไปหยิบจากอีกช่องเก็บ */
+  function setLineLoc(key, newLoc) {
+    const line = lines.find((l) => l.key === key);
+    if (!line) return;
+    const inBin = inv.placedIn(line.productId, newLoc);
+    const otherInCart = lines
+      .filter((l) => l.key !== key && l.productId === line.productId && l.locId === newLoc)
+      .reduce((s, l) => s + l.qty, 0);
+
+    if (line.qty + otherInCart > inBin) {
+      return toast(
+        "ของในช่อง " + inv.locName(newLoc) + " มีเพียง " + num(inBin, 0) + " หน่วย",
+        "err"
+      );
+    }
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, locId: newLoc } : l)));
   }
 
   /** รับค่าจากเครื่องสแกน หรือจากการพิมพ์รหัสเอง แล้วกด Enter */
@@ -102,9 +138,23 @@ export default function POS() {
 
   function setQty(key, qty) {
     const n = parseFloat(qty);
-    setLines((prev) =>
-      prev.map((l) => (l.key === key ? { ...l, qty: Number.isFinite(n) && n > 0 ? n : l.qty } : l))
-    );
+    if (!Number.isFinite(n) || n <= 0) return;
+
+    const line = lines.find((l) => l.key === key);
+    if (line) {
+      const inBin = inv.placedIn(line.productId, line.locId);
+      const otherInCart = lines
+        .filter((l) => l.key !== key && l.productId === line.productId && l.locId === line.locId)
+        .reduce((s, l) => s + l.qty, 0);
+      if (n + otherInCart > inBin) {
+        return toast(
+          "ของในช่อง " + inv.locName(line.locId) + " มีเพียง " + num(inBin, 0) + " หน่วย",
+          "err"
+        );
+      }
+    }
+
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, qty: n } : l)));
   }
 
   function clearAll() {
@@ -138,17 +188,24 @@ export default function POS() {
 
   async function checkout() {
     if (!lines.length || saving) return;
-    if (!whId) return toast("กรุณาเลือกคลังที่ขาย", "err");
+    const errWh = inv.checkWhLoc(whId, locId, "คลังที่ขาย");
+    if (errWh) return toast(errWh, "err");
 
     if (!Number.isFinite(paidNum) || paidNum < totals.total) {
       return toast("รับเงินไม่ครบ — ต้องรับอย่างน้อย ฿" + num(totals.total, 2), "err");
     }
 
-    // ตรวจสต็อกอีกครั้งก่อนตัดจริง
+    // ตรวจของในช่องเก็บอีกครั้งก่อนตัดจริง (ฝั่งฐานข้อมูลตรวจซ้ำอีกชั้น)
     for (const l of lines) {
       const p = inv.prod(l.productId);
-      if (l.qty > inv.stockOf(l.productId, whId)) {
-        return toast("สต็อกไม่พอสำหรับ " + (p ? p.name : ""), "err");
+      if (!inv.locInWh(l.locId, whId)) {
+        return toast("ที่เก็บของ " + (p ? p.name : "") + " ไม่ได้อยู่ในคลังที่ขาย", "err");
+      }
+      if (l.qty > inv.placedIn(l.productId, l.locId)) {
+        return toast(
+          "ของในช่อง " + inv.locName(l.locId) + " ไม่พอสำหรับ " + (p ? p.name : ""),
+          "err"
+        );
       }
     }
 
@@ -161,6 +218,7 @@ export default function POS() {
       docNo: nextDocNo(db, "SALE", date),
       date,
       whId,
+      locId,
       customer: customer.trim(),
       subtotal: totals.subtotal,
       discount: totals.discount,
@@ -179,6 +237,7 @@ export default function POS() {
       txnId: uid(),
       saleId,
       productId: l.productId,
+      locId: l.locId,
       qty: l.qty,
       price: l.price,
       amount: Math.round(l.qty * l.price * 100) / 100,
@@ -208,8 +267,13 @@ export default function POS() {
 
   /* -------------------------------------------------------------- UI */
 
-  if (!inv.salesReady) {
-    return <SetupNotice feature="หน้าจอขายสินค้า (POS)" tables={["sales", "sale_items"]} />;
+  if (!inv.salesReady || !inv.locationsReady) {
+    return (
+      <SetupNotice
+        feature="หน้าจอขายสินค้า (POS)"
+        tables={["sales", "sale_items", "locations", "product_locations"]}
+      />
+    );
   }
 
   return (
@@ -221,10 +285,18 @@ export default function POS() {
           actions={<Badge>เลขที่บิล {docNo}</Badge>}
         >
           <div className="form-grid" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
-            <div className="field">
-              <label className="lbl" htmlFor="pos_wh">คลังที่ขาย</label>
-              <WarehouseSelect db={db} id="pos_wh" value={whId} onChange={setWhId} />
-            </div>
+            <WhLocFields
+              db={db}
+              idPrefix="pos"
+              whId={whId}
+              locId={locId}
+              whLabel="คลังที่ขาย"
+              locLabel="ที่เก็บเริ่มต้น"
+              onChange={(w, l) => {
+                setWhId(w);
+                setLocId(l);
+              }}
+            />
             <div className="field">
               <label className="lbl" htmlFor="pos_cust">ชื่อลูกค้า (ไม่บังคับ)</label>
               <input
@@ -347,6 +419,7 @@ export default function POS() {
               <thead>
                 <tr>
                   <th>สินค้า</th>
+                  <th style={{ width: 132 }}>ที่เก็บ</th>
                   <th className="num" style={{ width: 92 }}>จำนวน</th>
                   <th className="num">ราคา</th>
                   <th className="num">รวม</th>
@@ -363,6 +436,17 @@ export default function POS() {
                         <br />
                         <span className="code-cell" style={{ color: "var(--fg-faint)" }}>
                           {p ? p.code : ""}
+                        </span>
+                      </td>
+                      <td>
+                        <LocationSelect
+                          db={db}
+                          whId={whId}
+                          value={l.locId}
+                          onChange={(v) => setLineLoc(l.key, v)}
+                        />
+                        <span className="pos-meta">
+                          มีอยู่ {num(inv.placedIn(l.productId, l.locId), 0)}
                         </span>
                       </td>
                       <td className="num">

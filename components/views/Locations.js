@@ -11,7 +11,7 @@ import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcBox, IcPin, IcPlus, IcTrash } from "../Icons";
 import Modal from "../Modal";
-import { Badge, Card, Empty, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, Empty, LocationSelect, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const kindOf = (id) => LOCATION_KINDS.find((k) => k.id === id) || LOCATION_KINDS[0];
@@ -26,6 +26,7 @@ export default function Locations() {
   const [selected, setSelected] = useState(null); // location id
   const [editing, setEditing] = useState(null); // {location} หรือ {location:null} = สร้างใหม่
   const [busy, setBusy] = useState(false);
+  const [repairing, setRepairing] = useState(false);
 
   const zones = inv.zonesOf(whId);
   const bins = db.locations.filter((l) => l.whId === whId);
@@ -47,6 +48,35 @@ export default function Locations() {
   const totalPlaced = bins.reduce((s, l) => s + inv.binQty(l.id), 0);
   const totalStock = db.products.reduce((s, p) => s + inv.stockOf(p.id, whId), 0);
 
+  /**
+   * คำนวณผังที่เก็บใหม่ทั้งหมดจากรายการเคลื่อนไหว
+   *
+   * ใช้ตอนอัปเกรดจากรุ่นก่อนที่รายการยังไม่มีที่เก็บ หรือเมื่อผังหลุดจากยอดจริง
+   * (เช่นบันทึกรายการสำเร็จแต่การปรับผังพลาดกลางทาง)
+   * รายการเก่าที่ไม่มีที่เก็บจะไม่ถูกนับ ของส่วนนั้นจึงกลับไปเป็น "ยังไม่ระบุตำแหน่ง"
+   * แล้วค่อยจัดวางเองจากแผงด้านล่าง
+   */
+  async function repairLayout() {
+    if (
+      !window.confirm(
+        "คำนวณผังที่เก็บใหม่จากรายการเคลื่อนไหวทั้งหมดของทุกคลัง\n" +
+          "การจัดวางที่เคยกรอกเองจะถูกเขียนทับ ดำเนินการต่อหรือไม่?"
+      )
+    ) {
+      return;
+    }
+    setRepairing(true);
+    try {
+      const n = await inv.rebuildPlacements();
+      toast("ซ่อมผังเรียบร้อย — จัดวางใหม่ " + num(n, 0) + " รายการ");
+      setSelected(null);
+    } catch (e) {
+      toast("ซ่อมผังไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setRepairing(false);
+    }
+  }
+
   function printLayout() {
     const w = inv.wh(whId);
     print({
@@ -56,6 +86,7 @@ export default function Locations() {
         <table>
           <thead>
             <tr>
+              <th>คลังสินค้า</th>
               <th>ช่องเก็บ</th>
               <th>ชื่อเรียก</th>
               <th>ประเภท</th>
@@ -70,6 +101,7 @@ export default function Locations() {
               if (!items.length) {
                 return [
                   <tr key={l.id}>
+                    <td>{inv.whName(l.whId)}</td>
                     <td>{l.code}</td>
                     <td>{l.name}</td>
                     <td>{kindOf(l.kind).name}</td>
@@ -82,6 +114,7 @@ export default function Locations() {
                 const p = inv.prod(pl.productId);
                 return (
                   <tr key={pl.id}>
+                    <td>{i === 0 ? inv.whName(l.whId) : ""}</td>
                     <td>{i === 0 ? l.code : ""}</td>
                     <td>{i === 0 ? l.name : ""}</td>
                     <td>{i === 0 ? kindOf(l.kind).name : ""}</td>
@@ -95,7 +128,7 @@ export default function Locations() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={5}>รวมที่จัดเก็บทั้งคลัง ({bins.length} ช่อง)</td>
+              <td colSpan={6}>รวมที่จัดเก็บทั้งคลัง ({bins.length} ช่อง)</td>
               <td style={{ textAlign: "right" }}>{num(totalPlaced, 0)}</td>
             </tr>
           </tfoot>
@@ -126,11 +159,19 @@ export default function Locations() {
             <button className="btn btn-g btn-sm" onClick={printLayout} disabled={!bins.length}>
               พิมพ์ผัง
             </button>
+            <button
+              className="btn btn-o btn-sm"
+              onClick={repairLayout}
+              disabled={repairing}
+              title="คำนวณผังใหม่จากรายการเคลื่อนไหวทั้งหมด"
+            >
+              {repairing ? "กำลังซ่อม…" : "ซ่อมผังให้ตรงกับรายการ"}
+            </button>
           </>
         }
       >
         <div className="row" style={{ marginBottom: 16, alignItems: "flex-end" }}>
-          <div style={{ minWidth: 260 }}>
+          <div style={{ minWidth: 240 }}>
             <label className="lbl" htmlFor="loc_wh">คลังสินค้า</label>
             <WarehouseSelect
               db={db}
@@ -140,6 +181,20 @@ export default function Locations() {
                 setWhId(v);
                 setSelected(null);
               }}
+            />
+          </div>
+          {/* เลือกที่เก็บจากรายการได้ด้วย ไม่ต้องหาช่องบนผังอย่างเดียว
+              คลังกับที่เก็บจึงถูกระบุเป็นคู่เสมอเหมือนหน้าจออื่น */}
+          <div style={{ minWidth: 240 }}>
+            <label className="lbl" htmlFor="loc_bin">ที่เก็บสินค้า</label>
+            <LocationSelect
+              db={db}
+              whId={whId}
+              id="loc_bin"
+              value={selected || ""}
+              includeAll
+              allLabel="— ยังไม่เลือกช่อง —"
+              onChange={(v) => setSelected(v || null)}
             />
           </div>
           <Badge>{bins.length} ช่องเก็บ</Badge>
@@ -239,6 +294,12 @@ export default function Locations() {
         ) : (
           <Empty>สินค้าทุกรายการในคลังนี้ถูกระบุตำแหน่งครบแล้ว</Empty>
         )}
+        {unplaced.length ? (
+          <div className="hint" style={{ marginTop: 12 }}>
+            รายการที่ค้างมักมาจากข้อมูลเก่าที่บันทึกไว้ก่อนระบบจะบังคับให้ระบุที่เก็บ
+            กด “ซ่อมผังให้ตรงกับรายการ” ด้านบนเพื่อคำนวณใหม่ หรือจัดวางเองโดยเลือกช่องเก็บจากผัง
+          </div>
+        ) : null}
       </Card>
 
       {editing ? (
@@ -321,7 +382,9 @@ function BinPanel({ bin, onClose, onEdit, busy, setBusy }) {
 
   return (
     <Card
-      title={"ช่องเก็บ " + bin.code + (bin.name ? " — " + bin.name : "")}
+      title={
+        inv.whName(bin.whId) + " · ช่องเก็บ " + bin.code + (bin.name ? " — " + bin.name : "")
+      }
       actions={
         <>
           <Badge kind="info">{k.name}</Badge>

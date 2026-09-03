@@ -4,10 +4,10 @@
 
 import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
-import { movement } from "@/lib/db";
+import { movement, movementInBin } from "@/lib/db";
 import { num } from "@/lib/format";
 import { BarChart, HBarChart, Legend, LineChart } from "../Charts";
-import { Badge, Card, ProductSelect, WarehouseSelect } from "../ui";
+import { Badge, Card, ProductSelect, WhLocFields } from "../ui";
 
 const RANGES = [6, 12, 18, 24];
 
@@ -18,6 +18,7 @@ export default function Graphs() {
   const [months, setMonths] = useState(12);
   const [productId, setProductId] = useState("");
   const [whId, setWhId] = useState("");
+  const [locId, setLocId] = useState("");
 
   const data = useMemo(() => {
     const now = new Date();
@@ -33,13 +34,18 @@ export default function Graphs() {
     }
 
     const match = (t) =>
-      (!productId || t.productId === productId) && (!whId || t.whId === whId || t.whTo === whId);
+      (!productId || t.productId === productId) &&
+      (!whId || t.whId === whId || t.whTo === whId) &&
+      (!locId || t.locId === locId || t.locTo === locId);
+
+    // เลือกที่เก็บแล้วให้ดูการขึ้นลงของช่องนั้น ไม่ใช่ของทั้งคลัง
+    const mvOf = (t) => (locId ? movementInBin(t, locId) : movement(t, whId));
 
     // ยอดสะสมก่อนช่วงแรกที่แสดง
     let running = 0;
     db.txns.forEach((t) => {
       if (!match(t)) return;
-      if (t.date.slice(0, 7) < list[0].key) running += movement(t, whId);
+      if (t.date.slice(0, 7) < list[0].key) running += mvOf(t);
     });
 
     const inD = [];
@@ -51,7 +57,7 @@ export default function Graphs() {
       let net = 0;
       db.txns.forEach((t) => {
         if (!match(t) || t.date.slice(0, 7) !== mo.key) return;
-        const mv = movement(t, whId);
+        const mv = mvOf(t);
         if (mv > 0) i += mv;
         else if (mv < 0) o += -mv;
         net += mv;
@@ -82,7 +88,7 @@ export default function Graphs() {
       .slice(0, 10);
 
     return { labels: list.map((x) => x.label), inD, outD, balD, catItems, topProd };
-  }, [db, months, productId, whId, inv]);
+  }, [db, months, productId, whId, locId, inv]);
 
   return (
     <div className="stack">
@@ -102,9 +108,20 @@ export default function Graphs() {
             <label className="lbl" htmlFor="g_p">สินค้า</label>
             <ProductSelect db={db} id="g_p" value={productId} onChange={setProductId} includeAll />
           </div>
-          <div style={{ minWidth: 210 }}>
-            <label className="lbl" htmlFor="g_w">คลังสินค้า</label>
-            <WarehouseSelect db={db} id="g_w" value={whId} onChange={setWhId} includeAll />
+          <div className="form-grid" style={{ margin: 0, minWidth: 400, flex: "1 1 400px" }}>
+            <WhLocFields
+              db={db}
+              idPrefix="g"
+              whId={whId}
+              locId={locId}
+              includeAll
+              whAllLabel="ทุกคลัง"
+              locAllLabel="ทุกที่เก็บ"
+              onChange={(w, l) => {
+                setWhId(w);
+                setLocId(l);
+              }}
+            />
           </div>
         </div>
       </Card>

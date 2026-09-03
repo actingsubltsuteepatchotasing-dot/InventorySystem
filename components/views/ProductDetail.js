@@ -156,7 +156,7 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
                 <td>
                   <span className={"bdg " + TYPES[t.type].badge}>{TYPES[t.type].name}</span>
                 </td>
-                <td style={{ fontSize: 13 }}>{inv.whName(t.whId)}</td>
+                <td style={{ fontSize: 13 }}>{inv.whLocName(t.whId, t.locId)}</td>
                 <td className="num">{(t.qty > 0 ? "+" : "") + num(t.qty, 0)}</td>
               </tr>
             ))}
