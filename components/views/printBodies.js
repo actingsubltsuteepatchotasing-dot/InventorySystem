@@ -96,8 +96,8 @@ export function ReceiptBody({ inv, sale, items }) {
   return (
     <div className="receipt">
       <div className="rc-head">
-        <b>การยางแห่งประเทศไทย</b>
-        <span>Rubber Authority of Thailand</span>
+        <b>Ultra ERP</b>
+        <span>ระบบควบคุมสินค้าคงคลัง</span>
         {wh ? (
           <span>
             {wh.name} · จังหวัด{wh.province}

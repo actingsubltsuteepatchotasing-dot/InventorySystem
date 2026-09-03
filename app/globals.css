@@ -1,6 +1,6 @@
 /* ============================================================
-   ระบบควบคุมสินค้าคงคลัง การยางแห่งประเทศไทย
-   Design tokens — โทนสีเขียว กยท.
+   Ultra ERP — ระบบควบคุมสินค้าคงคลัง
+   Design tokens — เปลี่ยนโทนสีได้จากปุ่มธีมบนแถบบน (เขียว / ฟ้า / ม่วง)
    ============================================================ */
 :root {
   --brand: #00693c;
@@ -34,6 +34,76 @@
   --sidebar-w: 250px;
   --sans: "Noto Sans Thai", "Sarabun", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, Consolas, "SF Mono", Menlo, monospace;
+}
+
+/* ============================================================
+   ธีมสี — เปลี่ยนได้จากปุ่มบนแถบบน
+   ตั้งค่าเป็น data-theme บน <html> แล้วทับเฉพาะโทนแบรนด์กับสีพื้น
+   สีสื่อความหมาย (--ok / --warn / --err / --info) ไม่เปลี่ยนตามธีม
+   เพราะสีเตือนต้องอ่านออกเหมือนกันทุกธีม
+   ============================================================ */
+[data-theme="blue"] {
+  --brand: #0b5fa5;
+  --brand-d: #084a80;
+  --brand-l: #1a7fd4;
+  --brand-50: #eaf2fa;
+  --brand-100: #d3e4f5;
+  --accent: #45b0cf;
+
+  --bg: #f4f7fa;
+  --surface-2: #fafbfc;
+  --fg: #16202b;
+  --fg-muted: #5c6773;
+  --fg-faint: #8a939d;
+  --border: #dde3ea;
+  --border-strong: #c3ccd6;
+
+  --shadow: 0 1px 2px rgba(0, 24, 48, 0.05), 0 6px 20px -8px rgba(0, 24, 48, 0.14);
+  --shadow-lg: 0 12px 40px -12px rgba(0, 24, 48, 0.28);
+}
+
+[data-theme="purple"] {
+  --brand: #6b3fa0;
+  --brand-d: #52307b;
+  --brand-l: #8b5cc7;
+  --brand-50: #f2edf9;
+  --brand-100: #e3d8f2;
+  --accent: #c76bd4;
+
+  --bg: #f7f5fa;
+  --surface-2: #fbfafc;
+  --fg: #1f1a29;
+  --fg-muted: #665c73;
+  --fg-faint: #918a9d;
+  --border: #e3dcea;
+  --border-strong: #ccc2d6;
+
+  --shadow: 0 1px 2px rgba(30, 0, 50, 0.05), 0 6px 20px -8px rgba(30, 0, 50, 0.14);
+  --shadow-lg: 0 12px 40px -12px rgba(30, 0, 50, 0.28);
+}
+
+/* ---------- ปุ่มเลือกธีมบนแถบบน ---------- */
+.theme-pick { display: flex; align-items: center; gap: 6px; }
+.theme-dot {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  cursor: pointer;
+  background: var(--c);
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.theme-dot:hover { transform: scale(1.12); }
+.theme-dot[aria-pressed="true"] {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 2px var(--surface) inset;
+}
+.theme-dot:focus-visible { outline: 2px solid var(--brand-d); outline-offset: 2px; }
+
+@media (max-width: 720px) {
+  /* จอเล็กแถบบนแน่นอยู่แล้ว เหลือแค่สีที่ใช้อยู่ให้กดสลับ */
+  .theme-pick .theme-dot[aria-pressed="false"] { display: none; }
 }
 
 * { box-sizing: border-box; }
@@ -108,9 +178,9 @@ table { border-collapse: collapse; width: 100%; }
   display: grid;
   place-items: center;
   padding: 20px;
-  background: radial-gradient(ellipse 70% 60% at 15% 10%, rgba(168, 207, 69, 0.28), transparent 60%),
-    radial-gradient(ellipse 70% 70% at 90% 90%, rgba(15, 138, 77, 0.3), transparent 60%),
-    linear-gradient(160deg, #00512f, #00693c 55%, #0f8a4d);
+  background: radial-gradient(ellipse 70% 60% at 15% 10%, rgba(255, 255, 255, 0.22), transparent 60%),
+    radial-gradient(ellipse 70% 70% at 90% 90%, rgba(0, 0, 0, 0.18), transparent 60%),
+    linear-gradient(160deg, var(--brand-d), var(--brand) 55%, var(--brand-l));
 }
 .login-card {
   width: 100%;
@@ -245,7 +315,7 @@ table { border-collapse: collapse; width: 100%; }
 /* ---------- App shell ---------- */
 .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
 .sidebar {
-  background: linear-gradient(180deg, var(--brand-d), var(--brand) 45%, #00713f);
+  background: linear-gradient(180deg, var(--brand-d), var(--brand) 45%, var(--brand-l));
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -1123,11 +1193,11 @@ body.col-resizing { cursor: col-resize; user-select: none; }
     display: flex;
     align-items: flex-start;
     gap: 14px;
-    border-bottom: 2.5px solid #00693c;
+    border-bottom: 2.5px solid var(--brand);
     padding-bottom: 10px;
     margin-bottom: 14px;
   }
-  .pr-head .org b { display: block; font-size: 14pt; color: #00693c; }
+  .pr-head .org b { display: block; font-size: 14pt; color: var(--brand); }
   .pr-head .org span { font-size: 9.5pt; color: #444; }
   .pr-head .rt { margin-left: auto; text-align: right; font-size: 9.5pt; color: #444; }
   .pr-title { text-align: center; font-size: 13.5pt; font-weight: 700; margin: 6px 0 3px; }

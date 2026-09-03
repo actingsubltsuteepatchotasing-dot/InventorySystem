@@ -11,6 +11,7 @@ import {
 import BackupModal from "./BackupModal";
 import ChatWidget from "./ChatWidget";
 import { InstallButton } from "./PWA";
+import { ThemePicker } from "./Theme";
 import { SetupBanner } from "./SetupNotice";
 import Dashboard from "./views/Dashboard";
 import TxnScreen from "./views/TxnScreen";
@@ -135,9 +136,9 @@ export default function Shell() {
     <div className="app">
       <aside className={"sidebar" + (menuOpen ? " open" : "")}>
         <div className="brand">
-          <Logo size={36} ring="rgba(255,255,255,.16)" vein="#00512F" />
+          <Logo size={36} ring="rgba(255,255,255,.16)" vein="var(--brand-d)" />
           <div className="brand-txt">
-            <strong>สินค้าคงคลัง กยท.</strong>
+            <strong>Ultra ERP</strong>
             <span>Inventory Control</span>
           </div>
         </div>
@@ -182,6 +183,7 @@ export default function Shell() {
             <div className="sub">{current.sub}</div>
           </div>
           <div className="topbar-right">
+            <ThemePicker />
             <InstallButton />
             <button className="btn btn-g btn-sm" onClick={() => setBackup(true)} title="สำรอง / กู้คืนข้อมูล">
               <IcData size={15} />

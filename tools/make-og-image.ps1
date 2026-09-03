@@ -24,7 +24,7 @@ if (-not (Test-Path $src)) { throw "not found: $src" }
 $W = 1200
 $H = 630
 
-$GREEN = [System.Drawing.Color]::FromArgb(0, 105, 60)      # สีแบรนด์ กยท. #00693C
+$GREEN = [System.Drawing.Color]::FromArgb(0, 105, 60)      # สีแบรนด์เขียวของโปรแกรม #00693C
 $INK   = [System.Drawing.Color]::FromArgb(26, 41, 33)
 $MUTE  = [System.Drawing.Color]::FromArgb(92, 112, 100)
 $BG    = [System.Drawing.Color]::FromArgb(244, 247, 245)   # เท่ากับ background_color ใน manifest
@@ -51,7 +51,7 @@ $brushInk   = New-Object System.Drawing.SolidBrush($INK)
 $brushMute  = New-Object System.Drawing.SolidBrush($MUTE)
 $brushGreen = New-Object System.Drawing.SolidBrush($GREEN)
 
-# แถบเขียวบน-ล่าง ให้การ์ดดูเป็นของ กยท. แม้รูปสินค้าจะเป็นโทนม่วง
+# แถบเขียวบน-ล่าง ให้การ์ดดูเป็นชุดเดียวกับโปรแกรม แม้รูปสินค้าจะเป็นโทนม่วง
 $g.FillRectangle($brushGreen, 0, 0, $W, 16)
 $g.FillRectangle($brushGreen, 0, $H - 16, $W, 16)
 
@@ -86,9 +86,8 @@ $bold = [System.Drawing.FontStyle]::Bold
 $reg  = [System.Drawing.FontStyle]::Regular
 
 $y = 128.0
-$y = $y + (Draw-Fit -Text "การยางแห่งประเทศไทย (กยท.)" -X $TX -Y $y -MaxWidth $TW -Size 26 -Style $bold -Brush $brushGreen) + 14
-$y = $y + (Draw-Fit -Text "ระบบควบคุม" -X $TX -Y $y -MaxWidth $TW -Size 66 -Style $bold -Brush $brushInk) + 2
-$y = $y + (Draw-Fit -Text "สินค้าคงคลัง" -X $TX -Y $y -MaxWidth $TW -Size 66 -Style $bold -Brush $brushInk) + 26
+$y = $y + (Draw-Fit -Text "ระบบควบคุมสินค้าคงคลัง" -X $TX -Y $y -MaxWidth $TW -Size 26 -Style $bold -Brush $brushGreen) + 14
+$y = $y + (Draw-Fit -Text "Ultra ERP" -X $TX -Y $y -MaxWidth $TW -Size 96 -Style $bold -Brush $brushInk) + 26
 
 # เส้นคั่นสั้น ๆ ให้บล็อกข้อความไม่ติดกันเป็นพืด
 $g.FillRectangle($brushGreen, $TX, $y, 72, 5)

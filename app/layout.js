@@ -1,7 +1,7 @@
 import "./globals.css";
 import Providers from "@/components/Providers";
 
-const TITLE = "ระบบควบคุมสินค้าคงคลัง | การยางแห่งประเทศไทย";
+const TITLE = "Ultra ERP — ระบบควบคุมสินค้าคงคลัง";
 const DESCRIPTION =
   "ระบบควบคุมสินค้าคงคลัง (Inventory Control) — รับ / เบิก / โอน / ปรับปรุงสินค้า พร้อมรายงานและกราฟสรุป";
 
@@ -29,11 +29,11 @@ export const metadata = {
   metadataBase: new URL(siteUrl()),
   title: TITLE,
   description: DESCRIPTION,
-  applicationName: "คลังสินค้า กยท.",
+  applicationName: "Ultra ERP",
   // iOS ไม่อ่าน manifest จึงต้องบอกผ่าน meta แยก
   appleWebApp: {
     capable: true,
-    title: "คลังสินค้า กยท.",
+    title: "Ultra ERP",
     statusBarStyle: "default",
   },
   formatDetection: { telephone: false },
@@ -43,7 +43,7 @@ export const metadata = {
     type: "website",
     locale: "th_TH",
     url: "/",
-    siteName: "ระบบควบคุมสินค้าคงคลัง กยท.",
+    siteName: "Ultra ERP",
     title: TITLE,
     description: DESCRIPTION,
     images: [
@@ -52,7 +52,7 @@ export const metadata = {
         width: 1200,
         height: 630,
         type: "image/png",
-        alt: "ระบบควบคุมสินค้าคงคลัง การยางแห่งประเทศไทย",
+        alt: "Ultra ERP — ระบบควบคุมสินค้าคงคลัง",
       },
     ],
   },
@@ -76,6 +76,18 @@ export default function RootLayout({ children }) {
   return (
     <html lang="th">
       <body>
+        {/*
+          ตั้งธีมก่อนเบราว์เซอร์วาดครั้งแรก ไม่งั้นจะเห็นสีเริ่มต้นแวบหนึ่ง
+          ก่อนที่ React จะ mount แล้วค่อยเปลี่ยนเป็นสีที่ผู้ใช้เลือกไว้
+          ห่อ try ไว้เพราะโหมดส่วนตัวบางเบราว์เซอร์อ่าน localStorage ไม่ได้
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('ultra-theme');" +
+              "if(t==='blue'||t==='purple')document.documentElement.setAttribute('data-theme',t);}catch(e){}",
+          }}
+        />
         <Providers>{children}</Providers>
       </body>
     </html>

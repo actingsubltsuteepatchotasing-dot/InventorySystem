@@ -75,14 +75,14 @@ export default function Graphs() {
       byCat[p.cat] = (byCat[p.cat] || 0) + q;
     });
     const catItems = Object.keys(byCat)
-      .map((k) => ({ label: k, value: byCat[k], color: "#0F8A4D" }))
+      .map((k) => ({ label: k, value: byCat[k], color: "var(--brand-l)" }))
       .sort((a, b) => b.value - a.value);
 
     const topProd = db.products
       .map((p) => ({
         label: p.name,
         value: whId ? inv.stockOf(p.id, whId) : inv.stockTotal(p.id),
-        color: "#00693C",
+        color: "var(--brand)",
       }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
@@ -128,7 +128,7 @@ export default function Graphs() {
 
       <Card title="ปริมาณคงเหลือ (แนวโน้มขึ้น-ลง)" actions={<Badge>ยอดสะสมปลายเดือน</Badge>}>
         <div className="chart">
-          <LineChart data={data.balD} labels={data.labels} color="#00693C" height={260} />
+          <LineChart data={data.balD} labels={data.labels} color="var(--brand)" height={260} />
         </div>
       </Card>
 
@@ -138,14 +138,14 @@ export default function Graphs() {
             labels={data.labels}
             height={270}
             series={[
-              { name: "รับเข้า", color: "#0F8A4D", data: data.inD },
+              { name: "รับเข้า", color: "var(--brand-l)", data: data.inD },
               { name: "จ่ายออก", color: "#B3261E", data: data.outD },
             ]}
           />
         </div>
         <Legend
           items={[
-            { name: "รับเข้า", color: "#0F8A4D" },
+            { name: "รับเข้า", color: "var(--brand-l)" },
             { name: "จ่ายออก", color: "#B3261E" },
           ]}
         />

@@ -42,9 +42,9 @@ export default function Login() {
           <div>
             <h1>ระบบควบคุมสินค้าคงคลัง</h1>
             <small>
-              การยางแห่งประเทศไทย
+              Ultra ERP
               <br />
-              Rubber Authority of Thailand
+              ระบบควบคุมสินค้าคงคลัง
             </small>
           </div>
         </div>

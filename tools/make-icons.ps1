@@ -3,7 +3,7 @@
 # รันด้วย:  powershell -ExecutionPolicy Bypass -File tools\make-icons.ps1
 #
 # ใช้ System.Drawing ที่มากับ Windows จึงไม่ต้องติดตั้งอะไรเพิ่ม
-# ถ้าอยากกลับไปใช้โลโก้ใบยาง กยท. ที่วาดด้วยโค้ด ให้รัน tools\make-icons.mjs แทน
+# ถ้าอยากกลับไปใช้โลโก้ใบไม้ที่วาดด้วยโค้ด ให้รัน tools\make-icons.mjs แทน
 
 param(
   [string]$Source = "components\fav\ERP.jpg",

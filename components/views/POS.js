@@ -54,6 +54,10 @@ export default function POS() {
   const [paid, setPaid] = useState("");
   const [saving, setSaving] = useState(false);
   const [lastSale, setLastSale] = useState(null);
+  const [date, setDate] = useState(todayISO);
+  // เลขที่บิลกรอกเองได้ แต่ถ้ายังไม่แตะ ให้วิ่งตามเลขรันนิ่งของวันที่ที่เลือก
+  const [docNoEdited, setDocNoEdited] = useState(false);
+  const [docNoInput, setDocNoInput] = useState("");
   const [billWidth, setBillWidth] = useState(BILL_DEFAULT);
 
   // อ่านค่าที่เคยปรับไว้หลัง mount เท่านั้น
@@ -79,7 +83,11 @@ export default function POS() {
   const totals = saleTotals(lines, discount, VAT_RATE);
   const paidNum = parseFloat(paid);
   const change = Number.isFinite(paidNum) ? paidNum - totals.total : 0;
-  const docNo = nextDocNo(db, "SALE", todayISO());
+  const autoDocNo = nextDocNo(db, "SALE", date);
+  const docNo = docNoEdited ? docNoInput : autoDocNo;
+
+  /** เลขที่บิลนี้ถูกใช้ไปแล้วหรือยัง — ฐานข้อมูลตั้ง unique ไว้ ถ้าซ้ำจะบันทึกไม่ผ่าน */
+  const docNoTaken = db.sales.some((x) => x.docNo === docNo.trim());
 
   // โฟกัสช่องยิงบาร์โค๊ดไว้เสมอ เครื่องสแกนจะพิมพ์เข้าช่องนี้ได้ทันที
   useEffect(() => {
@@ -241,13 +249,19 @@ export default function POS() {
       }
     }
 
-    const date = todayISO();
-    const ts = Date.now();
+    const doc = docNo.trim();
+    if (!doc) return toast("กรุณาระบุเลขที่บิล", "err");
+    if (docNoTaken) return toast("เลขที่บิล " + doc + " ถูกใช้ไปแล้ว", "err");
+    if (!date) return toast("กรุณาเลือกวันที่", "err");
+
+    // ขายย้อนหลังให้ลงเวลาเที่ยงของวันนั้น ส่วนขายวันนี้ใช้เวลาจริง
+    // จะได้เรียงลำดับในรายงานได้ถูกและไม่ไปทับรายการอื่น
+    const ts = date === todayISO() ? Date.now() : new Date(date + "T12:00:00").getTime();
     const saleId = uid();
 
     const sale = {
       id: saleId,
-      docNo: nextDocNo(db, "SALE", date),
+      docNo: doc,
       date,
       whId,
       locId,
@@ -280,6 +294,9 @@ export default function POS() {
       await inv.addSale(sale, items);
       toast("บันทึกการขาย " + sale.docNo + " เรียบร้อย");
       setLastSale({ sale, items });
+      // ออกเลขใหม่ให้บิลถัดไป ไม่ให้เลขที่กรอกเองค้างจนบันทึกซ้ำ
+      setDocNoEdited(false);
+      setDocNoInput("");
       clearAll();
       printReceipt(sale, items);
     } catch (e) {
@@ -314,9 +331,51 @@ export default function POS() {
       <div className="pos-left">
         <Card
           title="ขายสินค้า"
-          actions={<Badge>เลขที่บิล {docNo}</Badge>}
+          actions={
+            <Badge kind={docNoTaken ? "err" : "gray"}>
+              {docNoTaken ? "เลขที่บิลซ้ำ" : "เลขที่บิล " + docNo}
+            </Badge>
+          }
         >
           <div className="form-grid" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
+            <div className="field">
+              <label className="lbl" htmlFor="pos_date">วันที่</label>
+              <input
+                className="inp"
+                type="date"
+                id="pos_date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label className="lbl" htmlFor="pos_doc">เลขที่บิล</label>
+              <div className="row" style={{ flexWrap: "nowrap" }}>
+                <input
+                  className="inp"
+                  id="pos_doc"
+                  value={docNo}
+                  onChange={(e) => {
+                    setDocNoEdited(true);
+                    setDocNoInput(e.target.value);
+                  }}
+                  placeholder={autoDocNo}
+                />
+                <button
+                  className="btn btn-g btn-sm"
+                  type="button"
+                  style={{ whiteSpace: "nowrap" }}
+                  title="กลับไปใช้เลขรันนิ่งของวันที่ที่เลือก"
+                  onClick={() => {
+                    setDocNoEdited(false);
+                    setDocNoInput("");
+                  }}
+                  disabled={!docNoEdited}
+                >
+                  เลขอัตโนมัติ
+                </button>
+              </div>
+            </div>
             <WhLocFields
               db={db}
               idPrefix="pos"

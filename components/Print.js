@@ -47,10 +47,10 @@ function PrintDoc({ title, subtitle, body, signers = true, receipt = false }) {
   return (
     <>
       <div className="pr-head">
-        <Logo size={46} vein="#00693C" />
+        <Logo size={46} />
         <div className="org">
-          <b>การยางแห่งประเทศไทย</b>
-          <span>Rubber Authority of Thailand · ระบบควบคุมสินค้าคงคลัง</span>
+          <b>Ultra ERP</b>
+          <span>ระบบควบคุมสินค้าคงคลัง</span>
         </div>
         <div className="rt">
           พิมพ์โดย: admin

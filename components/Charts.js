@@ -62,7 +62,7 @@ export function BarChart({ series, labels, height = 260 }) {
 }
 
 /** กราฟเส้นพร้อมพื้นที่ใต้กราฟ — แนวโน้มยอดคงเหลือ */
-export function LineChart({ data, labels, color = "#00693C", height = 250 }) {
+export function LineChart({ data, labels, color = "var(--brand)", height = 250 }) {
   const W = 760;
   const PL = 66, PR = 14, PT = 14, PB = 34;
   const iw = W - PL - PR;
@@ -142,7 +142,7 @@ export function HBarChart({ items }) {
               {ellipsis(it.label, 22)}
             </text>
             <rect x={PL} y={y + 4} width={iw} height="16" fill="#EAF5EF" rx="4" />
-            <rect x={PL} y={y + 4} width={Math.max(2, w)} height="16" fill={it.color || "#00693C"} rx="4">
+            <rect x={PL} y={y + 4} width={Math.max(2, w)} height="16" fill={it.color || "var(--brand)"} rx="4">
               <title>{`${it.label}: ${num(it.value, 0)}`}</title>
             </rect>
             <text x={PL + iw + 8} y={y + 16} fontSize="11.5" fill="#5C6B62">

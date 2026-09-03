@@ -111,8 +111,8 @@ export const IcPrint = (p) => (
   </Ico>
 );
 
-/** ตราสัญลักษณ์ กยท. (ใบยางในวงกลม) */
-export function Logo({ size = 36, ring = "#00693C", leaf = "#A8CF45", vein = "#00512F" }) {
+/** ตราสัญลักษณ์โปรแกรม (ใบไม้ในวงกลม) */
+export function Logo({ size = 36, ring = "var(--brand)", leaf = "var(--accent)", vein = "var(--brand-d)" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
       <circle cx="32" cy="32" r="30" fill={ring} />

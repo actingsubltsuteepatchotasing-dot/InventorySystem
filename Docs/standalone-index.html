@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ระบบควบคุมสินค้าคงคลัง | การยางแห่งประเทศไทย</title>
+<title>Ultra ERP | ระบบควบคุมสินค้าคงคลัง</title>
 <meta name="description" content="ระบบควบคุมสินค้าคงคลัง (Inventory Control) — รับ / เบิก / โอน / ปรับปรุงสินค้า พร้อมรายงานและกราฟสรุป">
 <style>
 /* ============================================================
-   Design tokens — โทนสีเขียว การยางแห่งประเทศไทย (กยท.)
+   Design tokens — โทนสีเขียวเริ่มต้นของโปรแกรม ()
    ============================================================ */
 :root{
-  --brand:#00693C;          /* เขียวหลัก กยท. */
+  --brand:#00693C;          /* เขียวหลัก */
   --brand-d:#004F2D;        /* เขียวเข้ม */
   --brand-l:#0F8A4D;        /* เขียวสว่าง */
   --brand-50:#EAF5EF;       /* เขียวจาง (พื้นหลัง) */
@@ -342,7 +342,7 @@ table.tbl tfoot td{background:var(--brand-50);font-weight:700;border-top:2px sol
       </svg>
       <div>
         <h1>ระบบควบคุมสินค้าคงคลัง</h1>
-        <small>การยางแห่งประเทศไทย<br>Rubber Authority of Thailand</small>
+        <small>Ultra ERP<br>ระบบควบคุมสินค้าคงคลัง</small>
       </div>
     </div>
 
@@ -373,7 +373,7 @@ table.tbl tfoot td{background:var(--brand-50);font-weight:700;border-top:2px sol
         <path d="M32 18v30M32 30l7-6M32 38l-7-6" stroke="#00512F" stroke-width="2.6" stroke-linecap="round"/>
       </svg>
       <div class="brand-txt">
-        <strong>สินค้าคงคลัง กยท.</strong>
+        <strong>Ultra ERP</strong>
         <span>Inventory Control</span>
       </div>
     </div>
@@ -413,7 +413,7 @@ table.tbl tfoot td{background:var(--brand-50);font-weight:700;border-top:2px sol
 <script>
 "use strict";
 /* ============================================================================
-   ระบบควบคุมสินค้าคงคลัง — การยางแห่งประเทศไทย
+   Ultra ERP — ระบบควบคุมสินค้าคงคลัง
    ไฟล์เดียว ไม่มี dependency ภายนอก · เก็บข้อมูลด้วย localStorage (ไม่ใช้ Database)
    ============================================================================ */
 
@@ -771,7 +771,7 @@ function printDoc(title, subtitle, innerHTML, signers) {
     '<div class="pr-head">' +
       '<svg width="46" height="46" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#00693C"/>' +
       '<path d="M32 13c-9 6-14 13-14 21a14 14 0 0 0 28 0c0-8-5-15-14-21z" fill="#A8CF45"/></svg>' +
-      '<div class="org"><b>การยางแห่งประเทศไทย</b><span>Rubber Authority of Thailand · ระบบควบคุมสินค้าคงคลัง</span></div>' +
+      '<div class="org"><b>Ultra ERP</b><span>ระบบควบคุมสินค้าคงคลัง · ระบบควบคุมสินค้าคงคลัง</span></div>' +
       '<div class="rt">พิมพ์โดย: admin<br>วันที่พิมพ์: ' + thDateTime(now.getTime()) + '</div>' +
     '</div>' +
     '<div class="pr-title">' + esc(title) + '</div>' +
