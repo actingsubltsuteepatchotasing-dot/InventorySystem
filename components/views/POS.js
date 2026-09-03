@@ -18,6 +18,18 @@ import { Badge, Card, Empty, LocationSelect, TableWrap, WhLocFields } from "../u
 import { ReceiptBody } from "./printBodies";
 import SetupNotice from "../SetupNotice";
 
+/* ------------------------------------------- ความกว้างแผงบิลที่ลากปรับได้ */
+
+const BILL_MIN = 320;
+const BILL_MAX = 760;
+const BILL_DEFAULT = 430;
+/** เหลือพื้นที่ให้แคตตาล็อกสินค้าอย่างน้อยเท่านี้ ไม่งั้นการ์ดสินค้าจะบีบจนอ่านไม่ออก */
+const CATALOG_MIN = 360;
+const BILL_KEY = "raot-pos-bill-width";
+
+const clampBill = (n, max = BILL_MAX) =>
+  Math.round(Math.max(BILL_MIN, Math.min(max, n)));
+
 export default function POS() {
   const inv = useInv();
   const { db } = inv;
@@ -42,6 +54,26 @@ export default function POS() {
   const [paid, setPaid] = useState("");
   const [saving, setSaving] = useState(false);
   const [lastSale, setLastSale] = useState(null);
+  const [billWidth, setBillWidth] = useState(BILL_DEFAULT);
+
+  // อ่านค่าที่เคยปรับไว้หลัง mount เท่านั้น
+  // แตะ localStorage ตอน render จะพังตอน server render
+  useEffect(() => {
+    try {
+      const saved = parseInt(window.localStorage.getItem(BILL_KEY), 10);
+      if (Number.isFinite(saved)) setBillWidth(clampBill(saved));
+    } catch (e) {
+      // โหมดส่วนตัวหรือเบราว์เซอร์ที่ปิด storage — ใช้ค่าเริ่มต้นไป
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(BILL_KEY, String(billWidth));
+    } catch (e) {
+      // เก็บไม่ได้ก็ไม่เป็นไร แค่จำค่าข้ามครั้งไม่ได้
+    }
+  }, [billWidth]);
 
   const cashierName = user && user.email ? user.email : "";
   const totals = saleTotals(lines, discount, VAT_RATE);
@@ -277,7 +309,7 @@ export default function POS() {
   }
 
   return (
-    <div className="pos">
+    <div className="pos" style={{ "--pos-w": billWidth + "px" }}>
       {/* ---------------- ซ้าย: ค้นหา + แคตตาล็อกสินค้า ---------------- */}
       <div className="pos-left">
         <Card
@@ -400,6 +432,8 @@ export default function POS() {
           <input ref={imgRef} type="file" accept="image/*" hidden onChange={onPickImage} />
         </Card>
       </div>
+
+      <PosSplitter width={billWidth} onChange={setBillWidth} />
 
       {/* ---------------- ขวา: บิลปัจจุบัน ---------------- */}
       <div className="pos-right">
@@ -579,6 +613,91 @@ export default function POS() {
           </div>
         </Card>
       </div>
+    </div>
+  );
+}
+
+/**
+ * แถบคั่นกลางหน้า POS — ลากด้วยเมาส์เพื่อปรับความกว้างแผงบิล
+ *
+ * ใช้ pointer event ตัวเดียวจบ รองรับทั้งเมาส์ ปากกา และนิ้ว
+ * setPointerCapture ทำให้ลากออกนอกตัวแถบแล้วยังตามต่อได้
+ * ไม่ต้องไปผูก listener ที่ window เอง และไม่ค้างเมื่อปล่อยนอกหน้าต่าง
+ *
+ * รองรับคีย์บอร์ดด้วย เพราะเป็น role="separator" ที่โฟกัสได้
+ */
+function PosSplitter({ width, onChange }) {
+  const ref = useRef(null);
+
+  /** ความกว้างสูงสุดที่ยังเหลือที่ให้แคตตาล็อกพอแสดงการ์ดสินค้า */
+  function maxWidth() {
+    const box = ref.current && ref.current.parentElement;
+    if (!box) return BILL_MAX;
+    // หักช่องไฟสองช่อง (16px x 2) กับตัวแถบคั่นเอง (10px) ออกก่อน
+    // ไม่งั้นจะคำนวณเผื่อไว้เกินจริงราว 42px แล้วการ์ดสินค้าจะบีบเกินที่ตั้งใจ
+    return Math.min(BILL_MAX, box.getBoundingClientRect().width - CATALOG_MIN - 42);
+  }
+
+  function resizeTo(clientX) {
+    const box = ref.current && ref.current.parentElement;
+    if (!box) return;
+    const r = box.getBoundingClientRect();
+    // ลากไปทางซ้าย = แผงบิลกว้างขึ้น จึงวัดจากขอบขวาของกริด
+    onChange(clampBill(r.right - clientX, maxWidth()));
+  }
+
+  function down(e) {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.body.classList.add("col-resizing");
+  }
+
+  function move(e) {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    resizeTo(e.clientX);
+  }
+
+  function up(e) {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    document.body.classList.remove("col-resizing");
+  }
+
+  function key(e) {
+    const step = e.shiftKey ? 48 : 16;
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      onChange(clampBill(width + step, maxWidth()));
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      onChange(clampBill(width - step, maxWidth()));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      onChange(clampBill(BILL_DEFAULT, maxWidth()));
+    }
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="pos-split no-print"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="ปรับความกว้างแผงบิล"
+      aria-valuenow={width}
+      aria-valuemin={BILL_MIN}
+      aria-valuemax={BILL_MAX}
+      tabIndex={0}
+      title="ลากเพื่อปรับความกว้าง · ดับเบิลคลิกเพื่อคืนค่าเดิม"
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
+      onDoubleClick={() => onChange(BILL_DEFAULT)}
+      onKeyDown={key}
+    >
+      <span />
     </div>
   );
 }

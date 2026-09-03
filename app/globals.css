@@ -722,7 +722,35 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
 .map-bin .bin-items { font-size: 11.5px; color: var(--fg-faint); min-height: 15px; }
 
 /* ---------- POS ---------- */
-.pos { display: grid; grid-template-columns: 1fr 430px; gap: 16px; align-items: start; }
+/* ความกว้างแผงบิลเก็บใน --pos-w ให้ลากปรับได้ ค่าเริ่มต้นเท่าเดิมคือ 430px */
+.pos { display: grid; grid-template-columns: 1fr 10px var(--pos-w, 430px); gap: 16px; align-items: start; }
+
+/* แถบคั่นกลาง — พื้นที่กดกว้าง 10px แต่เส้นที่เห็นบางกว่านั้น จะได้จับง่ายแต่ไม่เกะกะ */
+.pos-split {
+  align-self: stretch;
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  border-radius: 6px;
+  background: transparent;
+  /* ถ้าไม่ปิด touch action บนแท็บเล็ตจะกลายเป็นการเลื่อนหน้าจอแทนการลาก */
+  touch-action: none;
+}
+.pos-split span {
+  width: 4px;
+  height: 46px;
+  border-radius: 3px;
+  background: var(--border);
+  transition: background 0.15s, height 0.15s;
+}
+.pos-split:hover span,
+.pos-split:focus-visible span { background: var(--brand); height: 76px; }
+.pos-split:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* ระหว่างลาก กันเมาส์ไปลากเลือกข้อความทั้งหน้า และคงรูปเคอร์เซอร์ไว้ */
+body.col-resizing { cursor: col-resize; user-select: none; }
 .pos-left, .pos-right { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .pos-right { position: sticky; top: 84px; }
 
@@ -1078,6 +1106,7 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
   @page { size: A4; margin: 12mm; }
   body { background: #fff; font-size: 11.5pt; }
   .no-print { display: none !important; }
+  .pos-split { display: none !important; }
   #printRoot { display: block !important; }
 
   .pr-head {
@@ -1184,8 +1213,10 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
   .g4 { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 1180px) {
+  /* จอแคบวางซ้อนกันเป็นแถวเดียว การลากปรับความกว้างจึงไม่มีความหมาย */
   .pos { grid-template-columns: 1fr; }
   .pos-right { position: static; }
+  .pos-split { display: none; }
 }
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
