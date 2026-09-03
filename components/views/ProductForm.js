@@ -4,12 +4,12 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
-import { nextProdCode } from "@/lib/db";
+import { firstLocOf, nextProdCode } from "@/lib/db";
 import { resizeImage } from "@/lib/image";
 import { uid } from "@/lib/format";
 import Modal from "../Modal";
 import { useToast } from "../Toast";
-import { Barcode } from "../ui";
+import { Barcode, LocationSelect, WarehouseSelect } from "../ui";
 
 export default function ProductForm({ productId, onClose }) {
   const inv = useInv();
@@ -32,6 +32,8 @@ export default function ProductForm({ productId, onClose }) {
           barcode: "",
           img: "",
           note: "",
+          defWhId: "",
+          defLocId: "",
         }
   );
   const [dragOver, setDragOver] = useState(false);
@@ -64,6 +66,20 @@ export default function ProductForm({ productId, onClose }) {
       return toast("รหัสสินค้านี้ถูกใช้แล้ว", "err");
     }
 
+    // คลังประจำกับที่เก็บประจำต้องมาเป็นคู่ ตั้งทั้งคู่หรือไม่ตั้งเลย
+    // (ฝั่งฐานข้อมูลมี check บังคับไว้อีกชั้น ถ้าหลุดไปจะ error ตอนบันทึก)
+    const defWhId = form.defWhId || "";
+    const defLocId = form.defLocId || "";
+    if (defWhId && !defLocId) {
+      return toast("เลือกคลังประจำแล้ว ต้องเลือกที่เก็บประจำด้วย", "err");
+    }
+    if (defLocId && !defWhId) {
+      return toast("เลือกที่เก็บประจำแล้ว ต้องเลือกคลังประจำด้วย", "err");
+    }
+    if (defLocId && !inv.locInWh(defLocId, defWhId)) {
+      return toast("ที่เก็บประจำไม่ได้อยู่ในคลังประจำที่เลือก", "err");
+    }
+
     const value = {
       code,
       name,
@@ -74,6 +90,8 @@ export default function ProductForm({ productId, onClose }) {
       barcode: String(form.barcode).trim(),
       note: String(form.note).trim(),
       img: form.img || "",
+      defWhId,
+      defLocId,
     };
 
     setBusy(true);
@@ -213,6 +231,42 @@ export default function ProductForm({ productId, onClose }) {
               สุ่ม
             </button>
           </div>
+        </div>
+
+        {/* คลังและที่เก็บประจำ — ใช้เป็นค่าตั้งต้นบนหน้าจอรับ/เบิก/โอน/ปรับปรุง/ขาย
+            เลือกคลังแล้วที่เก็บจะถูกตั้งเป็นช่องแรกให้ทันที จะได้ไม่เหลือคู่ที่ใช้ไม่ได้ */}
+        <div className="field">
+          <label className="lbl" htmlFor="e_defwh">คลังประจำ (ไม่บังคับ)</label>
+          <WarehouseSelect
+            db={db}
+            id="e_defwh"
+            value={form.defWhId || ""}
+            includeAll
+            allLabel="— ไม่กำหนด —"
+            onChange={(w) =>
+              setForm((f) => ({ ...f, defWhId: w, defLocId: w ? firstLocOf(db, w) : "" }))
+            }
+          />
+        </div>
+
+        <div className="field">
+          <label className="lbl" htmlFor="e_defloc">ที่เก็บประจำ</label>
+          <LocationSelect
+            db={db}
+            whId={form.defWhId || ""}
+            id="e_defloc"
+            value={form.defLocId || ""}
+            includeAll={!form.defWhId}
+            allLabel="— ไม่กำหนด —"
+            onChange={(l) => set("defLocId", l)}
+          />
+        </div>
+
+        <div className="field span2" style={{ marginTop: -6 }}>
+          <span style={{ fontSize: 12.5, color: "var(--fg-muted)" }}>
+            ตั้งไว้แล้ว หน้าจอรับ / เบิก / โอน / ปรับปรุง จะเลือกคลังและที่เก็บนี้ให้อัตโนมัติ
+            เมื่อเลือกสินค้ารายการนี้ และหน้า POS จะหยิบจากช่องนี้ก่อนถ้ามีของ
+          </span>
         </div>
 
         <div className="field span2">

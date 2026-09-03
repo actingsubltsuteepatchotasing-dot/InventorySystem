@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { TYPES } from "@/lib/constants";
-import { firstLocOf, nextDocNo } from "@/lib/db";
+import { defaultBinOf, firstLocOf, nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
@@ -27,14 +27,30 @@ export default function TxnScreen({ type }) {
   const isTransfer = type === "TRANSFER";
 
   const [date, setDate] = useState(todayISO);
-  const [whFrom, setWhFrom] = useState(db.warehouses[0].id);
-  const [locFrom, setLocFrom] = useState(() => firstLocOf(db, db.warehouses[0].id));
+  // เริ่มต้นที่คลัง+ที่เก็บประจำของสินค้ารายการแรก ถ้าตั้งไว้
+  const initDef = defaultBinOf(db, db.products[0].id);
+  const [whFrom, setWhFrom] = useState(initDef ? initDef.whId : db.warehouses[0].id);
+  const [locFrom, setLocFrom] = useState(() =>
+    initDef ? initDef.locId : firstLocOf(db, db.warehouses[0].id)
+  );
 
   const whToInit = db.warehouses[1] ? db.warehouses[1].id : db.warehouses[0].id;
   const [whTo, setWhTo] = useState(whToInit);
   const [locTo, setLocTo] = useState(() => firstLocOf(db, whToInit));
   const [ref, setRef] = useState("");
   const [productId, setProductId] = useState(db.products[0].id);
+
+  /**
+   * เลือกสินค้าแล้วกระโดดไปคลัง + ที่เก็บประจำของสินค้านั้นให้เลย
+   * สินค้าที่ยังไม่ได้ตั้งค่าประจำ จะไม่ไปยุ่งกับคลังที่ผู้ใช้เลือกไว้
+   */
+  function pickProduct(id) {
+    setProductId(id);
+    const def = defaultBinOf(db, id);
+    if (!def) return;
+    setWhFrom(def.whId);
+    setLocFrom(def.locId);
+  }
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
   const [cart, setCart] = useState([]);
@@ -270,7 +286,7 @@ export default function TxnScreen({ type }) {
         <div className="form-grid">
           <div className="field span2">
             <label className="lbl" htmlFor="f_prod">สินค้า</label>
-            <ProductSelect db={db} id="f_prod" value={productId} onChange={setProductId} />
+            <ProductSelect db={db} id="f_prod" value={productId} onChange={pickProduct} />
           </div>
           <div className="field">
             <label className="lbl" htmlFor="f_qty">จำนวน</label>

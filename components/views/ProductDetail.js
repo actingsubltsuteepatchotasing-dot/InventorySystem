@@ -104,6 +104,13 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
               <Row2 k="ราคาต่อหน่วย">฿{num(p.price)}</Row2>
               <Row2 k="จุดสั่งซื้อต่ำสุด">{num(p.min, 0)}</Row2>
               <Row2 k="บาร์โค๊ด">{p.barcode || "—"}</Row2>
+              <Row2 k="คลัง / ที่เก็บประจำ">
+                {p.defWhId && p.defLocId ? (
+                  inv.whLocName(p.defWhId, p.defLocId)
+                ) : (
+                  <span style={{ color: "var(--fg-faint)" }}>ยังไม่กำหนด</span>
+                )}
+              </Row2>
               <Row2 k="คงเหลือรวมทุกคลัง">
                 <b>
                   {num(total, 0)} {p.unit}

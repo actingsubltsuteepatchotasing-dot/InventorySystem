@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { ADJUST_REASONS } from "@/lib/constants";
-import { firstLocOf, nextDocNo } from "@/lib/db";
+import { defaultBinOf, firstLocOf, nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
@@ -24,9 +24,21 @@ export default function AdjustScreen() {
   const [saving, setSaving] = useState(false);
 
   const [date, setDate] = useState(todayISO);
-  const [whId, setWhId] = useState(db.warehouses[0].id);
-  const [locId, setLocId] = useState(() => firstLocOf(db, db.warehouses[0].id));
+  const initDef = defaultBinOf(db, db.products[0].id);
+  const [whId, setWhId] = useState(initDef ? initDef.whId : db.warehouses[0].id);
+  const [locId, setLocId] = useState(() =>
+    initDef ? initDef.locId : firstLocOf(db, db.warehouses[0].id)
+  );
   const [productId, setProductId] = useState(db.products[0].id);
+
+  /** เลือกสินค้าแล้วไปที่คลัง + ที่เก็บประจำของสินค้านั้น ถ้าตั้งไว้ */
+  function pickProduct(id) {
+    setProductId(id);
+    const def = defaultBinOf(db, id);
+    if (!def) return;
+    setWhId(def.whId);
+    setLocId(def.locId);
+  }
   const [counted, setCounted] = useState("");
   const [reason, setReason] = useState(ADJUST_REASONS[0]);
   const [cart, setCart] = useState([]);
@@ -183,7 +195,7 @@ export default function AdjustScreen() {
           />
           <div className="field span2">
             <label className="lbl" htmlFor="a_prod">สินค้า</label>
-            <ProductSelect db={db} id="a_prod" value={productId} onChange={setProductId} />
+            <ProductSelect db={db} id="a_prod" value={productId} onChange={pickProduct} />
           </div>
           <div className="field">
             <label className="lbl">ยอดตามบัญชีในที่เก็บนี้</label>

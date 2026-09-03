@@ -161,6 +161,31 @@ $$;
 
 create index if not exists txns_loc_idx on public.txns (loc_id);
 
+-- ------------------------------------------- คลังและที่เก็บประจำของสินค้า
+-- ใช้เป็นค่าตั้งต้นบนหน้าจอ ไม่ได้บังคับว่าสินค้าต้องอยู่ที่นั่นเท่านั้น
+-- ต้องอยู่หลังตาราง locations เหมือนกัน เพราะอ้าง foreign key คู่แบบเดียวกัน
+alter table public.products add column if not exists def_wh_id  text;
+alter table public.products add column if not exists def_loc_id text;
+
+do $$
+begin
+  -- ที่เก็บประจำต้องอยู่ในคลังประจำจริง กติกาเดียวกับรายการเคลื่อนไหว
+  -- on delete set null: ถ้าช่องเก็บถูกลบ จะล้างทั้งคู่ให้เอง
+  -- (foreign key คู่ตั้งค่า null ให้ทุกคอลัมน์ของมัน จึงยังผ่าน check ด้านล่าง)
+  alter table public.products drop constraint if exists products_def_loc_in_wh;
+  alter table public.products add constraint products_def_loc_in_wh
+    foreign key (def_loc_id, def_wh_id) references public.locations (id, wh_id) on delete set null;
+
+  -- คลังกับที่เก็บต้องมาเป็นคู่: ตั้งทั้งคู่ หรือไม่ตั้งเลย
+  -- ห้ามมีคลังประจำโดยไม่มีที่เก็บประจำ
+  alter table public.products drop constraint if exists products_def_pair;
+  alter table public.products add constraint products_def_pair
+    check ((def_wh_id is null) = (def_loc_id is null));
+
+  raise notice 'เพิ่มคลังและที่เก็บประจำของสินค้าเรียบร้อย';
+end
+$$;
+
 -- ------------------------------------------------------- การขายหน้าร้าน (POS)
 
 create table if not exists public.sales (
