@@ -181,6 +181,7 @@ export default function BackupModal({ onClose }) {
         }}
       >
         ข้อมูลปัจจุบัน: สินค้า <b>{db.products.length}</b> รายการ · คลัง <b>{db.warehouses.length}</b> แห่ง ·
+        ที่เก็บ <b>{db.locations.length}</b> ช่อง · การจัดวาง <b>{num(db.placements.length, 0)}</b> รายการ ·
         รายการเคลื่อนไหว <b>{num(db.txns.length, 0)}</b> รายการ
       </div>
     </Modal>

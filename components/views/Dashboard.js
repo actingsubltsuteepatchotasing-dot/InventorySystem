@@ -63,7 +63,7 @@ export default function Dashboard({ onNavigate }) {
           icon={<IcBox size={18} stroke={1.9} />}
           label="รายการสินค้าทั้งหมด"
           value={num(db.products.length, 0) + " รายการ"}
-          sub={db.warehouses.length + " คลังสินค้า"}
+          sub={db.warehouses.length + " คลังสินค้า · " + db.locations.length + " ที่เก็บ"}
         />
         <Kpi
           icon={<IcChart size={18} stroke={1.9} />}
@@ -130,6 +130,7 @@ export default function Dashboard({ onNavigate }) {
                   <th>เลขที่</th>
                   <th>ประเภท</th>
                   <th>สินค้า</th>
+                  <th>คลัง · ที่เก็บ</th>
                   <th className="num">จำนวน</th>
                 </tr>
               </thead>
@@ -142,6 +143,10 @@ export default function Dashboard({ onNavigate }) {
                       <span className={"bdg " + TYPES[t.type].badge}>{TYPES[t.type].name}</span>
                     </td>
                     <td>{inv.prodName(t.productId)}</td>
+                    <td style={{ fontSize: 13 }}>
+                      {inv.whLocName(t.whId, t.locId)}
+                      {t.whTo ? <b> → {inv.whLocName(t.whTo, t.locTo)}</b> : null}
+                    </td>
                     <td className="num">{num(Math.abs(t.qty), 0)}</td>
                   </tr>
                 ))}

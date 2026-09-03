@@ -249,7 +249,7 @@ export default function AdjustScreen() {
               <tr>
                 <th style={{ width: 44 }}>#</th>
                 <th>สินค้า</th>
-                <th>คลัง</th>
+                <th>คลัง · ที่เก็บ</th>
                 <th className="num">ตามบัญชี</th>
                 <th className="num">นับได้</th>
                 <th className="num">ผลต่าง</th>
@@ -304,7 +304,7 @@ export default function AdjustScreen() {
                 <th>วันที่</th>
                 <th>เลขที่เอกสาร</th>
                 <th>สินค้า</th>
-                <th>คลัง</th>
+                <th>คลัง · ที่เก็บ</th>
                 <th className="num">ผลต่าง</th>
                 <th>สาเหตุ</th>
               </tr>

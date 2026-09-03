@@ -21,9 +21,17 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
   const byWh = useMemo(
     () =>
       db.warehouses
-        .map((w) => ({ w, q: inv.stockOf(productId, w.id) }))
+        .map((w) => ({
+          w,
+          q: inv.stockOf(productId, w.id),
+          // สินค้ารายการเดียวอาจกระจายอยู่หลายช่องในคลังเดียวกัน
+          bins: inv
+            .locsOf(w.id)
+            .map((l) => ({ loc: l, qty: inv.placedIn(productId, l.id) }))
+            .filter((b) => b.qty > 0),
+        }))
         .filter((x) => x.q !== 0),
-    [db.warehouses, inv, productId]
+    [db.warehouses, db.locations, db.placements, inv, productId]
   );
 
   const history = useMemo(
@@ -117,6 +125,7 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
             <tr>
               <th>คลัง</th>
               <th>จังหวัด</th>
+              <th>ที่เก็บ</th>
               <th className="num">คงเหลือ</th>
             </tr>
           </thead>
@@ -125,6 +134,11 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
               <tr key={x.w.id}>
                 <td>{x.w.name}</td>
                 <td>{x.w.province}</td>
+                <td style={{ fontSize: 13 }}>
+                  {x.bins.length
+                    ? x.bins.map((b) => b.loc.code + " (" + num(b.qty, 0) + ")").join(", ")
+                    : "ยังไม่ระบุที่เก็บ"}
+                </td>
                 <td className="num">
                   <b>{num(x.q, 0)}</b>
                 </td>
@@ -144,7 +158,7 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
               <th>วันที่</th>
               <th>เลขที่</th>
               <th>ประเภท</th>
-              <th>คลัง</th>
+              <th>คลัง · ที่เก็บ</th>
               <th className="num">จำนวน</th>
             </tr>
           </thead>

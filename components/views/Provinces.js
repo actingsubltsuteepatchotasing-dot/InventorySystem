@@ -103,7 +103,9 @@ export default function Provinces() {
                 </span>
                 <span className="info">
                   <b>{x.province}</b>
-                  <span>{x.name}</span>
+                  <span>
+                    {x.name} · {inv.locsOf(x.id).length} ที่เก็บ
+                  </span>
                 </span>
                 <span className="qty">
                   <b>{num(inv.whTotal(x.id), 0)}</b>

@@ -163,6 +163,8 @@ export default function Shell() {
         <div className="side-foot">
           <div>
             คลังที่ใช้งาน: <b>{db.warehouses.length} คลังทั่วประเทศ</b>
+            {" · "}
+            <b>{db.locations.length} ที่เก็บ</b>
           </div>
           <div style={{ marginTop: 4, opacity: 0.75 }}>เวอร์ชัน 2.0 · ข้อมูลอยู่บน Supabase</div>
         </div>
