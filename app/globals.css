@@ -845,7 +845,15 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
 /* ---------- Toast ---------- */
 /* มุมขวาล่างมีของซ้อนกัน 3 ชั้น จากล่างขึ้นบน:
    18px .user-dock -> 72px .chat-fab -> 138px #toasts */
-#toasts { position: fixed; right: 18px; bottom: 138px; z-index: 200; display: flex; flex-direction: column; gap: 9px; }
+#toasts {
+  position: fixed;
+  right: 18px;
+  bottom: calc(138px + env(safe-area-inset-bottom, 0px));
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
 .toast {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -867,8 +875,8 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
 /* ---------- แถบผู้ใช้มุมขวาล่าง ---------- */
 .user-dock {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
+  right: calc(18px + env(safe-area-inset-right, 0px));
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   z-index: 90;
   display: flex;
   align-items: center;
@@ -889,8 +897,8 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
 
 .chat-fab {
   position: fixed;
-  right: 18px;
-  bottom: 72px; /* เว้นที่ให้ .user-dock ที่อยู่ล่างสุด */
+  right: calc(18px + env(safe-area-inset-right, 0px));
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px)); /* เว้นที่ให้ .user-dock ที่อยู่ล่างสุด */
   width: 54px;
   height: 54px;
   border: 0;
@@ -909,8 +917,8 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
 
 .chat-panel {
   position: fixed;
-  right: 18px;
-  bottom: 72px; /* เปิดแผงแล้วยังเห็นแถบผู้ใช้ด้านล่าง */
+  right: calc(18px + env(safe-area-inset-right, 0px));
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px)); /* เปิดแผงแล้วยังเห็นแถบผู้ใช้ด้านล่าง */
   width: 380px;
   height: min(560px, calc(100vh - 150px));
   background: var(--surface);
@@ -1211,7 +1219,15 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
   .user-chip .uname { display: none; }
 
   /* แผงแชทเต็มจอบนมือถือ — ใช้ inset แทนกำหนดความสูง เลี่ยงปัญหา 100vh บน iOS Safari */
-  .chat-panel { inset: 0; width: auto; height: auto; border: 0; border-radius: 0; }
+  .chat-panel {
+    inset: 0;
+    width: auto;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
   /* แผงเต็มจอ (inset 0) z-index เท่ากับ .user-dock แต่อยู่หลังใน DOM จึงบังทับเอง
      ไม่ต้องเขียนกฎซ่อนเพิ่ม */
   .user-dock { right: 14px; bottom: 14px; padding: 5px; gap: 6px; }

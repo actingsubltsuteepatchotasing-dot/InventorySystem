@@ -98,6 +98,12 @@ export const IcSparkle = (p) => (
     <path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z" />
   </Ico>
 );
+export const IcDownload = (p) => (
+  <Ico {...p}>
+    <path d="M12 3v12M7 11l5 5 5-5" />
+    <path d="M4 19.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5" />
+  </Ico>
+);
 export const IcPrint = (p) => (
   <Ico {...p}>
     <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
