@@ -723,31 +723,41 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
 
 /* ---------- POS ---------- */
 /* ความกว้างแผงบิลเก็บใน --pos-w ให้ลากปรับได้ ค่าเริ่มต้นเท่าเดิมคือ 430px */
-.pos { display: grid; grid-template-columns: 1fr 10px var(--pos-w, 430px); gap: 16px; align-items: start; }
+.pos { display: grid; grid-template-columns: minmax(0, 1fr) 16px var(--pos-w, 430px); gap: 10px; align-items: start; }
 
 /* แถบคั่นกลาง — พื้นที่กดกว้าง 10px แต่เส้นที่เห็นบางกว่านั้น จะได้จับง่ายแต่ไม่เกะกะ */
 .pos-split {
   align-self: stretch;
-  min-height: 140px;
+  min-height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: col-resize;
-  border-radius: 6px;
-  background: transparent;
+  border-radius: 8px;
+  /* พื้นหลังจาง ๆ ให้เห็นว่าตรงนี้เป็นแถบ ไม่ใช่ช่องว่างเปล่า */
+  background: var(--brand-50);
+  border: 1px solid var(--border);
   /* ถ้าไม่ปิด touch action บนแท็บเล็ตจะกลายเป็นการเลื่อนหน้าจอแทนการลาก */
   touch-action: none;
+  transition: background 0.15s, border-color 0.15s;
 }
+/* ขีดสามเส้นแบบที่จับลาก ให้รู้ได้ทันทีว่าลากได้ */
 .pos-split span {
-  width: 4px;
-  height: 46px;
+  width: 6px;
+  height: 40px;
   border-radius: 3px;
-  background: var(--border);
-  transition: background 0.15s, height 0.15s;
+  background: var(--fg-faint);
+  box-shadow: 0 -11px 0 var(--fg-faint), 0 11px 0 var(--fg-faint);
+  transition: background 0.15s, box-shadow 0.15s;
 }
+.pos-split:hover,
+.pos-split:focus-visible { background: var(--brand); border-color: var(--brand); }
 .pos-split:hover span,
-.pos-split:focus-visible span { background: var(--brand); height: 76px; }
-.pos-split:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.pos-split:focus-visible span {
+  background: #fff;
+  box-shadow: 0 -11px 0 #fff, 0 11px 0 #fff;
+}
+.pos-split:focus-visible { outline: 2px solid var(--brand-d); outline-offset: 2px; }
 
 /* ระหว่างลาก กันเมาส์ไปลากเลือกข้อความทั้งหน้า และคงรูปเคอร์เซอร์ไว้ */
 body.col-resizing { cursor: col-resize; user-select: none; }
@@ -1212,8 +1222,12 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   .form-grid { grid-template-columns: repeat(2, 1fr); }
   .g4 { grid-template-columns: repeat(2, 1fr); }
 }
-@media (max-width: 1180px) {
-  /* จอแคบวางซ้อนกันเป็นแถวเดียว การลากปรับความกว้างจึงไม่มีความหมาย */
+/*
+ * เดิมตัดเป็นแถวเดียวตั้งแต่ 1180px ซึ่งกินโน้ตบุ๊กจอ 1366 ที่มีแถบเมนูข้างไปด้วย
+ * ผู้ใช้เลยไม่เห็นแถบคั่นและปรับขนาดไม่ได้ ลดลงมาเหลือ 1024px
+ * ต่ำกว่านั้นวางซ้อนกันเป็นแถวเดียว การลากปรับความกว้างจึงไม่มีความหมาย
+ */
+@media (max-width: 1024px) {
   .pos { grid-template-columns: 1fr; }
   .pos-right { position: static; }
   .pos-split { display: none; }

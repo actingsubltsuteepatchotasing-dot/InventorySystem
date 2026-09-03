@@ -628,14 +628,15 @@ export default function POS() {
  */
 function PosSplitter({ width, onChange }) {
   const ref = useRef(null);
+  // จำสถานะลากเอง ตรงไปตรงมากว่าการถาม hasPointerCapture ทุกครั้งที่เมาส์ขยับ
+  const dragging = useRef(false);
 
   /** ความกว้างสูงสุดที่ยังเหลือที่ให้แคตตาล็อกพอแสดงการ์ดสินค้า */
   function maxWidth() {
     const box = ref.current && ref.current.parentElement;
     if (!box) return BILL_MAX;
-    // หักช่องไฟสองช่อง (16px x 2) กับตัวแถบคั่นเอง (10px) ออกก่อน
-    // ไม่งั้นจะคำนวณเผื่อไว้เกินจริงราว 42px แล้วการ์ดสินค้าจะบีบเกินที่ตั้งใจ
-    return Math.min(BILL_MAX, box.getBoundingClientRect().width - CATALOG_MIN - 42);
+    // หักช่องไฟสองช่อง (10px x 2) กับตัวแถบคั่นเอง (16px) ออกก่อน
+    return Math.min(BILL_MAX, box.getBoundingClientRect().width - CATALOG_MIN - 36);
   }
 
   function resizeTo(clientX) {
@@ -648,18 +649,29 @@ function PosSplitter({ width, onChange }) {
 
   function down(e) {
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    dragging.current = true;
+    // capture ทำให้ลากออกนอกตัวแถบแล้วยังได้รับ event ต่อ
+    // ห่อ try ไว้เพราะบางเบราว์เซอร์โยนถ้า pointer หลุดไปแล้ว
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {
+      // ไม่ได้ก็ยังลากได้ แค่หลุดง่ายขึ้นเวลาเมาส์ออกนอกแถบ
+    }
     document.body.classList.add("col-resizing");
   }
 
   function move(e) {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    if (!dragging.current) return;
     resizeTo(e.clientX);
   }
 
   function up(e) {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+    if (!dragging.current) return;
+    dragging.current = false;
+    try {
       e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {
+      // ปล่อยไม่ได้ก็ไม่เป็นไร เบราว์เซอร์ปล่อยให้เองตอน pointer หาย
     }
     document.body.classList.remove("col-resizing");
   }
@@ -689,11 +701,12 @@ function PosSplitter({ width, onChange }) {
       aria-valuemin={BILL_MIN}
       aria-valuemax={BILL_MAX}
       tabIndex={0}
-      title="ลากเพื่อปรับความกว้าง · ดับเบิลคลิกเพื่อคืนค่าเดิม"
+      title="ลากเพื่อปรับความกว้างแผงบิล · ดับเบิลคลิกเพื่อคืนค่าเดิม"
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={up}
+      onLostPointerCapture={up}
       onDoubleClick={() => onChange(BILL_DEFAULT)}
       onKeyDown={key}
     >
