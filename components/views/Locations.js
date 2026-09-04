@@ -498,6 +498,9 @@ function LocationForm({ location, whId, onClose, onDeleted }) {
   const toast = useToast();
   const isNew = !location;
 
+  // ของที่ยังอยู่ในช่องนี้ ใช้ทั้งตอนปิดปุ่มลบและตอนขึ้นข้อความบอกเหตุผล
+  const binLeft = location ? inv.binQty(location.id) : 0;
+
   const [form, setForm] = useState(() =>
     location
       ? { ...location }
@@ -548,11 +551,24 @@ function LocationForm({ location, whId, onClose, onDeleted }) {
   }
 
   async function remove() {
-    const n = inv.placementsIn(form.id).length;
-    const msg = n
-      ? "ช่องนี้มีสินค้าวางอยู่ " + n + " รายการ หากลบ ข้อมูลการจัดวางจะหายไปด้วย\n\nยืนยันการลบ?"
-      : "ยืนยันการลบช่องเก็บ " + form.code + " ?";
-    if (!window.confirm(msg)) return;
+    /*
+     * ห้ามลบถ้าในช่องยังมีของ
+     *
+     * product_locations ตั้ง on delete cascade ไว้ ลบช่องแล้วการจัดวางหายตาม
+     * แต่ยอดคงเหลือของคลังคำนวณจาก txns ซึ่งไม่ได้หายไปด้วย
+     * ผลคือผลรวมของทุกช่องในคลังจะไม่เท่ากับยอดคงเหลืออีกต่อไป
+     * ซึ่งเป็นกติกาที่ทั้งระบบยึดไว้ ต้องถอดสินค้าออกจากช่องก่อน
+     */
+    const left = inv.binQty(form.id);
+    if (left > 0) {
+      return toast(
+        "ลบไม่ได้ — ช่อง " + form.code + " ยังมีสินค้าอยู่ " + num(left, 0) +
+          " หน่วย กรุณาถอดสินค้าออกจากช่องก่อน",
+        "err"
+      );
+    }
+
+    if (!window.confirm("ยืนยันการลบช่องเก็บ " + form.code + " ?")) return;
 
     setBusy(true);
     try {
@@ -575,7 +591,17 @@ function LocationForm({ location, whId, onClose, onDeleted }) {
       footer={
         <>
           {!isNew ? (
-            <button className="btn btn-d" onClick={remove} disabled={busy}>
+            <button
+              className="btn btn-d"
+              onClick={remove}
+              disabled={busy || binLeft > 0}
+              title={
+                binLeft > 0
+                  ? "ลบไม่ได้ — ยังมีสินค้าในช่องนี้ " + num(binLeft, 0) + " หน่วย"
+                  : "ลบช่องเก็บ"
+              }
+            >
+              <IcTrash size={15} />
               ลบช่องเก็บ
             </button>
           ) : null}

@@ -6,9 +6,10 @@ import { useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
 import { firstLocOf, nextProdCode } from "@/lib/db";
 import { resizeImage } from "@/lib/image";
-import { uid } from "@/lib/format";
+import { num, uid } from "@/lib/format";
 import Modal from "../Modal";
 import { useToast } from "../Toast";
+import { IcTrash } from "../Icons";
 import { Barcode, LocationSelect, QtyInput, WarehouseSelect } from "../ui";
 
 export default function ProductForm({ productId, onClose }) {
@@ -39,6 +40,9 @@ export default function ProductForm({ productId, onClose }) {
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef(null);
+
+  // ยอดคงเหลือรวมทุกคลัง ใช้ทั้งตอนปิดปุ่มลบและตอนขึ้นข้อความบอกเหตุผล
+  const stockLeft = productId ? inv.stockTotal(productId) : 0;
 
   const cats = useMemo(() => Array.from(new Set(db.products.map((p) => p.cat))), [db.products]);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -108,6 +112,23 @@ export default function ProductForm({ productId, onClose }) {
 
   async function remove() {
     if (busy) return;
+
+    /*
+     * ห้ามลบถ้ายังมีของคงเหลือ
+     *
+     * ตาราง txns ตั้ง on delete cascade ไว้ ลบสินค้าแล้วประวัติหายตามทั้งหมด
+     * ของที่ยังนับได้ในคลังจะกลายเป็นของที่ไม่มีเอกสารรองรับ ตรวจสอบย้อนหลังไม่ได้
+     * ต้องเบิกหรือปรับปรุงให้เหลือศูนย์ก่อน จะได้มีร่องรอยว่าของหายไปไหน
+     */
+    const left = inv.stockTotal(productId);
+    if (left > 0) {
+      return toast(
+        "ลบไม่ได้ — " + form.name + " ยังมีสินค้าคงเหลือ " + num(left, 0) +
+          " หน่วย กรุณาเบิกออกหรือปรับปรุงยอดให้เป็นศูนย์ก่อน",
+        "err"
+      );
+    }
+
     const used = db.txns.some((t) => t.productId === productId);
     const msg = used
       ? "สินค้านี้มีประวัติการเคลื่อนไหวอยู่ หากลบ ประวัติที่เกี่ยวข้องจะถูกลบไปด้วย\n\nยืนยันการลบ?"
@@ -133,7 +154,17 @@ export default function ProductForm({ productId, onClose }) {
       footer={
         <>
           {!isNew ? (
-            <button className="btn btn-d" onClick={remove} disabled={busy}>
+            <button
+              className="btn btn-d"
+              onClick={remove}
+              disabled={busy || stockLeft > 0}
+              title={
+                stockLeft > 0
+                  ? "ลบไม่ได้ — ยังมีสินค้าคงเหลือ " + num(stockLeft, 0) + " หน่วย"
+                  : "ลบสินค้า"
+              }
+            >
+              <IcTrash size={15} />
               ลบสินค้า
             </button>
           ) : null}
