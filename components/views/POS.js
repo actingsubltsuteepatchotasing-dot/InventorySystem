@@ -513,7 +513,7 @@ export default function POS() {
                 <tr>
                   <th>สินค้า</th>
                   <th style={{ width: 132 }}>ที่เก็บ</th>
-                  <th className="num" style={{ width: 136 }}>จำนวน</th>
+                  <th className="num" style={{ width: 156 }}>จำนวน</th>
                   <th className="num">ราคา</th>
                   <th className="num">รวม</th>
                   <th style={{ width: 44 }} />

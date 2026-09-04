@@ -290,7 +290,7 @@ export default function AdjustScreen() {
               <th style={{ minWidth: 210 }}>สินค้า</th>
               <th style={{ minWidth: 170 }}>คลัง · ที่เก็บ</th>
               <th className="num" style={{ width: 104 }}>ตามบัญชี</th>
-              <th className="num" style={{ width: 108 }}>นับได้จริง</th>
+              <th className="num" style={{ width: 164 }}>นับได้จริง</th>
               <th className="num" style={{ width: 96 }}>ผลต่าง</th>
               <th style={{ minWidth: 170 }}>สาเหตุ</th>
               <th style={{ width: 48 }} />

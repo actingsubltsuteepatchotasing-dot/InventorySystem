@@ -83,7 +83,9 @@
 }
 
 /* ---------- ช่องกรอกจำนวน พร้อมปุ่มลบ/บวก ---------- */
-.qty-box { display: flex; align-items: stretch; gap: 0; }
+/* min-width สำคัญมาก: ในเซลล์ตารางที่แคบ ปุ่มสองข้างกินที่จนช่องกลางเหลือ 0
+   แล้วตัวเลขจะหายไปเลย ต้องกันไม่ให้กล่องแคบกว่านี้ */
+.qty-box { display: flex; align-items: stretch; gap: 0; min-width: 132px; }
 .qty-btn {
   flex: 0 0 auto;
   width: 34px;
@@ -108,7 +110,11 @@
 /* ช่องกลางต้องเชื่อมกับปุ่มสองข้าง จึงตัดมุมและเส้นขอบที่ซ้อนกันออก */
 .qty-box .qty-mid {
   flex: 1 1 auto;
-  min-width: 0;
+  /* ตัวเลขอยู่กลางช่องอยู่แล้ว จึงไม่ต้องเผื่อ padding ข้างเยอะเหมือนช่องกรอกทั่วไป
+     padding 11px สองข้างเคยกินพื้นที่จนไม่เหลือที่ให้ตัวเลข */
+  padding-left: 4px;
+  padding-right: 4px;
+  min-width: 44px;
   border-radius: 0;
   border-left: 0;
   border-right: 0;
