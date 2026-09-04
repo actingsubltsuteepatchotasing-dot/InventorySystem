@@ -15,8 +15,8 @@
 // ขึ้นเลขทุกครั้งที่ต้องบังคับให้เครื่องที่ติดตั้งไปแล้วทิ้ง cache เก่า
 // (activate จะลบ cache ที่ชื่อไม่ตรงกับเวอร์ชันนี้ทั้งหมด)
 const VERSION = "v2";
-const SHELL = "raot-shell-" + VERSION;
-const RUNTIME = "raot-runtime-" + VERSION;
+const SHELL = "ultra-shell-" + VERSION;
+const RUNTIME = "ultra-runtime-" + VERSION;
 
 /** ไฟล์ที่ต้องมีตั้งแต่ติดตั้ง เพื่อให้เปิดแอปตอนออฟไลน์แล้วเห็นอะไรบ้าง */
 const PRECACHE = ["/offline.html"];

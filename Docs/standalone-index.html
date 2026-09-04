@@ -419,8 +419,8 @@ table.tbl tfoot td{background:var(--brand-50);font-weight:700;border-top:2px sol
 
 /* ---------------------------------------------------------------- config */
 const AUTH = { username: "admin", password: "admin888" };
-const KEY  = "raot-inv-v1";
-const SESS = "raot-inv-session";
+const KEY  = "ultra-inv-v1";
+const SESS = "ultra-inv-session";
 
 const TYPES = {
   RECEIVE:  { code:"RC", name:"รับสินค้า",       sign:+1, color:"#0F8A4D", badge:"bdg-ok"   },
@@ -2007,7 +2007,7 @@ function backupModal() {
       $("#b_exp").onclick = () => {
         const url = URL.createObjectURL(new Blob([JSON.stringify(DB, null, 2)], { type: "application/json" }));
         const a = document.createElement("a");
-        a.href = url; a.download = "raot-inventory-backup-" + todayISO() + ".json"; a.click();
+        a.href = url; a.download = "ultra-erp-backup-" + todayISO() + ".json"; a.click();
         setTimeout(() => URL.revokeObjectURL(url), 1500);
         toast("ส่งออกไฟล์สำรองแล้ว");
       };

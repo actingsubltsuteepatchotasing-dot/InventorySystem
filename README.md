@@ -1,6 +1,6 @@
 # InventorySystem
 
-ระบบควบคุมสินค้าคงคลัง — Ultra ERP (Rubber Authority of Thailand)
+Ultra ERP — ระบบควบคุมสินค้าคงคลัง
 
 สร้างด้วย **Next.js 15 (App Router) + React 19 + Supabase**
 ไม่มี dependency อื่นนอกจาก `next` / `react` / `react-dom` — ตัวเชื่อม Supabase เขียนเองด้วย `fetch`

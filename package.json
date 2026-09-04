@@ -1,8 +1,8 @@
 {
-  "name": "raot-inventory",
+  "name": "ultra-erp",
   "version": "1.0.0",
   "private": true,
-  "description": "ระบบควบคุมสินค้าคงคลัง การยางแห่งประเทศไทย",
+  "description": "Ultra ERP — ระบบควบคุมสินค้าคงคลัง",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

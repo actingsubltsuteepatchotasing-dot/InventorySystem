@@ -136,7 +136,7 @@ export default function BackupModal({ onClose }) {
           className="btn btn-o"
           disabled={!!busy}
           onClick={() => {
-            downloadJSON(db, "raot-inventory-backup-" + todayISO() + ".json");
+            downloadJSON(db, "ultra-erp-backup-" + todayISO() + ".json");
             toast("ส่งออกไฟล์สำรองแล้ว");
           }}
         >

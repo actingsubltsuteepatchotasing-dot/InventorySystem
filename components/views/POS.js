@@ -25,7 +25,7 @@ const BILL_MAX = 760;
 const BILL_DEFAULT = 430;
 /** เหลือพื้นที่ให้แคตตาล็อกสินค้าอย่างน้อยเท่านี้ ไม่งั้นการ์ดสินค้าจะบีบจนอ่านไม่ออก */
 const CATALOG_MIN = 360;
-const BILL_KEY = "raot-pos-bill-width";
+const BILL_KEY = "ultra-pos-bill-width";
 
 const clampBill = (n, max = BILL_MAX) =>
   Math.round(Math.max(BILL_MIN, Math.min(max, n)));
