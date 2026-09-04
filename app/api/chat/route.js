@@ -4,7 +4,7 @@
 // ลำดับการทำงาน: ตรวจ token -> ตรวจสิทธิ์ -> ตรวจโควตา -> ตรวจขนาด -> เรียก Gemini
 
 import { bearerFrom, checkRate, isAllowed, verifyBearer } from "@/lib/authServer";
-import { callGemini, isConfigured } from "@/lib/gemini";
+import { callGemini, isConfigured, modelName } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,5 +112,10 @@ export async function GET(request) {
   if (!isAllowed(user.email)) {
     return Response.json({ configured: false, allowed: false });
   }
-  return Response.json({ configured: isConfigured(), allowed: true });
+  // บอกชื่อโมเดลที่ตั้งไว้ด้วย จะได้ตรวจได้ว่า env ที่ Vercel มาถึงจริงไหม
+  return Response.json({
+    configured: isConfigured(),
+    allowed: true,
+    model: modelName(),
+  });
 }
