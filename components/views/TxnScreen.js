@@ -12,7 +12,16 @@ import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import { Badge, Card, Empty, ProductSelect, QtyInput, TableWrap, WhLocFields } from "../ui";
+import {
+  Badge,
+  Card,
+  Empty,
+  LocationSelect,
+  ProductSelect,
+  QtyInput,
+  TableWrap,
+  WarehouseSelect,
+} from "../ui";
 import SetupNotice from "../SetupNotice";
 
 export default function TxnScreen({ type }) {
@@ -27,107 +36,161 @@ export default function TxnScreen({ type }) {
   const isTransfer = type === "TRANSFER";
 
   const [date, setDate] = useState(todayISO);
-  // เริ่มต้นที่คลัง+ที่เก็บประจำของสินค้ารายการแรก ถ้าตั้งไว้
-  const initDef = defaultBinOf(db, db.products[0].id);
-  const [whFrom, setWhFrom] = useState(initDef ? initDef.whId : db.warehouses[0].id);
-  const [locFrom, setLocFrom] = useState(() =>
-    initDef ? initDef.locId : firstLocOf(db, db.warehouses[0].id)
-  );
-
-  const whToInit = db.warehouses[1] ? db.warehouses[1].id : db.warehouses[0].id;
-  const [whTo, setWhTo] = useState(whToInit);
-  const [locTo, setLocTo] = useState(() => firstLocOf(db, whToInit));
   const [ref, setRef] = useState("");
-  const [productId, setProductId] = useState(db.products[0].id);
 
   /**
-   * เลือกสินค้าแล้วกระโดดไปคลัง + ที่เก็บประจำของสินค้านั้นให้เลย
-   * สินค้าที่ยังไม่ได้ตั้งค่าประจำ จะไม่ไปยุ่งกับคลังที่ผู้ใช้เลือกไว้
+   * หนึ่งบรรทัด = สินค้าหนึ่งรายการที่จะทำรายการ
+   *
+   * เก็บเฉพาะสิ่งที่ผู้ใช้กรอก ส่วนยอดคงเหลือคำนวณสดตอนแสดงผล
+   * ถ้าเก็บไว้ในแถว พอมีคนอื่นบันทึกรายการเข้ามาระหว่างนี้ ตัวเลขจะค้างกับของเก่า
    */
-  function pickProduct(id) {
-    setProductId(id);
-    const def = defaultBinOf(db, id);
-    if (!def) return;
-    setWhFrom(def.whId);
-    setLocFrom(def.locId);
+  function blankRow(from) {
+    const pid = db.products[0] ? db.products[0].id : "";
+    const def = defaultBinOf(db, pid);
+
+    const whId = from ? from.whId : def ? def.whId : db.warehouses[0].id;
+    const other = db.warehouses.find((w) => w.id !== whId) || db.warehouses[0];
+    const whTo = from && from.whTo ? from.whTo : other.id;
+
+    return {
+      key: uid(),
+      productId: pid,
+      // บรรทัดใหม่ใช้คลัง/ที่เก็บต่อจากบรรทัดก่อนหน้า เพราะปกติทำเอกสารเดียวคลังเดียว
+      whId,
+      locId: from ? from.locId : def ? def.locId : firstLocOf(db, whId),
+      whTo: isTransfer ? whTo : "",
+      locTo: isTransfer ? (from && from.locTo ? from.locTo : firstLocOf(db, whTo)) : "",
+      qty: "",
+      note: "",
+    };
   }
-  const [qty, setQty] = useState("");
-  const [note, setNote] = useState("");
-  const [cart, setCart] = useState([]);
 
-  const docNo = nextDocNo(db, type, date);
+  const [rows, setRows] = useState(() => [blankRow()]);
 
-  // ยอดคงเหลือของสินค้าใน "ช่องเก็บ" ที่เลือก ไม่ใช่ทั้งคลัง
-  // เพราะการเบิกและการโอนหยิบของออกจากช่องนั้นจริง ๆ
-  // (หักของที่ค้างอยู่ในตะกร้าซึ่งยังไม่ได้บันทึกออกไปแล้ว)
-  const inCart = cart
-    .filter((c) => c.productId === productId && c.locId === locFrom)
-    .reduce((s, c) => s + c.qty, 0);
-  const balance = inv.stockOf(productId, whFrom);
-  const inBin = inv.placedIn(productId, locFrom);
-  const available = inBin - inCart;
-
+  // เปลี่ยนชนิดรายการ (รับ/เบิก/โอน) แล้วเริ่มใหม่ทั้งตาราง
   useEffect(() => {
-    setCart([]);
+    setRows([blankRow()]);
+    setRef("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
 
-  function addLine() {
-    const q = parseFloat(qty);
-    if (!(q > 0)) return toast("กรุณาระบุจำนวนให้มากกว่า 0", "err");
+  /** บรรทัดนี้กรอกครบพอจะบันทึกได้แล้วหรือยัง */
+  const isFilled = (r) => !!r.productId && parseFloat(r.qty) > 0;
 
-    // คลังกับที่เก็บต้องมาเป็นคู่เสมอ ตรวจก่อนทุกครั้ง
-    const errFrom = inv.checkWhLoc(whFrom, locFrom, isTransfer ? "คลังต้นทาง" : "คลังสินค้า");
-    if (errFrom) return toast(errFrom, "err");
+  /**
+   * แก้ค่าในบรรทัด แล้วถ้าบรรทัดสุดท้ายกรอกครบก็ต่อบรรทัดใหม่ให้เลย
+   * ผู้ใช้จะได้กรอกไหลลงไปเรื่อย ๆ ไม่ต้องหยุดกดปุ่มเพิ่มบรรทัดทุกครั้ง
+   */
+  function setRow(key, patch) {
+    setRows((prev) => {
+      const next = prev.map((r) => (r.key === key ? { ...r, ...patch } : r));
+      const last = next[next.length - 1];
+      if (isFilled(last)) next.push(blankRow(last));
+      return next;
+    });
+  }
 
-    if (isTransfer) {
-      const errTo = inv.checkWhLoc(whTo, locTo, "คลังปลายทาง");
-      if (errTo) return toast(errTo, "err");
-      if (whFrom === whTo) return toast("คลังต้นทางและปลายทางต้องไม่ใช่คลังเดียวกัน", "err");
-      if (locFrom === locTo) return toast("ที่เก็บต้นทางและปลายทางต้องไม่ใช่ช่องเดียวกัน", "err");
-    }
+  const addRow = () =>
+    setRows((prev) => [...prev, blankRow(prev.length ? prev[prev.length - 1] : null)]);
 
-    if (type !== "RECEIVE" && q > available) {
-      return toast(
-        "ของในที่เก็บ " + inv.locName(locFrom) + " ไม่พอ — ใช้ได้ " + num(available, 0) + " หน่วย",
-        "err"
-      );
-    }
+  const dropRow = (key) =>
+    setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : [blankRow()]));
 
-    setCart((prev) => [
-      ...prev,
-      {
-        key: uid(),
-        productId,
-        qty: q,
-        note: note.trim(),
-        whId: whFrom,
-        whTo: isTransfer ? whTo : "",
-        locId: locFrom,
-        locTo: isTransfer ? locTo : "",
-      },
-    ]);
-    setQty("");
-    setNote("");
-    toast("เพิ่ม " + inv.prodName(productId) + " จำนวน " + num(q, 0) + " ที่ " + inv.locName(locFrom));
+  /** เลือกสินค้าแล้วย้ายคลัง+ที่เก็บของบรรทัดนั้นไปตามค่าประจำของสินค้า */
+  function pickProduct(key, id) {
+    const def = defaultBinOf(db, id);
+    setRow(key, def ? { productId: id, whId: def.whId, locId: def.locId } : { productId: id });
+  }
+
+  const docNo = nextDocNo(db, type, date);
+  const filled = rows.filter(isFilled);
+  const totalQty = filled.reduce((sum, r) => sum + parseFloat(r.qty), 0);
+
+  /**
+   * ของในช่องเก็บที่ยังหยิบได้ สำหรับบรรทัดนี้
+   *
+   * ต้องหักของที่บรรทัดอื่นในตารางเดียวกันจองไว้ด้วย
+   * ไม่งั้นกรอกสองบรรทัดหยิบจากช่องเดียวกันจะดูเหมือนพอทั้งคู่ แล้วไปพังตอนบันทึก
+   */
+  function availableFor(r) {
+    const inBin = inv.placedIn(r.productId, r.locId);
+    const takenByOthers = rows
+      .filter((x) => x.key !== r.key && x.productId === r.productId && x.locId === r.locId)
+      .reduce((sum, x) => sum + (parseFloat(x.qty) || 0), 0);
+    return inBin - takenByOthers;
   }
 
   async function saveDoc() {
-    if (!cart.length || saving) return;
+    if (saving) return;
+
+    if (!filled.length) {
+      return toast("ยังไม่มีบรรทัดที่กรอกครบ — เลือกสินค้าและใส่จำนวนก่อน", "warn");
+    }
+
+    // ตรวจทั้งตารางก่อน แล้วค่อยบอกข้อแรกที่เจอ
+    const problems = [];
+    const seen = new Set();
+
+    filled.forEach((r) => {
+      const i = rows.indexOf(r) + 1;
+      const at = "บรรทัดที่ " + i;
+
+      const errFrom = inv.checkWhLoc(r.whId, r.locId, isTransfer ? "คลังต้นทาง" : "คลังสินค้า");
+      if (errFrom) return problems.push(at + ": " + errFrom);
+
+      if (isTransfer) {
+        const errTo = inv.checkWhLoc(r.whTo, r.locTo, "คลังปลายทาง");
+        if (errTo) return problems.push(at + ": " + errTo);
+        if (r.whId === r.whTo) {
+          return problems.push(at + ": คลังต้นทางและปลายทางต้องไม่ใช่คลังเดียวกัน");
+        }
+        if (r.locId === r.locTo) {
+          return problems.push(at + ": ที่เก็บต้นทางและปลายทางต้องไม่ใช่ช่องเดียวกัน");
+        }
+      }
+
+      const k = r.productId + "|" + r.locId + "|" + r.locTo;
+      if (seen.has(k)) return problems.push(at + ": ซ้ำกับบรรทัดก่อนหน้า");
+      seen.add(k);
+    });
+
+    // ของไม่พอ ตรวจรวมทั้งตารางต่อคู่ (สินค้า, ที่เก็บ)
+    if (type !== "RECEIVE") {
+      const wanted = new Map();
+      filled.forEach((r) => {
+        const k = r.productId + "|" + r.locId;
+        wanted.set(k, (wanted.get(k) || 0) + parseFloat(r.qty));
+      });
+      wanted.forEach((need, k) => {
+        const cut = k.indexOf("|");
+        const pid = k.slice(0, cut);
+        const lid = k.slice(cut + 1);
+        const have = inv.placedIn(pid, lid);
+        if (need > have) {
+          problems.push(
+            "ของใน " + inv.locName(lid) + " ไม่พอสำหรับ " + inv.prodName(pid) +
+              " (มี " + num(have, 0) + " ต้องการ " + num(need, 0) + ")"
+          );
+        }
+      });
+    }
+
+    if (problems.length) return toast(problems[0], "err");
 
     const doc = nextDocNo(db, type, date);
     const ts = new Date(date + "T09:00:00").getTime();
-    const rows = cart.map((c) => ({
+    const txnRows = filled.map((r) => ({
       id: uid(),
       type,
       docNo: doc,
       date,
-      productId: c.productId,
-      qty: c.qty,
-      whId: c.whId,
-      whTo: c.whTo,
-      locId: c.locId,
-      locTo: c.locTo,
-      note: c.note,
+      productId: r.productId,
+      qty: parseFloat(r.qty),
+      whId: r.whId,
+      whTo: isTransfer ? r.whTo : "",
+      locId: r.locId,
+      locTo: isTransfer ? r.locTo : "",
+      note: r.note.trim(),
       ref: isTransfer ? "" : ref.trim(),
       user: user && user.email ? user.email : "",
       ts,
@@ -135,9 +198,9 @@ export default function TxnScreen({ type }) {
 
     setSaving(true);
     try {
-      await inv.addTxns(rows);
-      toast("บันทึกเอกสาร " + doc + " (" + rows.length + " รายการ) เรียบร้อย");
-      setCart([]);
+      await inv.addTxns(txnRows);
+      toast("บันทึกเอกสาร " + doc + " (" + txnRows.length + " รายการ) เรียบร้อย");
+      setRows([blankRow()]);
       setRef("");
     } catch (e) {
       toast("บันทึกไม่สำเร็จ: " + e.message, "err");
@@ -230,43 +293,58 @@ export default function TxnScreen({ type }) {
 
   return (
     <div className="stack">
-      <Card title={"บันทึก" + T.name} actions={<Badge>เลขที่เอกสาร {docNo}</Badge>}>
-        <div className="form-grid">
+      <Card
+        title={"บันทึก" + T.name}
+        actions={
+          <>
+            <Badge>เลขที่เอกสาร {docNo}</Badge>
+            <Badge kind={filled.length ? "info" : "gray"}>
+              {filled.length} รายการ · {num(totalQty, 0)} หน่วย
+            </Badge>
+            <button className="btn btn-o btn-sm" onClick={addRow} disabled={saving}>
+              <IcPlus size={15} />
+              เพิ่มบรรทัด
+            </button>
+            <button
+              className="btn btn-p btn-sm"
+              onClick={saveDoc}
+              disabled={saving || !filled.length}
+            >
+              {saving ? "กำลังบันทึก…" : "บันทึกเอกสาร"}
+            </button>
+            <button
+              className="btn btn-g btn-sm"
+              onClick={() => setRows([blankRow()])}
+              disabled={saving}
+            >
+              ล้างตาราง
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid" style={{ marginBottom: 16 }}>
           <div className="field">
             <label className="lbl" htmlFor="f_date">วันที่ทำรายการ</label>
-            <input className="inp" type="date" id="f_date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input
+              className="inp"
+              type="date"
+              id="f_date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
           <div className="field">
             <label className="lbl" htmlFor="f_doc">เลขที่เอกสาร</label>
             <input className="inp" id="f_doc" value={docNo} readOnly />
           </div>
-          <WhLocFields
-            db={db}
-            idPrefix="f_from"
-            whId={whFrom}
-            locId={locFrom}
-            whLabel={isTransfer ? "คลังต้นทาง" : "คลังสินค้า"}
-            locLabel={isTransfer ? "ที่เก็บต้นทาง" : "ที่เก็บสินค้า"}
-            onChange={(w, l) => {
-              setWhFrom(w);
-              setLocFrom(l);
-            }}
-          />
           {isTransfer ? (
-            <WhLocFields
-              db={db}
-              idPrefix="f_to"
-              whId={whTo}
-              locId={locTo}
-              whLabel="คลังปลายทาง"
-              locLabel="ที่เก็บปลายทาง"
-              onChange={(w, l) => {
-                setWhTo(w);
-                setLocTo(l);
-              }}
-            />
+            <div className="field span2" style={{ display: "flex", alignItems: "flex-end" }}>
+              <span style={{ fontSize: 12.5, color: "var(--fg-muted)" }}>
+                เลือกสินค้าและใส่จำนวน แล้วบรรทัดใหม่จะขึ้นให้เอง
+              </span>
+            </div>
           ) : (
-            <div className="field">
+            <div className="field span2">
               <label className="lbl" htmlFor="f_ref">
                 {type === "RECEIVE" ? "เลขที่ใบส่งของ / ผู้ขาย" : "หน่วยงานผู้เบิก"}
               </label>
@@ -281,127 +359,138 @@ export default function TxnScreen({ type }) {
           )}
         </div>
 
-        <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "18px 0" }} />
+        <TableWrap>
+          <thead>
+            <tr>
+              <th style={{ width: 40 }}>#</th>
+              <th style={{ minWidth: 210 }}>สินค้า</th>
+              <th style={{ minWidth: 165 }}>{isTransfer ? "คลังต้นทาง" : "คลังสินค้า"}</th>
+              <th style={{ minWidth: 165 }}>{isTransfer ? "ที่เก็บต้นทาง" : "ที่เก็บสินค้า"}</th>
+              <th className="num" style={{ width: 164 }}>จำนวน</th>
+              {isTransfer ? <th style={{ minWidth: 165 }}>คลังปลายทาง</th> : null}
+              {isTransfer ? <th style={{ minWidth: 165 }}>ที่เก็บปลายทาง</th> : null}
+              <th style={{ minWidth: 150 }}>หมายเหตุ</th>
+              <th style={{ width: 48 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const p = inv.prod(r.productId);
+              const avail = availableFor(r);
+              const over = type !== "RECEIVE" && parseFloat(r.qty) > avail;
+              return (
+                <tr key={r.key}>
+                  <td>{i + 1}</td>
 
-        <div className="form-grid">
-          <div className="field span2">
-            <label className="lbl" htmlFor="f_prod">สินค้า</label>
-            <ProductSelect db={db} id="f_prod" value={productId} onChange={pickProduct} />
-          </div>
-          <div className="field">
-            <label className="lbl" htmlFor="f_qty">จำนวน</label>
-            <QtyInput
-              id="f_qty"
-              value={qty}
-              onChange={setQty}
-              ariaLabel="จำนวน"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addLine();
-                }
-              }}
-            />
-          </div>
-          <div className="field">
-            <label className="lbl">
-              {type === "RECEIVE" ? "คงเหลือในที่เก็บนี้" : "หยิบได้จากที่เก็บนี้"}
-            </label>
-            <input className="inp num" readOnly value={num(available, 0)} />
-          </div>
-          <div className="field">
-            <label className="lbl">คงเหลือทั้งคลัง</label>
-            <input className="inp num" readOnly value={num(balance, 0)} />
-          </div>
-          <div className="field span2">
-            <label className="lbl" htmlFor="f_note">หมายเหตุ</label>
-            <input
-              className="inp"
-              id="f_note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="ระบุรายละเอียดเพิ่มเติม (ถ้ามี)"
-            />
-          </div>
-          <div className="field span2" style={{ display: "flex", alignItems: "flex-end" }}>
-            <button className="btn btn-o" onClick={addLine} style={{ width: "100%" }}>
-              <IcPlus size={16} />
-              เพิ่มลงรายการ
-            </button>
-          </div>
-        </div>
-      </Card>
+                  <td>
+                    <ProductSelect
+                      db={db}
+                      id={"f_prod_" + r.key}
+                      value={r.productId}
+                      onChange={(v) => pickProduct(r.key, v)}
+                    />
+                  </td>
 
-      <Card
-        title="รายการในเอกสาร"
-        actions={
-          <>
-            <button className="btn btn-p" onClick={saveDoc} disabled={!cart.length || saving}>
-              {saving ? "กำลังบันทึก…" : "บันทึกเอกสาร"}
-            </button>
-            <button className="btn btn-g" onClick={() => setCart([])} disabled={saving}>
-              ล้างรายการ
-            </button>
-          </>
-        }
-      >
-        {cart.length ? (
-          <TableWrap>
-            <thead>
-              <tr>
-                <th style={{ width: 44 }}>#</th>
-                <th>สินค้า</th>
-                <th>หน่วย</th>
-                <th>{isTransfer ? "ต้นทาง → ปลายทาง" : "คลัง · ที่เก็บ"}</th>
-                <th className="num">จำนวน</th>
-                <th>หมายเหตุ</th>
-                <th style={{ width: 52 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {cart.map((c, i) => {
-                const p = inv.prod(c.productId);
-                return (
-                  <tr key={c.key}>
-                    <td>{i + 1}</td>
+                  <td>
+                    <WarehouseSelect
+                      db={db}
+                      id={"f_wh_" + r.key}
+                      value={r.whId}
+                      onChange={(w) => setRow(r.key, { whId: w, locId: firstLocOf(db, w) })}
+                    />
+                  </td>
+
+                  <td>
+                    <LocationSelect
+                      db={db}
+                      whId={r.whId}
+                      id={"f_loc_" + r.key}
+                      value={r.locId}
+                      onChange={(l) => setRow(r.key, { locId: l })}
+                    />
+                  </td>
+
+                  <td className="num">
+                    <QtyInput
+                      value={r.qty}
+                      onChange={(v) => setRow(r.key, { qty: v })}
+                      disabled={saving}
+                      ariaLabel={"จำนวนของบรรทัดที่ " + (i + 1)}
+                    />
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: over ? "var(--err)" : "var(--fg-faint)",
+                        fontWeight: over ? 700 : 400,
+                      }}
+                    >
+                      {type === "RECEIVE"
+                        ? p
+                          ? p.unit
+                          : ""
+                        : "หยิบได้ " + num(avail, 0) + (p ? " " + p.unit : "")}
+                    </div>
+                  </td>
+
+                  {isTransfer ? (
                     <td>
-                      <b>{p ? p.name : ""}</b>
-                      <br />
-                      <span className="code-cell" style={{ color: "var(--fg-faint)" }}>{p ? p.code : ""}</span>
+                      <WarehouseSelect
+                        db={db}
+                        id={"f_whto_" + r.key}
+                        value={r.whTo}
+                        onChange={(w) => setRow(r.key, { whTo: w, locTo: firstLocOf(db, w) })}
+                      />
                     </td>
-                    <td>{p ? p.unit : ""}</td>
-                    <td style={{ fontSize: 13 }}>
-                      {inv.whLocName(c.whId, c.locId)}
-                      {isTransfer ? <b> → {inv.whLocName(c.whTo, c.locTo)}</b> : null}
-                    </td>
-                    <td className="num">
-                      <b>{num(c.qty, 0)}</b>
-                    </td>
-                    <td style={{ fontSize: 13 }}>{c.note || "—"}</td>
+                  ) : null}
+
+                  {isTransfer ? (
                     <td>
-                      <button
-                        className="btn btn-d btn-icon"
-                        title="ลบ"
-                        onClick={() => setCart((prev) => prev.filter((x) => x.key !== c.key))}
-                      >
-                        <IcTrash size={14} />
-                      </button>
+                      <LocationSelect
+                        db={db}
+                        whId={r.whTo}
+                        id={"f_locto_" + r.key}
+                        value={r.locTo}
+                        onChange={(l) => setRow(r.key, { locTo: l })}
+                      />
                     </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={4}>รวมทั้งสิ้น {cart.length} รายการ</td>
-                <td className="num">{num(cart.reduce((s, c) => s + c.qty, 0), 0)}</td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          </TableWrap>
-        ) : (
-          <Empty>ยังไม่มีรายการ — เลือกสินค้าและกด “เพิ่มลงรายการ” ด้านบน</Empty>
-        )}
+                  ) : null}
+
+                  <td>
+                    <input
+                      className="inp"
+                      value={r.note}
+                      onChange={(e) => setRow(r.key, { note: e.target.value })}
+                      placeholder="ถ้ามี"
+                      aria-label={"หมายเหตุของบรรทัดที่ " + (i + 1)}
+                    />
+                  </td>
+
+                  <td>
+                    <button
+                      className="btn btn-d btn-icon"
+                      title="ลบบรรทัด"
+                      onClick={() => dropRow(r.key)}
+                      disabled={saving}
+                    >
+                      <IcTrash size={14} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={4}>
+                กรอก {filled.length} บรรทัด จากทั้งหมด {rows.length}
+              </td>
+              <td className="num">
+                <b>{num(totalQty, 0)}</b>
+              </td>
+              <td colSpan={isTransfer ? 4 : 2} />
+            </tr>
+          </tfoot>
+        </TableWrap>
       </Card>
 
       <Card

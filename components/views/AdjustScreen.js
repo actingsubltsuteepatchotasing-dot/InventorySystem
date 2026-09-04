@@ -57,8 +57,21 @@ export default function AdjustScreen() {
 
   const [rows, setRows] = useState(() => [blankRow()]);
 
-  const setRow = (key, patch) =>
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  /** บรรทัดนี้กรอกครบพอจะบันทึกได้แล้วหรือยัง (ยอดตรงกับบัญชีก็ถือว่ากรอกแล้ว) */
+  const isFilled = (r) => !!r.productId && r.counted !== "" && !isNaN(parseFloat(r.counted));
+
+  /**
+   * แก้ค่าในบรรทัด แล้วถ้าบรรทัดสุดท้ายกรอกครบก็ต่อบรรทัดใหม่ให้เลย
+   * ผู้ใช้จะได้ไล่นับไปเรื่อย ๆ ไม่ต้องหยุดกดปุ่มเพิ่มบรรทัดทุกครั้ง
+   */
+  function setRow(key, patch) {
+    setRows((prev) => {
+      const next = prev.map((r) => (r.key === key ? { ...r, ...patch } : r));
+      const last = next[next.length - 1];
+      if (isFilled(last)) next.push(blankRow(last));
+      return next;
+    });
+  }
 
   const addRow = () =>
     setRows((prev) => [...prev, blankRow(prev.length ? prev[prev.length - 1] : null)]);
