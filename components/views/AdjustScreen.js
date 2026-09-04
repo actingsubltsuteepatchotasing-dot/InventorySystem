@@ -10,8 +10,16 @@ import { defaultBinOf, firstLocOf, nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
-import { IcTrash } from "../Icons";
-import { Badge, Card, Empty, ProductSelect, TableWrap, WhLocFields } from "../ui";
+import { IcPlus, IcTrash } from "../Icons";
+import {
+  Badge,
+  Card,
+  Empty,
+  LocationSelect,
+  ProductSelect,
+  TableWrap,
+  WarehouseSelect,
+} from "../ui";
 import SetupNotice from "../SetupNotice";
 import { CountSheetBody } from "./printBodies";
 
@@ -24,77 +32,130 @@ export default function AdjustScreen() {
   const [saving, setSaving] = useState(false);
 
   const [date, setDate] = useState(todayISO);
-  const initDef = defaultBinOf(db, db.products[0].id);
-  const [whId, setWhId] = useState(initDef ? initDef.whId : db.warehouses[0].id);
-  const [locId, setLocId] = useState(() =>
-    initDef ? initDef.locId : firstLocOf(db, db.warehouses[0].id)
-  );
-  const [productId, setProductId] = useState(db.products[0].id);
 
-  /** เลือกสินค้าแล้วไปที่คลัง + ที่เก็บประจำของสินค้านั้น ถ้าตั้งไว้ */
-  function pickProduct(id) {
-    setProductId(id);
-    const def = defaultBinOf(db, id);
-    if (!def) return;
-    setWhId(def.whId);
-    setLocId(def.locId);
+  /**
+   * หนึ่งบรรทัด = สินค้าหนึ่งรายการในช่องเก็บหนึ่งช่อง
+   *
+   * เก็บเฉพาะสิ่งที่ผู้ใช้กรอกเอง ส่วนยอดตามบัญชี / ผลต่าง คำนวณสด ๆ ตอนแสดงผล
+   * ถ้าเก็บยอดตามบัญชีไว้ในแถวด้วย พอมีคนอื่นบันทึกรายการเข้ามาระหว่างนี้
+   * ตัวเลขในตารางจะค้างอยู่กับของเก่าโดยไม่รู้ตัว
+   */
+  function blankRow(from) {
+    const pid = db.products[0] ? db.products[0].id : "";
+    const def = defaultBinOf(db, pid);
+    return {
+      key: uid(),
+      productId: pid,
+      // แถวใหม่ใช้คลัง/ที่เก็บต่อจากแถวก่อนหน้า เพราะปกตินับทีละช่องจนจบ
+      whId: from ? from.whId : def ? def.whId : db.warehouses[0].id,
+      locId: from ? from.locId : def ? def.locId : firstLocOf(db, db.warehouses[0].id),
+      counted: "",
+      reason: ADJUST_REASONS[0],
+    };
   }
-  const [counted, setCounted] = useState("");
-  const [reason, setReason] = useState(ADJUST_REASONS[0]);
-  const [cart, setCart] = useState([]);
+
+  const [rows, setRows] = useState(() => [blankRow()]);
+
+  const setRow = (key, patch) =>
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  const addRow = () =>
+    setRows((prev) => [...prev, blankRow(prev.length ? prev[prev.length - 1] : null)]);
+
+  const dropRow = (key) =>
+    setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : [blankRow()]));
+
+  /** เลือกสินค้าในแถวไหน ให้ย้ายคลัง+ที่เก็บของแถวนั้นไปตามค่าประจำของสินค้า */
+  function pickProduct(key, id) {
+    const def = defaultBinOf(db, id);
+    setRow(key, def ? { productId: id, whId: def.whId, locId: def.locId } : { productId: id });
+  }
 
   const docNo = nextDocNo(db, "ADJUST", date);
 
-  // ตรวจนับกันทีละช่องเก็บ ยอดตามบัญชีจึงเป็นยอดในช่องนั้น ไม่ใช่ทั้งคลัง
-  // ทำแบบนี้ผลต่างจะไม่มีทางทำให้ของในช่องติดลบ เพราะยอดใหม่คือยอดที่นับได้จริง
-  const book = inv.placedIn(productId, locId);
-  const whBalance = inv.stockOf(productId, whId);
-  const countedNum = parseFloat(counted);
-  const diff = isNaN(countedNum) ? 0 : countedNum - book;
-
-  function addLine() {
-    const err = inv.checkWhLoc(whId, locId);
-    if (err) return toast(err, "err");
-    if (isNaN(countedNum) || countedNum < 0) return toast("กรุณาระบุยอดนับได้จริง", "err");
-    if (diff === 0) return toast("ยอดตรงกับบัญชี ไม่ต้องปรับปรุง", "warn");
-    if (cart.some((c) => c.productId === productId && c.locId === locId)) {
-      return toast("มีรายการสินค้านี้ในที่เก็บนี้ในเอกสารแล้ว", "warn");
-    }
-    setCart((prev) => [
-      ...prev,
-      { key: uid(), productId, whId, locId, book, counted: countedNum, qty: diff, note: reason },
-    ]);
-    setCounted("");
-    toast("เพิ่มรายการปรับปรุง " + inv.prodName(productId) + " ที่ " + inv.locName(locId));
+  /**
+   * ตัวเลขของแถวหนึ่ง
+   *
+   * ตรวจนับกันทีละช่องเก็บ ยอดตามบัญชีจึงเป็นยอดในช่องนั้น ไม่ใช่ทั้งคลัง
+   * ทำแบบนี้ผลต่างจะไม่มีทางทำให้ของในช่องติดลบ เพราะยอดใหม่คือยอดที่นับได้จริง
+   */
+  function calc(r) {
+    const book = inv.placedIn(r.productId, r.locId);
+    const whBalance = inv.stockOf(r.productId, r.whId);
+    const countedNum = parseFloat(r.counted);
+    const hasCount = r.counted !== "" && !isNaN(countedNum) && countedNum >= 0;
+    const diff = hasCount ? countedNum - book : 0;
+    return { book, whBalance, countedNum, hasCount, diff };
   }
 
+  const filled = rows.filter((r) => calc(r).hasCount && calc(r).diff !== 0);
+  const netDiff = filled.reduce((sum, r) => sum + calc(r).diff, 0);
+
   async function saveDoc() {
-    if (!cart.length || saving) return;
+    if (saving) return;
+
+    // ตรวจทุกแถวก่อน แล้วค่อยบอกทีเดียว จะได้ไม่ต้องกดแล้วโดนเตือนทีละข้อ
+    const problems = [];
+    const seen = new Set();
+
+    rows.forEach((r, i) => {
+      const at = "บรรทัดที่ " + (i + 1);
+      const { hasCount } = calc(r);
+
+      if (!r.productId) return problems.push(at + ": ยังไม่ได้เลือกสินค้า");
+
+      const err = inv.checkWhLoc(r.whId, r.locId);
+      if (err) return problems.push(at + ": " + err);
+
+      if (r.counted !== "" && !hasCount) {
+        return problems.push(at + ": ยอดนับได้จริงต้องเป็นตัวเลขไม่ติดลบ");
+      }
+
+      const k = r.productId + "|" + r.locId;
+      if (seen.has(k)) {
+        return problems.push(at + ": สินค้านี้ในที่เก็บนี้ซ้ำกับบรรทัดก่อนหน้า");
+      }
+      seen.add(k);
+    });
+
+    if (problems.length) return toast(problems[0], "err");
+
+    if (!filled.length) {
+      return toast("ยังไม่มีบรรทัดที่ต้องปรับปรุง — กรอกยอดนับได้จริงที่ต่างจากบัญชีก่อน", "warn");
+    }
 
     const doc = nextDocNo(db, "ADJUST", date);
     const ts = new Date(date + "T09:00:00").getTime();
-    const rows = cart.map((c) => ({
-      id: uid(),
-      type: "ADJUST",
-      docNo: doc,
-      date,
-      productId: c.productId,
-      qty: c.qty,
-      whId: c.whId,
-      whTo: "",
-      locId: c.locId,
-      locTo: "",
-      note: c.note,
-      ref: "นับได้ " + c.counted + " / บัญชี " + c.book,
-      user: user && user.email ? user.email : "",
-      ts,
-    }));
+    const txnRows = filled.map((r) => {
+      const c = calc(r);
+      return {
+        id: uid(),
+        type: "ADJUST",
+        docNo: doc,
+        date,
+        productId: r.productId,
+        qty: c.diff,
+        whId: r.whId,
+        whTo: "",
+        locId: r.locId,
+        locTo: "",
+        note: r.reason,
+        ref: "นับได้ " + c.countedNum + " / บัญชี " + c.book,
+        user: user && user.email ? user.email : "",
+        ts,
+      };
+    });
+
+    const skipped = rows.length - filled.length;
 
     setSaving(true);
     try {
-      await inv.addTxns(rows);
-      toast("บันทึกเอกสารปรับปรุง " + doc + " เรียบร้อย");
-      setCart([]);
+      await inv.addTxns(txnRows);
+      toast(
+        "บันทึกเอกสารปรับปรุง " + doc + " (" + filled.length + " รายการ) เรียบร้อย" +
+          (skipped > 0 ? " · ข้าม " + skipped + " บรรทัดที่ยอดตรงกับบัญชี" : "")
+      );
+      setRows([blankRow()]);
     } catch (e) {
       toast("บันทึกไม่สำเร็จ: " + e.message, "err");
     } finally {
@@ -153,11 +214,12 @@ export default function AdjustScreen() {
   }
 
   function printSheet() {
-    const w = inv.wh(whId);
+    const sheetWh = rows.length ? rows[0].whId : db.warehouses[0].id;
+    const w = inv.wh(sheetWh);
     print({
       title: "ใบตรวจนับสินค้าคงคลัง",
       subtitle: (w ? w.name + " · จังหวัด" + w.province : "ทุกคลัง") + " · ณ วันที่ " + thDate(todayISO()),
-      body: <CountSheetBody db={db} inv={inv} whId={whId} />,
+      body: <CountSheetBody db={db} inv={inv} whId={sheetWh} />,
     });
   }
 
@@ -171,133 +233,181 @@ export default function AdjustScreen() {
     <div className="stack">
       <Card
         title="บันทึกการปรับปรุงสินค้า (จากผลการตรวจนับ)"
-        actions={<Badge>เลขที่เอกสาร {docNo}</Badge>}
+        actions={
+          <>
+            <Badge>เลขที่เอกสาร {docNo}</Badge>
+            <Badge kind={filled.length ? "info" : "gray"}>
+              {filled.length} บรรทัดที่ต้องปรับปรุง
+            </Badge>
+            <button className="btn btn-o btn-sm" onClick={addRow} disabled={saving}>
+              <IcPlus size={15} />
+              เพิ่มบรรทัด
+            </button>
+            <button
+              className="btn btn-p btn-sm"
+              onClick={saveDoc}
+              disabled={saving || !filled.length}
+            >
+              {saving ? "กำลังบันทึก…" : "บันทึกเอกสาร"}
+            </button>
+            <button
+              className="btn btn-g btn-sm"
+              onClick={() => setRows([blankRow()])}
+              disabled={saving}
+            >
+              ล้างตาราง
+            </button>
+          </>
+        }
       >
-        <div className="form-grid">
+        <div className="form-grid" style={{ marginBottom: 16 }}>
           <div className="field">
             <label className="lbl" htmlFor="a_date">วันที่ตรวจนับ</label>
-            <input className="inp" type="date" id="a_date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input
+              className="inp"
+              type="date"
+              id="a_date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
           <div className="field">
             <label className="lbl" htmlFor="a_doc">เลขที่เอกสาร</label>
             <input className="inp" id="a_doc" value={docNo} readOnly />
           </div>
-          <WhLocFields
-            db={db}
-            idPrefix="a"
-            whId={whId}
-            locId={locId}
-            locLabel="ที่เก็บที่ตรวจนับ"
-            onChange={(w, l) => {
-              setWhId(w);
-              setLocId(l);
-            }}
-          />
-          <div className="field span2">
-            <label className="lbl" htmlFor="a_prod">สินค้า</label>
-            <ProductSelect db={db} id="a_prod" value={productId} onChange={pickProduct} />
-          </div>
-          <div className="field">
-            <label className="lbl">ยอดตามบัญชีในที่เก็บนี้</label>
-            <input className="inp num" readOnly value={num(book, 0)} />
-          </div>
-          <div className="field">
-            <label className="lbl">คงเหลือทั้งคลัง</label>
-            <input className="inp num" readOnly value={num(whBalance, 0)} />
-          </div>
-          <div className="field">
-            <label className="lbl" htmlFor="a_count">ยอดนับได้จริง</label>
-            <input
-              className="inp num"
-              type="number"
-              step="any"
-              id="a_count"
-              value={counted}
-              onChange={(e) => setCounted(e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div className="field">
-            <label className="lbl">ผลต่าง</label>
-            <input
-              className="inp num"
-              readOnly
-              value={(diff > 0 ? "+" : "") + num(diff, 0)}
-              style={{ color: diff === 0 ? undefined : diff > 0 ? "var(--ok)" : "var(--err)", fontWeight: 700 }}
-            />
-          </div>
-          <div className="field">
-            <label className="lbl" htmlFor="a_reason">สาเหตุ</label>
-            <select className="sel" id="a_reason" value={reason} onChange={(e) => setReason(e.target.value)}>
-              {ADJUST_REASONS.map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
-          </div>
           <div className="field span2" style={{ display: "flex", alignItems: "flex-end" }}>
-            <button className="btn btn-o" onClick={addLine} style={{ width: "100%" }}>
-              เพิ่มลงรายการ
-            </button>
+            <span style={{ fontSize: 12.5, color: "var(--fg-muted)" }}>
+              กรอกยอดที่นับได้จริงของแต่ละช่องเก็บ บรรทัดที่ยอดตรงกับบัญชีจะถูกข้ามตอนบันทึก
+            </span>
           </div>
         </div>
-      </Card>
 
-      <Card
-        title="รายการปรับปรุง"
-        actions={
-          <>
-            <button className="btn btn-p" onClick={saveDoc} disabled={!cart.length || saving}>
-              {saving ? "กำลังบันทึก…" : "บันทึกเอกสาร"}
-            </button>
-            <button className="btn btn-g" onClick={() => setCart([])} disabled={saving}>
-              ล้างรายการ
-            </button>
-          </>
-        }
-      >
-        {cart.length ? (
-          <TableWrap>
-            <thead>
-              <tr>
-                <th style={{ width: 44 }}>#</th>
-                <th>สินค้า</th>
-                <th>คลัง · ที่เก็บ</th>
-                <th className="num">ตามบัญชี</th>
-                <th className="num">นับได้</th>
-                <th className="num">ผลต่าง</th>
-                <th>สาเหตุ</th>
-                <th style={{ width: 52 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {cart.map((c, i) => (
-                <tr key={c.key}>
+        <TableWrap>
+          <thead>
+            <tr>
+              <th style={{ width: 40 }}>#</th>
+              <th style={{ minWidth: 210 }}>สินค้า</th>
+              <th style={{ minWidth: 170 }}>คลัง · ที่เก็บ</th>
+              <th className="num" style={{ width: 104 }}>ตามบัญชี</th>
+              <th className="num" style={{ width: 108 }}>นับได้จริง</th>
+              <th className="num" style={{ width: 96 }}>ผลต่าง</th>
+              <th style={{ minWidth: 170 }}>สาเหตุ</th>
+              <th style={{ width: 48 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const c = calc(r);
+              const p = inv.prod(r.productId);
+              return (
+                <tr key={r.key}>
                   <td>{i + 1}</td>
-                  <td>{inv.prodName(c.productId)}</td>
-                  <td style={{ fontSize: 13 }}>{inv.whLocName(c.whId, c.locId)}</td>
-                  <td className="num">{num(c.book, 0)}</td>
-                  <td className="num">{num(c.counted, 0)}</td>
+
+                  <td>
+                    <ProductSelect
+                      db={db}
+                      id={"a_prod_" + r.key}
+                      value={r.productId}
+                      onChange={(v) => pickProduct(r.key, v)}
+                    />
+                  </td>
+
+                  <td>
+                    {/* คลังกับที่เก็บของแถวนี้ เปลี่ยนคลังแล้วที่เก็บเด้งเป็นช่องแรกให้ */}
+                    <WarehouseSelect
+                      db={db}
+                      id={"a_wh_" + r.key}
+                      value={r.whId}
+                      onChange={(w) => setRow(r.key, { whId: w, locId: firstLocOf(db, w) })}
+                    />
+                    <div style={{ marginTop: 5 }}>
+                      <LocationSelect
+                        db={db}
+                        whId={r.whId}
+                        id={"a_loc_" + r.key}
+                        value={r.locId}
+                        onChange={(l) => setRow(r.key, { locId: l })}
+                      />
+                    </div>
+                  </td>
+
                   <td className="num">
-                    <b style={{ color: c.qty > 0 ? "var(--ok)" : "var(--err)" }}>
-                      {(c.qty > 0 ? "+" : "") + num(c.qty, 0)}
+                    <b>{num(c.book, 0)}</b>
+                    <div style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>
+                      ทั้งคลัง {num(c.whBalance, 0)}
+                    </div>
+                  </td>
+
+                  <td className="num">
+                    <input
+                      className="inp num"
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={r.counted}
+                      onChange={(e) => setRow(r.key, { counted: e.target.value })}
+                      placeholder="0"
+                      aria-label={"ยอดนับได้จริงของบรรทัดที่ " + (i + 1)}
+                    />
+                    {p ? (
+                      <div style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>{p.unit}</div>
+                    ) : null}
+                  </td>
+
+                  <td className="num">
+                    <b
+                      style={{
+                        color:
+                          !c.hasCount || c.diff === 0
+                            ? "var(--fg-faint)"
+                            : c.diff > 0
+                              ? "var(--ok)"
+                              : "var(--err)",
+                      }}
+                    >
+                      {c.hasCount ? (c.diff > 0 ? "+" : "") + num(c.diff, 0) : "—"}
                     </b>
                   </td>
-                  <td style={{ fontSize: 13 }}>{c.note}</td>
+
+                  <td>
+                    <select
+                      className="sel"
+                      value={r.reason}
+                      onChange={(e) => setRow(r.key, { reason: e.target.value })}
+                      aria-label={"สาเหตุของบรรทัดที่ " + (i + 1)}
+                    >
+                      {ADJUST_REASONS.map((x) => (
+                        <option key={x}>{x}</option>
+                      ))}
+                    </select>
+                  </td>
+
                   <td>
                     <button
                       className="btn btn-d btn-icon"
-                      onClick={() => setCart((prev) => prev.filter((x) => x.key !== c.key))}
+                      title="ลบบรรทัด"
+                      onClick={() => dropRow(r.key)}
+                      disabled={saving}
                     >
                       <IcTrash size={14} />
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </TableWrap>
-        ) : (
-          <Empty>ยังไม่มีรายการปรับปรุง</Empty>
-        )}
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={5}>
+                รวม {rows.length} บรรทัด · ต้องปรับปรุง {filled.length} บรรทัด
+              </td>
+              <td className="num">
+                <b>{(netDiff > 0 ? "+" : "") + num(netDiff, 0)}</b>
+              </td>
+              <td colSpan={2} />
+            </tr>
+          </tfoot>
+        </TableWrap>
       </Card>
 
       <Card

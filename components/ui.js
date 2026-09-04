@@ -2,6 +2,9 @@
 
 // ชิ้นส่วน UI ที่ใช้ซ้ำทั่วระบบ
 
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
 import { encode128 } from "@/lib/barcode";
 import { firstLocOf, locsOf } from "@/lib/db";
 import { num } from "@/lib/format";
@@ -109,17 +112,208 @@ export function Barcode({ value, module = 2, height = 54, showText = true }) {
   );
 }
 
-/** เลือกสินค้า */
+/**
+ * เลือกสินค้า — กดเลือกจากรายการ หรือพิมพ์ค้นหาก็ได้
+ *
+ * ทำเป็น input + รายการเอง ไม่ใช้ <select> ของเบราว์เซอร์
+ * เพราะ <select> พิมพ์ค้นหาไม่ได้จริง (พิมพ์ได้แค่กระโดดตามตัวอักษรแรก)
+ * พอสินค้าเยอะขึ้นจะเลื่อนหาทีละรายการไม่ไหว
+ *
+ * ค้นได้จาก รหัส / ชื่อ / บาร์โค๊ด / หมวดหมู่
+ * ใช้อินเทอร์เฟซเดิมทุกอย่าง หน้าจอที่เรียกอยู่แล้วจึงไม่ต้องแก้
+ *
+ * รายการเรนเดอร์ผ่าน portal ไปที่ body และวางตำแหน่งแบบ fixed
+ * ถ้าเรนเดอร์ในที่เดิมจะถูก overflow ของตาราง (.tbl-wrap) หรือของ modal ตัดหาย
+ */
 export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = "ทุกรายการ" }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [hi, setHi] = useState(0);
+  const [box, setBox] = useState(null);
+
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  const emptyLabel = includeAll ? allLabel : "— เลือกสินค้า —";
+  const selected = db.products.find((p) => p.id === value) || null;
+  const labelOf = (p) => (p ? p.code + " · " + p.name : emptyLabel);
+
+  // null ในรายการ = ตัวเลือก "ทุกรายการ" ของโหมดตัวกรอง
+  const options = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const list = t
+      ? db.products.filter((p) =>
+          (p.code + " " + p.name + " " + (p.barcode || "") + " " + (p.cat || ""))
+            .toLowerCase()
+            .includes(t)
+        )
+      : db.products;
+    return includeAll ? [null, ...list] : list;
+  }, [db.products, q, includeAll]);
+
+  /** วางรายการให้ตรงกับช่องกรอก และพลิกขึ้นบนถ้าที่ด้านล่างไม่พอ */
+  const place = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 12;
+    const above = r.top - 12;
+    const up = below < 200 && above > below;
+    setBox({
+      left: r.left,
+      width: r.width,
+      top: up ? undefined : r.bottom + 4,
+      bottom: up ? window.innerHeight - r.top + 4 : undefined,
+      maxHeight: Math.min(288, Math.max(140, up ? above : below)),
+    });
+  }, []);
+
+  // ตำแหน่งแบบ fixed ไม่ขยับตามการเลื่อนหน้า ต้องคำนวณใหม่เอง
+  // ใช้ capture = true เพื่อจับการเลื่อนของกล่องชั้นในด้วย ไม่ใช่แค่ของหน้าต่าง
+  useEffect(() => {
+    if (!open) return;
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
+
+  // คลิกนอกทั้งช่องกรอกและรายการแล้วปิด
+  // ต้องเช็ครายการด้วยเพราะมันอยู่คนละที่ในหน้าเว็บแล้ว (portal)
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      const inInput = inputRef.current && inputRef.current.contains(e.target);
+      const inList = listRef.current && listRef.current.contains(e.target);
+      if (!inInput && !inList) {
+        setOpen(false);
+        setQ("");
+      }
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  // เลื่อนรายการที่ไฮไลต์ให้อยู่ในสายตาเสมอตอนกดลูกศร
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.children[hi];
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+  }, [hi, open]);
+
+  function close() {
+    setOpen(false);
+    setQ("");
+  }
+
+  function pick(p) {
+    onChange(p ? p.id : "");
+    close();
+  }
+
+  function onKey(e) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      setHi((n) => Math.max(0, Math.min(options.length - 1, n + step)));
+      return;
+    }
+    if (e.key === "Enter" && open) {
+      e.preventDefault();
+      if (options.length) pick(options[hi]);
+      return;
+    }
+    if (e.key === "Escape" && open) {
+      e.preventDefault();
+      close();
+    }
+  }
+
+  const listId = id ? id + "_list" : undefined;
+
+  const list =
+    open && box ? (
+      <ul
+        className="combo-list"
+        id={listId}
+        role="listbox"
+        ref={listRef}
+        style={{
+          left: box.left,
+          width: box.width,
+          top: box.top,
+          bottom: box.bottom,
+          maxHeight: box.maxHeight,
+        }}
+      >
+        {options.length ? (
+          options.map((p, i) => {
+            const cur = p ? p.id === value : !value;
+            return (
+              <li
+                key={p ? p.id : "__all"}
+                role="option"
+                aria-selected={cur}
+                className={"combo-opt" + (i === hi ? " hi" : "") + (cur ? " cur" : "")}
+                onMouseEnter={() => setHi(i)}
+                // pointerdown + preventDefault กันไม่ให้ input เสียโฟกัสก่อนเลือกติด
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  pick(p);
+                }}
+              >
+                {p ? (
+                  <>
+                    <span className="c">{p.code}</span>
+                    <span className="n">{p.name}</span>
+                    <span className="m">{p.unit}</span>
+                  </>
+                ) : (
+                  <span className="n">{allLabel}</span>
+                )}
+              </li>
+            );
+          })
+        ) : (
+          <li className="combo-empty">ไม่พบสินค้าที่ตรงกับ “{q.trim()}”</li>
+        )}
+      </ul>
+    ) : null;
+
   return (
-    <select className="sel" id={id} value={value} onChange={(e) => onChange(e.target.value)}>
-      {includeAll ? <option value="">{allLabel}</option> : null}
-      {db.products.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.code} · {p.name}
-        </option>
-      ))}
-    </select>
+    <div className="combo">
+      <input
+        ref={inputRef}
+        id={id}
+        className="inp combo-inp"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        autoComplete="off"
+        value={open ? q : labelOf(selected)}
+        placeholder={open ? labelOf(selected) : ""}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setHi(0);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={onKey}
+      />
+      <span className="combo-caret" aria-hidden="true">
+        ▾
+      </span>
+      {/* เรนเดอร์ที่ body เพื่อไม่ให้ถูก overflow ของตารางหรือ modal ตัด */}
+      {list ? createPortal(list, document.body) : null}
+    </div>
   );
 }
 

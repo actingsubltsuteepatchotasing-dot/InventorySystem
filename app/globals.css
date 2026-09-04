@@ -82,6 +82,60 @@
   --shadow-lg: 0 12px 40px -12px rgba(30, 0, 50, 0.28);
 }
 
+/* ---------- ช่องเลือกสินค้าแบบพิมพ์ค้นหาได้ ---------- */
+.combo { position: relative; }
+.combo-inp { width: 100%; padding-right: 30px; cursor: text; }
+.combo-caret {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+/* วางตำแหน่งจาก JS เพราะเรนเดอร์ที่ body ไม่ได้อยู่ในกล่องเดิมแล้ว
+   z-index สูงกว่า modal (100) เพื่อให้ใช้ในกล่องซ้อนได้ด้วย */
+.combo-list {
+  position: fixed;
+  z-index: 120;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 250px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+}
+.combo-opt {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.combo-opt.hi { background: var(--brand-50); }
+.combo-opt.cur { font-weight: 700; }
+.combo-opt .c {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.combo-opt .n {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.combo-opt .m { flex: 0 0 auto; font-size: 11.5px; color: var(--fg-faint); }
+.combo-empty { padding: 14px; text-align: center; color: var(--fg-faint); font-size: 13px; }
+
 /* ---------- ปุ่มเลือกธีมบนแถบบน ---------- */
 .theme-pick { display: flex; align-items: center; gap: 6px; }
 .theme-dot {
