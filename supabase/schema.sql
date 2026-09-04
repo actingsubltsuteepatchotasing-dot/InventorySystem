@@ -7,9 +7,9 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 9 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 12 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
---   3. สร้างฟังก์ชัน stock_of() และ create_sale()
+--   3. สร้างฟังก์ชัน stock_of() create_sale() และ create_invoice()
 --   4. GRANT สิทธิ์ระดับตารางให้ role authenticated
 --   5. เปิด RLS และสร้าง policy ครบทุกตาราง
 --   6. สั่ง PostgREST รีเฟรช schema cache
@@ -444,6 +444,247 @@ create table if not exists public.doc_groups (
   constraint doc_groups_digits check (digits between 2 and 8)
 );
 
+-- ============================================================================
+-- ข้อมูลกิจการผู้ออกใบกำกับภาษี
+-- ----------------------------------------------------------------------------
+-- แถวเดียวเสมอ (id = 'main') ใช้พิมพ์หัวใบกำกับภาษี
+-- ใบกำกับภาษีเต็มรูปแบบต้องมีชื่อ ที่อยู่ และเลขประจำตัวผู้เสียภาษีของผู้ขาย
+-- ถ้าเก็บเป็นค่าคงที่ในโค้ด คนใช้จะแก้เองไม่ได้ ต้องรอ deploy ใหม่ทุกครั้งที่ย้ายที่อยู่
+create table if not exists public.company (
+  id         text primary key default 'main',
+  name       text not null default '',
+  branch     text not null default 'สำนักงานใหญ่',
+  tax_id     text not null default '',
+  address    text not null default '',
+  phone      text not null default '',
+  email      text not null default '',
+  created_at timestamptz not null default now(),
+
+  constraint company_single_row check (id = 'main')
+);
+
+-- ลูกค้า: ข้อมูลฝั่งผู้ซื้อที่ใบกำกับภาษีเต็มรูปแบบบังคับให้มี
+alter table public.customers add column if not exists tax_id text not null default '';
+alter table public.customers add column if not exists branch text not null default '';
+
+-- ============================================================================
+-- การขายสินค้าและบริการ (ใบกำกับภาษีเต็มรูปแบบ)
+-- ----------------------------------------------------------------------------
+-- คนละเรื่องกับ sales ของหน้า POS:
+--   POS      = ขายหน้าร้าน จบที่เคาน์เตอร์ ใบเสร็จอย่างย่อ ไม่มีการจัดส่ง
+--   invoices = ขายเป็นเอกสาร มีลูกค้าในทะเบียน ส่วนลดรายบรรทัด ส่วนลดท้ายบิล
+--              อัตราภาษีปรับได้ ออกใบกำกับภาษีเต็มรูปแบบ และมีสถานะการจัดส่ง
+--
+-- ชื่อ/ที่อยู่/เลขผู้เสียภาษีของลูกค้าถูกคัดลอกมาเก็บในใบด้วย (snapshot)
+-- เพราะเอกสารภาษีต้องคงข้อความเดิม ณ วันที่ออก
+-- ถ้าอ่านสดจากทะเบียนลูกค้า วันหนึ่งลูกค้าย้ายที่อยู่ ใบเก่าจะเปลี่ยนตามไปหมด
+create table if not exists public.invoices (
+  id            text primary key,
+  doc_no        text not null,
+  date          date not null,
+  customer_id   text references public.customers (id) on delete restrict,
+  cust_code     text not null default '',
+  cust_name     text not null default '',
+  cust_address  text not null default '',
+  cust_tax_id   text not null default '',
+  cust_branch   text not null default '',
+
+  vat_rate      numeric not null default 7,
+  items_total   numeric not null default 0,
+  bill_discount numeric not null default 0,
+  base          numeric not null default 0,
+  vat           numeric not null default 0,
+  total         numeric not null default 0,
+  note          text not null default '',
+
+  ship_status   text not null default 'PACKING',
+  ship_from     text references public.warehouses (id) on delete set null,
+  ship_note     text not null default '',
+  ship_ts       bigint,
+
+  user_name     text not null default '',
+  ts            bigint not null,
+  created_at    timestamptz not null default now(),
+
+  constraint invoices_ship_status check (ship_status in ('PACKING', 'SHIPPED', 'DELIVERED')),
+  constraint invoices_vat_rate check (vat_rate >= 0 and vat_rate <= 100)
+);
+
+-- เลขที่เอกสารห้ามซ้ำ เพราะเป็นตัวที่ยิงบาร์โค๊ดค้นหาที่หน้าจัดส่ง
+create unique index if not exists invoices_doc_no_key on public.invoices (doc_no);
+create index if not exists invoices_ts_idx   on public.invoices (ts);
+create index if not exists invoices_ship_idx on public.invoices (ship_status);
+
+create table if not exists public.invoice_items (
+  id         text primary key,
+  invoice_id text not null references public.invoices (id) on delete cascade,
+  product_id text not null references public.products (id) on delete restrict,
+  wh_id      text not null references public.warehouses (id) on delete restrict,
+  loc_id     text,
+  qty        numeric not null,
+  price      numeric not null default 0,
+  -- ส่วนลดการค้าใส่ได้ทั้งเปอร์เซ็นต์และจำนวนเงิน หัก % ก่อนแล้วค่อยหักจำนวนเงิน
+  disc_pct   numeric not null default 0,
+  disc_amt   numeric not null default 0,
+  amount     numeric not null default 0,
+  seq        int not null default 0,
+  created_at timestamptz not null default now(),
+
+  constraint invoice_items_qty_positive check (qty > 0),
+  constraint invoice_items_disc_pct check (disc_pct >= 0 and disc_pct <= 100),
+  constraint invoice_items_disc_amt check (disc_amt >= 0)
+);
+
+create index if not exists invoice_items_inv_idx on public.invoice_items (invoice_id);
+
+-- ที่เก็บที่ระบุต้องอยู่ในคลังของบรรทัดนั้นจริง กติกาเดียวกับ txns
+do $inv_loc$
+begin
+  alter table public.invoice_items drop constraint if exists invoice_items_loc_in_wh;
+  alter table public.invoice_items add constraint invoice_items_loc_in_wh
+    foreign key (loc_id, wh_id) references public.locations (id, wh_id) on delete restrict;
+end
+$inv_loc$;
+
+-- ----------------------------------------------------------------------------
+-- บันทึกใบขายแบบ atomic — เหตุผลเดียวกับ create_sale ของหน้า POS
+-- ต่างกันตรงที่แต่ละบรรทัดมีคลังและที่เก็บของตัวเอง ไม่ได้ผูกคลังเดียวทั้งใบ
+create or replace function public.create_invoice(p_inv jsonb, p_items jsonb)
+returns void
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $create_invoice$
+declare
+  it        jsonb;
+  v_pid     text;
+  v_qty     numeric;
+  v_wh      text;
+  v_loc     text;
+  v_have    numeric;
+  v_bin     numeric;
+  v_name    text;
+  v_bincode text;
+begin
+  insert into public.invoices (
+    id, doc_no, date, customer_id,
+    cust_code, cust_name, cust_address, cust_tax_id, cust_branch,
+    vat_rate, items_total, bill_discount, base, vat, total, note,
+    ship_status, ship_from, ship_note, user_name, ts
+  )
+  values (
+    p_inv ->> 'id',
+    p_inv ->> 'doc_no',
+    (p_inv ->> 'date')::date,
+    nullif(p_inv ->> 'customer_id', ''),
+    coalesce(p_inv ->> 'cust_code', ''),
+    coalesce(p_inv ->> 'cust_name', ''),
+    coalesce(p_inv ->> 'cust_address', ''),
+    coalesce(p_inv ->> 'cust_tax_id', ''),
+    coalesce(p_inv ->> 'cust_branch', ''),
+    (p_inv ->> 'vat_rate')::numeric,
+    (p_inv ->> 'items_total')::numeric,
+    (p_inv ->> 'bill_discount')::numeric,
+    (p_inv ->> 'base')::numeric,
+    (p_inv ->> 'vat')::numeric,
+    (p_inv ->> 'total')::numeric,
+    coalesce(p_inv ->> 'note', ''),
+    coalesce(p_inv ->> 'ship_status', 'PACKING'),
+    nullif(p_inv ->> 'ship_from', ''),
+    coalesce(p_inv ->> 'ship_note', ''),
+    coalesce(p_inv ->> 'user_name', ''),
+    (p_inv ->> 'ts')::bigint
+  );
+
+  for it in select * from jsonb_array_elements(p_items)
+  loop
+    v_pid := it ->> 'product_id';
+    v_qty := (it ->> 'qty')::numeric;
+    v_wh  := it ->> 'wh_id';
+    v_loc := nullif(it ->> 'loc_id', '');
+
+    if v_loc is null then
+      raise exception 'ไม่ได้ระบุที่เก็บของสินค้า %', v_pid using errcode = 'P0001';
+    end if;
+    if not exists (select 1 from public.locations where id = v_loc and wh_id = v_wh) then
+      raise exception 'ที่เก็บ % ไม่ได้อยู่ในคลังที่ขาย', v_loc using errcode = 'P0001';
+    end if;
+
+    -- ล็อกคู่ (สินค้า, คลัง) จนจบ transaction กันสองเครื่องขายชิ้นสุดท้ายพร้อมกัน
+    perform pg_advisory_xact_lock(hashtext(v_pid || '|' || v_wh));
+
+    v_have := public.stock_of(v_pid, v_wh);
+    if v_have < v_qty then
+      select name into v_name from public.products where id = v_pid;
+      raise exception 'สต็อกไม่พอ: % คงเหลือ % แต่ต้องการ %',
+        coalesce(v_name, v_pid), v_have, v_qty
+        using errcode = 'P0001';
+    end if;
+
+    select qty into v_bin
+    from public.product_locations
+    where product_id = v_pid and location_id = v_loc
+    for update;
+
+    if v_bin is null or v_bin < v_qty then
+      select code into v_bincode from public.locations where id = v_loc;
+      select name into v_name  from public.products  where id = v_pid;
+      raise exception 'ของในช่องเก็บ % ไม่พอ: % มีอยู่ % แต่ต้องการ %',
+        coalesce(v_bincode, v_loc), coalesce(v_name, v_pid), coalesce(v_bin, 0), v_qty
+        using errcode = 'P0001';
+    end if;
+
+    if v_bin = v_qty then
+      delete from public.product_locations
+      where product_id = v_pid and location_id = v_loc;
+    else
+      update public.product_locations
+      set qty = qty - v_qty
+      where product_id = v_pid and location_id = v_loc;
+    end if;
+
+    insert into public.invoice_items (
+      id, invoice_id, product_id, wh_id, loc_id, qty, price, disc_pct, disc_amt, amount, seq
+    )
+    values (
+      it ->> 'id',
+      p_inv ->> 'id',
+      v_pid,
+      v_wh,
+      v_loc,
+      v_qty,
+      (it ->> 'price')::numeric,
+      (it ->> 'disc_pct')::numeric,
+      (it ->> 'disc_amt')::numeric,
+      (it ->> 'amount')::numeric,
+      (it ->> 'seq')::int
+    );
+
+    -- ตัดสต็อกด้วยรายการชนิด SALE เหมือน POS เพื่อให้ยอดคงเหลือมาจากที่เดียวเสมอ
+    insert into public.txns (
+      id, type, doc_no, date, product_id, qty, wh_id, wh_to,
+      loc_id, loc_to, note, ref, user_name, ts
+    )
+    values (
+      it ->> 'txn_id',
+      'SALE',
+      p_inv ->> 'doc_no',
+      (p_inv ->> 'date')::date,
+      v_pid,
+      v_qty,
+      v_wh,
+      null,
+      v_loc,
+      null,
+      'ขายสินค้าและบริการ',
+      p_inv ->> 'doc_no',
+      coalesce(p_inv ->> 'user_name', ''),
+      (p_inv ->> 'ts')::bigint
+    );
+  end loop;
+end;
+$create_invoice$;
+
 -- ------------------------------------------------------------ สิทธิ์ระดับตาราง
 -- สำคัญ: การเข้าถึงตารางต้องผ่าน 2 ด่าน
 --   ด่าน 1  GRANT ระดับตาราง  -> ไม่ผ่านจะได้ HTTP 403 / SQLSTATE 42501
@@ -461,9 +702,13 @@ grant all privileges on table public.sales             to authenticated;
 grant all privileges on table public.sale_items        to authenticated;
 grant all privileges on table public.doc_groups        to authenticated;
 grant all privileges on table public.customers         to authenticated;
+grant all privileges on table public.company           to authenticated;
+grant all privileges on table public.invoices          to authenticated;
+grant all privileges on table public.invoice_items     to authenticated;
 
-grant execute on function public.create_sale(jsonb, jsonb) to authenticated;
-grant execute on function public.stock_of(text, text)        to authenticated;
+grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
+grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
+grant execute on function public.stock_of(text, text)         to authenticated;
 
 -- ---------------------------------------------------------- Row Level Security
 -- อนุญาตเฉพาะผู้ใช้ที่ล็อกอินแล้วเท่านั้น (role = authenticated)
@@ -477,7 +722,7 @@ begin
   foreach t in array array[
     'warehouses', 'products', 'txns',
     'locations', 'product_locations', 'sales', 'sale_items',
-    'doc_groups', 'customers'
+    'doc_groups', 'customers', 'company', 'invoices', 'invoice_items'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -492,7 +737,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 9 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 12 ตารางแล้ว';
 end
 $$;
 
@@ -549,6 +794,6 @@ select
 from (values
   ('warehouses'), ('products'), ('txns'),
   ('locations'), ('product_locations'), ('sales'), ('sale_items'),
-  ('doc_groups'), ('customers')
+  ('doc_groups'), ('customers'), ('company'), ('invoices'), ('invoice_items')
 ) as x(name)
 order by x.name;

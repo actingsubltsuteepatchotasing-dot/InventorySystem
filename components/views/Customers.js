@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
-import { CUSTOMER_KINDS } from "@/lib/constants";
+import { BRANCH_KINDS, CUSTOMER_KINDS } from "@/lib/constants";
 import { nextCustCode } from "@/lib/db";
 import { uid } from "@/lib/format";
 import { useToast } from "../Toast";
@@ -31,6 +31,8 @@ const blank = (code) => ({
   postcode: "",
   phone: "",
   kind: CUSTOMER_KINDS[0],
+  taxId: "",
+  branch: "",
 });
 
 export default function Customers() {
@@ -134,6 +136,13 @@ export default function Customers() {
     const postcode = String(form.postcode || "").trim();
     if (postcode && !/^\d{5}$/.test(postcode)) return toast("รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก", "err");
 
+    // เลขผู้เสียภาษีไทยมี 13 หลักเสมอ เว้นว่างได้ (ลูกค้าทั่วไป) แต่กรอกแล้วต้องครบ
+    // ใบกำกับภาษีที่เลขไม่ครบใช้ไม่ได้ และกว่าจะรู้ก็ตอนลูกค้าตีเอกสารกลับ
+    const taxId = String(form.taxId || "").replace(/\D/g, "");
+    if (taxId && taxId.length !== 13) {
+      return toast("เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก", "err");
+    }
+
     setBusy(true);
     try {
       await inv.saveCustomer({
@@ -147,6 +156,8 @@ export default function Customers() {
         postcode,
         phone: String(form.phone || "").trim(),
         kind: form.kind || "",
+        taxId,
+        branch: String(form.branch || "").trim(),
       });
       toast("บันทึกลูกค้า " + name + " แล้ว", "ok");
       setForm(null);
@@ -227,6 +238,7 @@ export default function Customers() {
                 <th style={{ minWidth: 130 }}>อำเภอ / เขต</th>
                 <th style={{ minWidth: 140 }}>จังหวัด</th>
                 <th style={{ width: 110 }}>รหัสไปรษณีย์</th>
+                <th style={{ minWidth: 130 }}>เลขผู้เสียภาษี</th>
                 <th style={{ minWidth: 130 }}>เบอร์โทร</th>
                 <th style={{ minWidth: 140 }}>ประเภทลูกค้า</th>
                 <th style={{ width: 150 }} />
@@ -246,6 +258,7 @@ export default function Customers() {
                   <td>{c.district || "—"}</td>
                   <td>{c.province || "—"}</td>
                   <td>{c.postcode || "—"}</td>
+                  <td>{c.taxId || "—"}</td>
                   <td>{c.phone || "—"}</td>
                   <td>{c.kind || "—"}</td>
                   <td>
@@ -453,6 +466,36 @@ export default function Customers() {
                 </div>
               </>
             )}
+            <div className="field">
+              <label className="lbl" htmlFor="cf_tax">เลขประจำตัวผู้เสียภาษี (13 หลัก)</label>
+              <input
+                className="inp"
+                id="cf_tax"
+                value={form.taxId || ""}
+                inputMode="numeric"
+                maxLength={13}
+                onChange={(e) => set("taxId", e.target.value.replace(/\D/g, ""))}
+                placeholder="ลูกค้าทั่วไปเว้นว่างได้"
+              />
+            </div>
+            <div className="field">
+              <label className="lbl" htmlFor="cf_branch">สำนักงานใหญ่ / สาขา</label>
+              <input
+                className="inp"
+                id="cf_branch"
+                list="cf_branch_list"
+                value={form.branch || ""}
+                onChange={(e) => set("branch", e.target.value)}
+                placeholder="เช่น สำนักงานใหญ่ หรือ สาขาที่ 00002"
+              />
+              {/* พิมพ์เลขสาขาเองก็ได้ รายการนี้เป็นแค่ตัวช่วยกรอกที่พบบ่อย */}
+              <datalist id="cf_branch_list">
+                {BRANCH_KINDS.map((b) => (
+                  <option key={b} value={b} />
+                ))}
+              </datalist>
+            </div>
+
             <div className="field span2">
               <label className="lbl" htmlFor="cf_phone">เบอร์โทร</label>
               <input

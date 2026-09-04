@@ -25,6 +25,9 @@ import Graphs from "./views/Graphs";
 import Customers from "./views/Customers";
 import DocGroups from "./views/DocGroups";
 import WarehouseSetup from "./views/WarehouseSetup";
+import SalesInvoice from "./views/SalesInvoice";
+import Shipping from "./views/Shipping";
+import Company from "./views/Company";
 
 const NAV = [
   {
@@ -41,9 +44,11 @@ const NAV = [
     ],
   },
   {
-    group: "ขายหน้าร้าน",
+    group: "งานขาย",
     items: [
       { id: "pos", Icon: IcCart, title: "ขายสินค้า (POS)", sub: "ยิงบาร์โค๊ด ขาย และออกใบเสร็จ" },
+      { id: "invoice", Icon: IcReport, title: "ขายสินค้าและบริการ", sub: "ออกใบกำกับภาษีเต็มรูปแบบ" },
+      { id: "shipping", Icon: IcMap, title: "การจัดส่งสินค้า", sub: "เส้นทางและสถานะการส่งของ" },
     ],
   },
   {
@@ -60,6 +65,7 @@ const NAV = [
     items: [
       { id: "docgroups", Icon: IcReport, title: "การกำหนดกลุ่มเอกสาร", sub: "รูปแบบเลขที่เอกสารแบบรันนิ่ง" },
       { id: "whsetup", Icon: IcData, title: "กำหนดคลังและที่เก็บ", sub: "เพิ่ม แก้ไข และลบคลังกับช่องเก็บ" },
+      { id: "company", Icon: IcBox, title: "ข้อมูลกิจการ", sub: "ผู้ออกใบกำกับภาษี" },
     ],
   },
   {
@@ -322,6 +328,9 @@ export default function Shell() {
           {view === "provinces" && <Provinces />}
           {view === "reports" && <Reports />}
           {view === "graphs" && <Graphs />}
+          {view === "invoice" && <SalesInvoice />}
+          {view === "shipping" && <Shipping />}
+          {view === "company" && <Company />}
           {view === "customers" && <Customers />}
           {view === "docgroups" && <DocGroups />}
           {view === "whsetup" && <WarehouseSetup />}

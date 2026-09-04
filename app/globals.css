@@ -1370,6 +1370,57 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   .lbl-card { border: 1px dashed #888; padding: 5px; text-align: center; break-inside: avoid; }
   .lbl-card svg { max-width: 100%; height: auto; }
 
+  /* ---------- ใบกำกับภาษีเต็มรูปแบบ ---------- */
+  .tinv { color: #000; }
+  .ti-head {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    border-bottom: 2.5px solid #000;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+  }
+  .ti-seller { flex: 1; font-size: 9.5pt; line-height: 1.5; }
+  .ti-seller b { display: block; font-size: 13pt; margin-bottom: 2px; }
+  .ti-kind { text-align: right; }
+  .ti-title { font-size: 14pt; font-weight: 700; }
+  .ti-orig { font-size: 9pt; color: #444; margin-bottom: 4px; }
+  .ti-kind svg { max-width: 100%; height: auto; }
+
+  .ti-parties { display: flex; gap: 10px; margin-bottom: 10px; }
+  .ti-box {
+    flex: 1;
+    border: 1px solid #666;
+    padding: 6px 9px;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    break-inside: avoid;
+  }
+  .ti-box b { font-size: 10.5pt; }
+  .ti-lbl { display: block; font-size: 8.5pt; color: #444; }
+  .ti-kv { display: flex; justify-content: space-between; gap: 10px; }
+
+  .ti-foot { display: flex; gap: 10px; margin-top: 10px; align-items: flex-start; }
+  .ti-words {
+    flex: 1;
+    border: 1px solid #666;
+    padding: 7px 9px;
+    font-size: 10pt;
+    break-inside: avoid;
+  }
+  .ti-note { margin-top: 5px; font-size: 9pt; color: #333; }
+
+  table.ti-total { width: 260px; flex: none; font-size: 10pt; }
+  table.ti-total td { border: 1px solid #666; padding: 4px 8px; }
+  table.ti-total td:last-child { text-align: right; width: 96px; }
+  table.ti-total tr.grand td {
+    font-weight: 700;
+    border-top: 2px solid #000;
+    background: #eaf5ef !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   /* ---------- ใบเสร็จรับเงิน ---------- */
   #printRoot.mode-receipt { display: flex !important; justify-content: center; }
 
@@ -1580,3 +1631,79 @@ tr.row-active > td:first-child {
 }
 .geo-hit:last-child { border-bottom: 0; }
 .geo-hit:hover { background: var(--brand-50); }
+
+/* ยอดท้ายบิลของหน้าขายสินค้าและบริการ */
+.inv-sum {
+  margin-top: 14px;
+  margin-left: auto;
+  width: 100%;
+  max-width: 380px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  overflow: hidden;
+}
+.inv-sum-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 13px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.inv-sum-row:last-child { border-bottom: 0; }
+.inv-sum-row .lbl { margin: 0; }
+.inv-sum-row .inp { max-width: 140px; text-align: right; }
+.inv-sum-row.grand {
+  background: var(--brand-50);
+  font-size: 15px;
+  padding: 11px 13px;
+}
+.inv-sum-row.grand b { color: var(--brand); font-size: 18px; }
+
+/* ขั้นตอนสถานะการจัดส่ง (หน้าจัดส่งสินค้า) */
+.ship-steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.ship-step {
+  flex: 1 1 140px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg-muted);
+  transition: border-color 0.15s, background 0.15s;
+}
+.ship-step:hover:not(:disabled) { border-color: var(--brand); }
+.ship-step .no {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: var(--bg-soft);
+  color: var(--fg-muted);
+}
+/* ขั้นที่ผ่านมาแล้วยังเห็นว่าเดินมาถึงไหน ไม่ใช่เห็นแค่ขั้นปัจจุบัน */
+.ship-step.done .no { background: var(--brand-50); color: var(--brand); }
+.ship-step.active {
+  border-color: var(--brand);
+  background: var(--brand-50);
+  color: var(--fg);
+  font-weight: 700;
+}
+.ship-step.active .no { background: var(--brand); color: #fff; }
+.ship-step:disabled { opacity: 0.6; cursor: default; }

@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
-import { DOC_PERIODS, SEED_DOC_GROUPS, TYPES } from "@/lib/constants";
+import { DOC_KINDS, DOC_PERIODS, SEED_DOC_GROUPS } from "@/lib/constants";
 import { docPrefixOf, docSample, nextDocNo } from "@/lib/db";
 import { num, todayISO } from "@/lib/format";
 import { useToast } from "../Toast";
@@ -37,7 +37,7 @@ export default function DocGroups() {
    */
   const rows = useMemo(
     () =>
-      Object.keys(TYPES).map((type) => {
+      Object.keys(DOC_KINDS).map((type) => {
         const saved = (db.docGroups || []).find((g) => g.id === type);
         const base = saved || SEED_DOC_GROUPS.find((g) => g.id === type);
         const group = { ...base, id: type };
@@ -45,7 +45,11 @@ export default function DocGroups() {
           type,
           group,
           saved: !!saved,
-          used: db.txns.filter((t) => t.type === type && t.docNo).length,
+          // ใบขายสินค้าและบริการเก็บที่ตาราง invoices ไม่ใช่ txns จึงนับคนละที่
+          used:
+            type === "INVOICE"
+              ? (db.invoices || []).length
+              : db.txns.filter((t) => t.type === type && t.docNo).length,
           next: nextDocNo(db, type, today),
         };
       }),
@@ -54,7 +58,7 @@ export default function DocGroups() {
 
   function startEdit(r) {
     setEditing(r.type);
-    setForm({ ...r.group, name: r.group.name || TYPES[r.type].name });
+    setForm({ ...r.group, name: r.group.name || DOC_KINDS[r.type] });
   }
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -80,7 +84,7 @@ export default function DocGroups() {
         r.group.period === form.period
     );
     if (clash) {
-      return "อักษรนำหน้า " + prefix + " ซ้ำกับกลุ่ม " + TYPES[clash.type].name + " ที่ใช้รอบเดียวกัน";
+      return "อักษรนำหน้า " + prefix + " ซ้ำกับกลุ่ม " + DOC_KINDS[clash.type] + " ที่ใช้รอบเดียวกัน";
     }
     return "";
   }
@@ -92,7 +96,7 @@ export default function DocGroups() {
 
     const next = {
       id: editing,
-      name: String(form.name || "").trim() || TYPES[editing].name,
+      name: String(form.name || "").trim() || DOC_KINDS[editing],
       prefix: String(form.prefix).trim().toUpperCase(),
       period: form.period,
       digits: Number(form.digits),
@@ -167,7 +171,7 @@ export default function DocGroups() {
               return (
                 <tr key={r.type}>
                   <td>
-                    <b>{TYPES[r.type].name}</b>
+                    <b>{DOC_KINDS[r.type]}</b>
                     {!r.saved ? (
                       <div style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>
                         ยังไม่ได้ตั้งค่า — ใช้ค่าเริ่มต้น
@@ -181,7 +185,7 @@ export default function DocGroups() {
                         className="inp"
                         value={form.name}
                         onChange={(e) => set("name", e.target.value)}
-                        aria-label={"ชื่อกลุ่มเอกสารของ " + TYPES[r.type].name}
+                        aria-label={"ชื่อกลุ่มเอกสารของ " + DOC_KINDS[r.type]}
                       />
                     ) : (
                       r.group.name
@@ -196,7 +200,7 @@ export default function DocGroups() {
                         maxLength={6}
                         onChange={(e) => set("prefix", e.target.value.toUpperCase())}
                         placeholder="เช่น RC"
-                        aria-label={"อักษรนำหน้าของ " + TYPES[r.type].name}
+                        aria-label={"อักษรนำหน้าของ " + DOC_KINDS[r.type]}
                       />
                     ) : (
                       <code>{r.group.prefix}</code>
@@ -209,7 +213,7 @@ export default function DocGroups() {
                         className="sel"
                         value={form.period}
                         onChange={(e) => set("period", e.target.value)}
-                        aria-label={"รอบการขึ้นเลขใหม่ของ " + TYPES[r.type].name}
+                        aria-label={"รอบการขึ้นเลขใหม่ของ " + DOC_KINDS[r.type]}
                       >
                         {DOC_PERIODS.map((p) => (
                           <option key={p.id} value={p.id}>
@@ -231,7 +235,7 @@ export default function DocGroups() {
                         max={8}
                         value={form.digits}
                         onChange={(e) => set("digits", e.target.value)}
-                        aria-label={"จำนวนหลักของ " + TYPES[r.type].name}
+                        aria-label={"จำนวนหลักของ " + DOC_KINDS[r.type]}
                       />
                     ) : (
                       r.group.digits

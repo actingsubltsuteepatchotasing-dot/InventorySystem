@@ -3,7 +3,7 @@
 // เนื้อหาเอกสารที่ใช้พิมพ์ร่วมกันหลายหน้าจอ
 
 import { PAY_METHODS, VAT_RATE } from "@/lib/constants";
-import { num, thDateTime } from "@/lib/format";
+import { bahtText, num, thDate, thDateTime } from "@/lib/format";
 import { Barcode } from "../ui";
 
 /**
@@ -215,6 +215,159 @@ export function LabelSheetBody({ items }) {
           <Barcode value={p.barcode} module={1.4} height={34} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * ใบกำกับภาษีเต็มรูปแบบ / ใบส่งของ
+ *
+ * หัวกระดาษต้องเป็นชื่อกิจการผู้ออก ไม่ใช่ชื่อโปรแกรม จึงพิมพ์ด้วยโหมด bare
+ * (กฎหมายบังคับว่าต้องมีชื่อ ที่อยู่ และเลขประจำตัวผู้เสียภาษีของผู้ขายบนเอกสาร
+ *  พร้อมข้อมูลเดียวกันของผู้ซื้อ เลขที่ วันที่ รายการ มูลค่า และภาษีที่แยกออกมา)
+ *
+ * ชื่อ/ที่อยู่ผู้ซื้ออ่านจากตัวใบ ไม่ได้อ่านสดจากทะเบียนลูกค้า
+ * เพราะเอกสารภาษีต้องคงข้อความเดิม ณ วันที่ออก
+ */
+export function TaxInvoiceBody({ inv, company, invoice, items }) {
+  const co = company || {};
+  const lines = items || [];
+
+  return (
+    <div className="tinv">
+      <div className="ti-head">
+        <div className="ti-seller">
+          <b>{co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)"}</b>
+          <div>{co.address}</div>
+          <div>
+            เลขประจำตัวผู้เสียภาษี {co.taxId || "-"}
+            {co.branch ? " · " + co.branch : ""}
+          </div>
+          {co.phone ? <div>โทร. {co.phone}</div> : null}
+          {co.email ? <div>{co.email}</div> : null}
+        </div>
+        <div className="ti-kind">
+          <div className="ti-title">ใบกำกับภาษี / ใบส่งของ</div>
+          <div className="ti-orig">ต้นฉบับ (เอกสารออกเป็นชุด)</div>
+          <Barcode value={invoice.docNo} module={1.5} height={34} />
+        </div>
+      </div>
+
+      <div className="ti-parties">
+        <div className="ti-box">
+          <span className="ti-lbl">ผู้ซื้อ</span>
+          <b>{invoice.custName}</b>
+          <div>{invoice.custAddress || "-"}</div>
+          <div>
+            เลขประจำตัวผู้เสียภาษี {invoice.custTaxId || "-"}
+            {invoice.custBranch ? " · " + invoice.custBranch : ""}
+          </div>
+          <div>รหัสลูกค้า {invoice.custCode || "-"}</div>
+        </div>
+        <div className="ti-box">
+          <div className="ti-kv">
+            <span>เลขที่เอกสาร</span>
+            <b>{invoice.docNo}</b>
+          </div>
+          <div className="ti-kv">
+            <span>วันที่</span>
+            <b>{thDate(invoice.date)}</b>
+          </div>
+          <div className="ti-kv">
+            <span>ผู้ออกเอกสาร</span>
+            <b>{invoice.user || "-"}</b>
+          </div>
+          <div className="ti-kv">
+            <span>พิมพ์เมื่อ</span>
+            <b>{thDateTime(Date.now())}</b>
+          </div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style={{ width: 34 }}>ลำดับ</th>
+            <th style={{ width: 78 }}>รหัส</th>
+            <th>รายการสินค้า / บริการ</th>
+            <th style={{ width: 60 }}>หน่วย</th>
+            <th style={{ width: 58, textAlign: "right" }}>จำนวน</th>
+            <th style={{ width: 74, textAlign: "right" }}>ราคา/หน่วย</th>
+            <th style={{ width: 74, textAlign: "right" }}>ส่วนลด</th>
+            <th style={{ width: 86, textAlign: "right" }}>จำนวนเงิน</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((it, i) => {
+            const p = inv.prod(it.productId);
+            const gross = (Number(it.qty) || 0) * (Number(it.price) || 0);
+            const disc = gross - (Number(it.amount) || 0);
+            return (
+              <tr key={it.id}>
+                <td>{i + 1}</td>
+                <td>{p ? p.code : ""}</td>
+                <td>
+                  {inv.prodName(it.productId)}
+                  {it.discPct ? " (ลด " + num(it.discPct, 2) + "%)" : ""}
+                </td>
+                <td>{p ? p.unit : ""}</td>
+                <td style={{ textAlign: "right" }}>{num(it.qty, 0)}</td>
+                <td style={{ textAlign: "right" }}>{num(it.price, 2)}</td>
+                <td style={{ textAlign: "right" }}>{disc > 0 ? num(disc, 2) : "-"}</td>
+                <td style={{ textAlign: "right" }}>{num(it.amount, 2)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="ti-foot">
+        <div className="ti-words">
+          <span className="ti-lbl">จำนวนเงินรวมทั้งสิ้น (ตัวอักษร)</span>
+          <b>{bahtText(invoice.total)}</b>
+          {invoice.note ? <div className="ti-note">หมายเหตุ: {invoice.note}</div> : null}
+        </div>
+
+        <table className="ti-total">
+          <tbody>
+            <tr>
+              <td>รวมเงิน</td>
+              <td>{num(invoice.itemsTotal, 2)}</td>
+            </tr>
+            <tr>
+              <td>ส่วนลดท้ายบิล</td>
+              <td>{num(invoice.billDiscount, 2)}</td>
+            </tr>
+            <tr>
+              <td>มูลค่าก่อนภาษี</td>
+              <td>{num(invoice.base, 2)}</td>
+            </tr>
+            <tr>
+              <td>ภาษีมูลค่าเพิ่ม {num(invoice.vatRate, 2)}%</td>
+              <td>{num(invoice.vat, 2)}</td>
+            </tr>
+            <tr className="grand">
+              <td>จำนวนเงินรวมทั้งสิ้น</td>
+              <td>{num(invoice.total, 2)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="pr-sign">
+        <div>
+          <div className="line" />
+          ผู้รับสินค้า / วันที่
+        </div>
+        <div>
+          <div className="line" />
+          ผู้ส่งสินค้า / วันที่
+        </div>
+        <div>
+          <div className="line" />
+          ผู้มีอำนาจลงนาม
+        </div>
+      </div>
     </div>
   );
 }

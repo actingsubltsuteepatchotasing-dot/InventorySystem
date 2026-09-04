@@ -1,0 +1,368 @@
+"use client";
+
+// หน้าจอการจัดส่งสินค้า — ตามใบขายที่ออกจากหน้า "ขายสินค้าและบริการ"
+//
+// ที่อยู่ปลายทางอ่านจาก "ที่อยู่ที่บันทึกไว้ในใบ" ไม่ใช่จากทะเบียนลูกค้าสด ๆ
+// เพราะของต้องไปตามที่อยู่ที่ตกลงกันตอนออกใบ ไม่ใช่ที่อยู่ที่ลูกค้าเพิ่งย้ายไป
+//
+// ช่องเลขที่เอกสารรับได้ทั้งการยิงบาร์โค๊ดและการพิมพ์ค้นหา
+// เครื่องอ่านบาร์โค๊ดทำงานเหมือนคีย์บอร์ด: พิมพ์รวดเดียวแล้วกด Enter
+// จึงไม่ต้องต่ออุปกรณ์อะไรเป็นพิเศษ แค่ให้เคอร์เซอร์อยู่ในช่องนี้
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInv } from "@/lib/store";
+import { SHIP_STATUS } from "@/lib/constants";
+import { num, thDate, thDateTime } from "@/lib/format";
+import { useToast } from "../Toast";
+import { IcPin, IcReport } from "../Icons";
+import { Badge, Card, Empty, TableWrap } from "../ui";
+import SetupNotice from "../SetupNotice";
+
+const statusOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
+
+export default function Shipping() {
+  const inv = useInv();
+  const { db } = inv;
+  const toast = useToast();
+
+  const scanRef = useRef(null);
+  const [term, setTerm] = useState("");
+  const [filter, setFilter] = useState("");
+  const [selected, setSelected] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const invoices = useMemo(
+    () => (db.invoices || []).slice().sort((a, b) => b.ts - a.ts),
+    [db.invoices]
+  );
+
+  const rows = useMemo(() => {
+    const s = term.trim().toLowerCase();
+    return invoices.filter((v) => {
+      if (filter && v.shipStatus !== filter) return false;
+      if (!s) return true;
+      return [v.docNo, v.custCode, v.custName, v.custAddress]
+        .join(" ")
+        .toLowerCase()
+        .includes(s);
+    });
+  }, [invoices, term, filter]);
+
+  const doc = invoices.find((v) => v.id === selected) || null;
+
+  // เอกสารที่เลือกไว้ถูกกรองออกไปแล้ว ให้เลิกเลือก ไม่งั้นแผงล่างจะโชว์ใบที่ไม่อยู่ในตาราง
+  useEffect(() => {
+    if (selected && !rows.some((v) => v.id === selected)) setSelected("");
+  }, [rows, selected]);
+
+  /** ยิงบาร์โค๊ดหรือกด Enter ในช่องค้นหา = เปิดใบนั้นทันทีถ้าเลขตรงเป๊ะ */
+  function submitScan() {
+    const s = term.trim();
+    if (!s) return;
+
+    const hit = invoices.find((v) => v.docNo.toLowerCase() === s.toLowerCase());
+    if (hit) {
+      setSelected(hit.id);
+      setFilter("");
+      // ยิงใบถัดไปได้เลยโดยไม่ต้องเอาเมาส์มาคลิกช่องใหม่
+      setTerm("");
+      if (scanRef.current) scanRef.current.focus();
+      return;
+    }
+
+    const near = rows.length;
+    toast(
+      near
+        ? "ไม่พบเลขที่ " + s + " ตรงเป๊ะ — แสดงผลที่ใกล้เคียง " + near + " รายการแทน"
+        : "ไม่พบเอกสารเลขที่ " + s,
+      near ? "warn" : "err"
+    );
+  }
+
+  async function setStatus(id, status) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await inv.setInvoiceShip(id, {
+        shipStatus: status,
+        shipFrom: doc ? doc.shipFrom : "",
+        shipNote: doc ? doc.shipNote : "",
+        shipTs: Date.now(),
+      });
+      toast("เปลี่ยนสถานะเป็น " + statusOf(status).name + " แล้ว", "ok");
+    } catch (e) {
+      toast("เปลี่ยนสถานะไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setOrigin(whId) {
+    if (busy || !doc) return;
+    setBusy(true);
+    try {
+      await inv.setInvoiceShip(doc.id, {
+        shipStatus: doc.shipStatus,
+        shipFrom: whId,
+        shipNote: doc.shipNote,
+        shipTs: doc.shipTs,
+      });
+    } catch (e) {
+      toast("บันทึกต้นทางไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!inv.invoicesReady) {
+    return <SetupNotice feature="หน้าจอการจัดส่งสินค้า" tables={["invoices", "invoice_items"]} />;
+  }
+
+  const origin = doc && doc.shipFrom ? inv.wh(doc.shipFrom) : null;
+  const dest = doc ? doc.custAddress : "";
+
+  /*
+   * แผนที่เส้นทางแบบ saddr/daddr ใช้ได้โดยไม่ต้องมี API key
+   * (Google เปลี่ยนให้เป็น /maps/embed?pb=... ให้เอง)
+   * ยังไม่ได้เลือกต้นทางก็แสดงแค่หมุดปลายทางไปก่อน
+   */
+  const mapURL =
+    doc && dest
+      ? origin
+        ? "https://www.google.com/maps?saddr=" +
+          origin.lat + "," + origin.lng +
+          "&daddr=" + encodeURIComponent(dest) +
+          "&hl=th&output=embed"
+        : "https://www.google.com/maps?q=" + encodeURIComponent(dest) + "&hl=th&z=13&output=embed"
+      : "";
+
+  const routeURL =
+    doc && dest
+      ? "https://www.google.com/maps/dir/?api=1" +
+        (origin ? "&origin=" + origin.lat + "," + origin.lng : "") +
+        "&destination=" + encodeURIComponent(dest)
+      : "";
+
+  return (
+    <div className="stack">
+      <Card
+        title="การจัดส่งสินค้า"
+        actions={
+          <>
+            {SHIP_STATUS.map((s) => (
+              <Badge key={s.id} kind={s.kind}>
+                {s.name} {invoices.filter((v) => v.shipStatus === s.id).length}
+              </Badge>
+            ))}
+          </>
+        }
+      >
+        <div className="row" style={{ marginBottom: 12 }}>
+          <input
+            className="inp"
+            ref={scanRef}
+            value={term}
+            autoFocus
+            onChange={(e) => setTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitScan();
+              }
+            }}
+            placeholder="ยิงบาร์โค๊ดเลขที่เอกสาร หรือพิมพ์ค้นหา เลขที่ / รหัสลูกค้า / ชื่อ / ที่อยู่…"
+            aria-label="ยิงบาร์โค๊ดหรือค้นหาเลขที่เอกสาร"
+            style={{ maxWidth: 420 }}
+          />
+          <button className="btn btn-p" onClick={submitScan}>
+            ค้นหา
+          </button>
+          <select
+            className="sel"
+            style={{ maxWidth: 190 }}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            aria-label="กรองตามสถานะการจัดส่ง"
+          >
+            <option value="">ทุกสถานะ</option>
+            {SHIP_STATUS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {rows.length ? (
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 150 }}>เลขที่เอกสาร</th>
+                <th style={{ width: 118 }}>วันที่เอกสาร</th>
+                <th style={{ width: 90 }}>รหัสลูกค้า</th>
+                <th style={{ minWidth: 180 }}>ชื่อลูกค้า</th>
+                <th style={{ minWidth: 230 }}>ที่อยู่จัดส่ง</th>
+                <th className="num" style={{ width: 110 }}>ยอดสุทธิ</th>
+                <th style={{ width: 140 }}>สถานะ</th>
+                <th style={{ width: 96 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((v) => {
+                const st = statusOf(v.shipStatus);
+                return (
+                  <tr key={v.id} className={v.id === selected ? "row-active" : ""}>
+                    <td className="code-cell">{v.docNo}</td>
+                    <td>{thDate(v.date)}</td>
+                    <td>{v.custCode}</td>
+                    <td>{v.custName}</td>
+                    <td style={{ fontSize: 12.5 }}>{v.custAddress || "—"}</td>
+                    <td className="num">{num(v.total, 2)}</td>
+                    <td>
+                      <Badge kind={st.kind}>{st.name}</Badge>
+                    </td>
+                    <td>
+                      <button className="btn btn-o btn-sm" onClick={() => setSelected(v.id)}>
+                        เปิดดู
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </TableWrap>
+        ) : (
+          <Empty>
+            {invoices.length
+              ? "ไม่พบเอกสารที่ตรงกับที่ค้นหา"
+              : "ยังไม่มีใบขาย — ออกเอกสารที่เมนู “ขายสินค้าและบริการ” ก่อน"}
+          </Empty>
+        )}
+      </Card>
+
+      {doc ? (
+        <div className="grid pipe-2col" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <Card
+            title={"เส้นทางจัดส่ง — " + doc.docNo}
+            actions={
+              routeURL ? (
+                <a
+                  className="btn btn-o btn-sm"
+                  href={routeURL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  เปิดเส้นทางใน Google Maps
+                </a>
+              ) : null
+            }
+          >
+            <div className="form-grid" style={{ marginBottom: 12 }}>
+              <div className="field span2">
+                <label className="lbl" htmlFor="sp_from">ต้นทางที่ส่งออก</label>
+                <select
+                  className="sel"
+                  id="sp_from"
+                  value={doc.shipFrom || ""}
+                  onChange={(e) => setOrigin(e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="">— ยังไม่ระบุต้นทาง —</option>
+                  {db.warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} · จังหวัด{w.province}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="row" style={{ marginBottom: 10 }}>
+              <Badge kind="info">
+                <IcPin size={12} /> ต้นทาง: {origin ? origin.name : "ยังไม่ระบุ"}
+              </Badge>
+              <Badge>ปลายทาง: {doc.custName}</Badge>
+            </div>
+
+            {dest ? (
+              <div className="map-wrap">
+                <iframe
+                  key={mapURL}
+                  src={mapURL}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title={"แผนที่จัดส่ง " + doc.docNo}
+                  allowFullScreen
+                />
+              </div>
+            ) : (
+              <Empty>
+                ใบนี้ไม่มีที่อยู่จัดส่ง — ลูกค้ารายนี้ยังไม่ได้กรอกที่อยู่ตอนออกเอกสาร
+              </Empty>
+            )}
+
+            <p style={{ marginTop: 10, fontSize: 12.5, color: "var(--fg-faint)" }}>
+              ที่อยู่: {doc.custAddress || "—"}
+            </p>
+          </Card>
+
+          <Card title={"สถานะการจัดส่ง — " + doc.docNo}>
+            <div className="ship-steps">
+              {SHIP_STATUS.map((s, i) => {
+                const active = doc.shipStatus === s.id;
+                const done = SHIP_STATUS.findIndex((x) => x.id === doc.shipStatus) >= i;
+                return (
+                  <button
+                    key={s.id}
+                    className={"ship-step" + (active ? " active" : done ? " done" : "")}
+                    onClick={() => setStatus(doc.id, s.id)}
+                    disabled={busy}
+                  >
+                    <span className="no">{i + 1}</span>
+                    <span className="nm">{s.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="muted" style={{ fontSize: 12.5 }}>
+              กดที่ขั้นตอนเพื่อเปลี่ยนสถานะ ย้อนกลับได้ถ้ากดผิดหรือของตีกลับ
+              {doc.shipTs ? " · แก้ล่าสุด " + thDateTime(doc.shipTs) : ""}
+            </p>
+
+            <TableWrap>
+              <thead>
+                <tr>
+                  <th>รายการสินค้า</th>
+                  <th>คลัง · ที่เก็บ</th>
+                  <th className="num" style={{ width: 90 }}>จำนวน</th>
+                  <th className="num" style={{ width: 110 }}>จำนวนเงิน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inv.itemsOfInvoice(doc.id).map((it) => (
+                  <tr key={it.id}>
+                    <td>{inv.prodName(it.productId)}</td>
+                    <td style={{ fontSize: 12.5 }}>{inv.whLocName(it.whId, it.locId)}</td>
+                    <td className="num">{num(it.qty, 0)}</td>
+                    <td className="num">{num(it.amount, 2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3}>
+                    <IcReport size={13} /> ยอดสุทธิรวมภาษี
+                  </td>
+                  <td className="num">
+                    <b>{num(doc.total, 2)}</b>
+                  </td>
+                </tr>
+              </tfoot>
+            </TableWrap>
+          </Card>
+        </div>
+      ) : null}
+    </div>
+  );
+}

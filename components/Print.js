@@ -40,9 +40,16 @@ export function PrintProvider({ children }) {
   );
 }
 
-function PrintDoc({ title, subtitle, body, signers = true, receipt = false }) {
+function PrintDoc({ title, subtitle, body, signers = true, receipt = false, bare = false }) {
   // ใบเสร็จมีหัวกระดาษและช่องลงนามในตัวเองอยู่แล้ว จึงไม่ใส่หัวเอกสารมาตรฐานซ้ำ
   if (receipt) return body;
+
+  /*
+   * เอกสารที่หัวกระดาษต้องเป็นชื่อกิจการผู้ออก ไม่ใช่ชื่อโปรแกรม เช่นใบกำกับภาษี
+   * (กฎหมายบังคับว่าต้องมีชื่อ ที่อยู่ และเลขผู้เสียภาษีของผู้ขายอยู่บนเอกสาร)
+   * ต่างจาก receipt ตรงที่ยังใช้กระดาษ A4 ปกติ ไม่ใช่กระดาษใบเสร็จ 78 มม.
+   */
+  if (bare) return body;
 
   return (
     <>
