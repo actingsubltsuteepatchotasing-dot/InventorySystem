@@ -418,6 +418,84 @@ export function WhLocFields({
   );
 }
 
+/**
+ * ช่องกรอกจำนวน พร้อมปุ่มลบ/บวก
+ *
+ * onChange คืนค่าเป็นสตริง (ไม่ใช่ event) เพราะปุ่มกับการพิมพ์ต้องคืนแบบเดียวกัน
+ * ปล่อยให้ค่าว่างได้ระหว่างพิมพ์ ผู้ใช้จะได้ลบทิ้งแล้วพิมพ์ใหม่ได้
+ * แต่ตอนกดปุ่มจะนับค่าว่างเป็น 0
+ *
+ * @param {number} [step]  ก้าวละเท่าไร ค่าเริ่มต้น 1
+ * @param {number} [min]   ต่ำสุด ค่าเริ่มต้น 0 ใส่ null ถ้าต้องการให้ติดลบได้
+ * @param {number} [max]   สูงสุด ไม่ใส่ = ไม่จำกัด
+ */
+export function QtyInput({
+  value,
+  onChange,
+  step = 1,
+  min = 0,
+  max,
+  id,
+  disabled,
+  placeholder = "0",
+  ariaLabel,
+  onKeyDown,
+}) {
+  const n = parseFloat(value);
+  const cur = Number.isFinite(n) ? n : 0;
+
+  const atMin = min !== null && min !== undefined && cur <= min;
+  const atMax = max !== null && max !== undefined && cur >= max;
+
+  function bump(dir) {
+    let next = cur + dir * step;
+    if (min !== null && min !== undefined && next < min) next = min;
+    if (max !== null && max !== undefined && next > max) next = max;
+    // ปัดเศษกันปัญหาทศนิยมลอยตัว เช่น 0.1 + 0.2 ได้ 0.30000000000000004
+    next = Math.round(next * 1e6) / 1e6;
+    onChange(String(next));
+  }
+
+  return (
+    <div className="qty-box">
+      <button
+        type="button"
+        className="qty-btn"
+        onClick={() => bump(-1)}
+        disabled={disabled || atMin}
+        aria-label={"ลด" + (ariaLabel ? " " + ariaLabel : "จำนวน")}
+        tabIndex={-1}
+      >
+        −
+      </button>
+      <input
+        className="inp num qty-mid"
+        type="number"
+        step="any"
+        id={id}
+        value={value}
+        min={min === null ? undefined : min}
+        max={max === null ? undefined : max}
+        disabled={disabled}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+      />
+      <button
+        type="button"
+        className="qty-btn"
+        onClick={() => bump(1)}
+        disabled={disabled || atMax}
+        aria-label={"เพิ่ม" + (ariaLabel ? " " + ariaLabel : "จำนวน")}
+        tabIndex={-1}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 /** แถวสรุปคีย์-ค่า ในหน้ารายละเอียดสินค้า */
 export function Row2({ k, children }) {
   return (

@@ -17,6 +17,7 @@ import {
   Empty,
   LocationSelect,
   ProductSelect,
+  QtyInput,
   TableWrap,
   WarehouseSelect,
 } from "../ui";
@@ -339,15 +340,11 @@ export default function AdjustScreen() {
                   </td>
 
                   <td className="num">
-                    <input
-                      className="inp num"
-                      type="number"
-                      step="any"
-                      min="0"
+                    <QtyInput
                       value={r.counted}
-                      onChange={(e) => setRow(r.key, { counted: e.target.value })}
-                      placeholder="0"
-                      aria-label={"ยอดนับได้จริงของบรรทัดที่ " + (i + 1)}
+                      onChange={(v) => setRow(r.key, { counted: v })}
+                      disabled={saving}
+                      ariaLabel={"ยอดนับได้จริงของบรรทัดที่ " + (i + 1)}
                     />
                     {p ? (
                       <div style={{ fontSize: 11.5, color: "var(--fg-faint)" }}>{p.unit}</div>

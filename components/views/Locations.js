@@ -11,7 +11,16 @@ import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcBox, IcPin, IcPlus, IcTrash } from "../Icons";
 import Modal from "../Modal";
-import { Badge, Card, Empty, LocationSelect, ProductSelect, TableWrap, WarehouseSelect } from "../ui";
+import {
+  Badge,
+  Card,
+  Empty,
+  LocationSelect,
+  ProductSelect,
+  QtyInput,
+  TableWrap,
+  WarehouseSelect,
+} from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const kindOf = (id) => LOCATION_KINDS.find((k) => k.id === id) || LOCATION_KINDS[0];
@@ -411,21 +420,18 @@ function BinPanel({ bin, onClose, onEdit, busy, setBusy }) {
         </div>
         <div className="field">
           <label className="lbl" htmlFor="bin_qty">จำนวน</label>
-          <input
-            className="inp num"
+          <QtyInput
             id="bin_qty"
-            type="number"
-            min="0"
-            step="any"
             value={addQty}
-            onChange={(e) => setAddQty(e.target.value)}
+            onChange={setAddQty}
+            disabled={busy}
+            ariaLabel="จำนวนที่จะวางในช่องนี้"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
                 addItem();
               }
             }}
-            placeholder="0"
           />
         </div>
         <div className="field">
@@ -613,13 +619,12 @@ function LocationForm({ location, whId, onClose, onDeleted }) {
         </div>
         <div className="field">
           <label className="lbl" htmlFor="lf_col">ลำดับในโซน</label>
-          <input
-            className="inp num"
+          <QtyInput
             id="lf_col"
-            type="number"
-            min="1"
             value={form.col}
-            onChange={(e) => set("col", e.target.value)}
+            onChange={(v) => set("col", v)}
+            min={1}
+            ariaLabel="ลำดับในโซน"
           />
         </div>
         <div className="field">
@@ -639,14 +644,12 @@ function LocationForm({ location, whId, onClose, onDeleted }) {
         </div>
         <div className="field span2">
           <label className="lbl" htmlFor="lf_cap">ความจุ (0 = ไม่จำกัด)</label>
-          <input
-            className="inp num"
+          <QtyInput
             id="lf_cap"
-            type="number"
-            min="0"
-            step="any"
             value={form.capacity}
-            onChange={(e) => set("capacity", e.target.value)}
+            onChange={(v) => set("capacity", v)}
+            step={100}
+            ariaLabel="ความจุของช่องเก็บ"
           />
         </div>
         <div className="field span2">

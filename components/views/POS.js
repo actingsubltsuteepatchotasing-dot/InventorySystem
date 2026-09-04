@@ -14,7 +14,7 @@ import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcBox, IcPlus, IcPrint, IcTrash } from "../Icons";
-import { Badge, Card, Empty, LocationSelect, TableWrap, WhLocFields } from "../ui";
+import { Badge, Card, Empty, LocationSelect, QtyInput, TableWrap, WhLocFields } from "../ui";
 import { ReceiptBody } from "./printBodies";
 import SetupNotice from "../SetupNotice";
 
@@ -513,7 +513,7 @@ export default function POS() {
                 <tr>
                   <th>สินค้า</th>
                   <th style={{ width: 132 }}>ที่เก็บ</th>
-                  <th className="num" style={{ width: 92 }}>จำนวน</th>
+                  <th className="num" style={{ width: 136 }}>จำนวน</th>
                   <th className="num">ราคา</th>
                   <th className="num">รวม</th>
                   <th style={{ width: 44 }} />
@@ -543,13 +543,12 @@ export default function POS() {
                         </span>
                       </td>
                       <td className="num">
-                        <input
-                          className="inp num qty-input"
-                          type="number"
-                          min="1"
-                          step="any"
+                        <QtyInput
                           value={l.qty}
-                          onChange={(e) => setQty(l.key, e.target.value)}
+                          onChange={(v) => setQty(l.key, v)}
+                          min={1}
+                          disabled={saving}
+                          ariaLabel={"จำนวนของ " + (p ? p.name : "")}
                         />
                       </td>
                       <td className="num">{num(l.price, 2)}</td>

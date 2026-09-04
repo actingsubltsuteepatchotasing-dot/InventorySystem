@@ -9,7 +9,7 @@ import { resizeImage } from "@/lib/image";
 import { uid } from "@/lib/format";
 import Modal from "../Modal";
 import { useToast } from "../Toast";
-import { Barcode, LocationSelect, WarehouseSelect } from "../ui";
+import { Barcode, LocationSelect, QtyInput, WarehouseSelect } from "../ui";
 
 export default function ProductForm({ productId, onClose }) {
   const inv = useInv();
@@ -202,13 +202,11 @@ export default function ProductForm({ productId, onClose }) {
 
         <div className="field">
           <label className="lbl" htmlFor="e_min">จุดสั่งซื้อต่ำสุด</label>
-          <input
-            className="inp num"
-            type="number"
-            step="any"
+          <QtyInput
             id="e_min"
             value={form.min}
-            onChange={(e) => set("min", e.target.value)}
+            onChange={(v) => set("min", v)}
+            ariaLabel="จุดสั่งซื้อต่ำสุด"
           />
         </div>
 

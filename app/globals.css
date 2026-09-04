@@ -82,6 +82,46 @@
   --shadow-lg: 0 12px 40px -12px rgba(30, 0, 50, 0.28);
 }
 
+/* ---------- ช่องกรอกจำนวน พร้อมปุ่มลบ/บวก ---------- */
+.qty-box { display: flex; align-items: stretch; gap: 0; }
+.qty-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--fg);
+  font-size: 17px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.qty-btn:first-child { border-radius: 9px 0 0 9px; }
+.qty-btn:last-child { border-radius: 0 9px 9px 0; }
+.qty-btn:hover:not(:disabled) {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+.qty-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* ช่องกลางต้องเชื่อมกับปุ่มสองข้าง จึงตัดมุมและเส้นขอบที่ซ้อนกันออก */
+.qty-box .qty-mid {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  text-align: center;
+}
+/* ลูกศรของ input number ซ้ำซ้อนกับปุ่มที่ทำเอง และเบียดพื้นที่ตัวเลข */
+.qty-box .qty-mid::-webkit-outer-spin-button,
+.qty-box .qty-mid::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+.qty-box .qty-mid { appearance: textfield; -moz-appearance: textfield; }
+
 /* ---------- ช่องเลือกสินค้าแบบพิมพ์ค้นหาได้ ---------- */
 .combo { position: relative; }
 .combo-inp { width: 100%; padding-right: 30px; cursor: text; }

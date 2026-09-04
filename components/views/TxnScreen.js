@@ -12,7 +12,7 @@ import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import { Badge, Card, Empty, ProductSelect, TableWrap, WhLocFields } from "../ui";
+import { Badge, Card, Empty, ProductSelect, QtyInput, TableWrap, WhLocFields } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 export default function TxnScreen({ type }) {
@@ -290,21 +290,17 @@ export default function TxnScreen({ type }) {
           </div>
           <div className="field">
             <label className="lbl" htmlFor="f_qty">จำนวน</label>
-            <input
-              className="inp num"
-              type="number"
+            <QtyInput
               id="f_qty"
-              min="0"
-              step="any"
               value={qty}
-              onChange={(e) => setQty(e.target.value)}
+              onChange={setQty}
+              ariaLabel="จำนวน"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
                   addLine();
                 }
               }}
-              placeholder="0"
             />
           </div>
           <div className="field">
