@@ -162,12 +162,22 @@ export default function Shell() {
         </nav>
 
         <div className="side-foot">
-          <div>
+          <div className="side-user">
+            <span className="avatar" aria-hidden="true">{initials}</span>
+            <span className="uname" title={email}>{email}</span>
+            <button className="btn btn-g btn-sm" onClick={signOut}>
+              ออกจากระบบ
+            </button>
+          </div>
+
+          <div className="side-meta">
             คลังที่ใช้งาน: <b>{db.warehouses.length} คลังทั่วประเทศ</b>
             {" · "}
             <b>{db.locations.length} ที่เก็บ</b>
           </div>
-          <div style={{ marginTop: 4, opacity: 0.75 }}>เวอร์ชัน 2.0 · ข้อมูลอยู่บน Supabase</div>
+          <div className="side-meta" style={{ marginTop: 4, opacity: 0.75 }}>
+            เวอร์ชัน 2.0 · ข้อมูลอยู่บน Supabase
+          </div>
         </div>
       </aside>
 
@@ -211,16 +221,6 @@ export default function Shell() {
       {backup ? <BackupModal onClose={() => setBackup(false)} /> : null}
 
       {/* แถบผู้ใช้ลอยมุมขวาล่าง — ซ้อนอยู่เหนือปุ่มผู้ช่วย AI */}
-      <div className="user-dock no-print">
-        <div className="user-chip" title={email}>
-          <span className="avatar">{initials}</span>
-          <span className="uname">{email}</span>
-        </div>
-        <button className="btn btn-g btn-sm" onClick={signOut}>
-          ออกจากระบบ
-        </button>
-      </div>
-
       <ChatWidget />
     </div>
   );
