@@ -4,8 +4,12 @@
 //
 // ที่อยู่แยกเป็น ตำบล / อำเภอ / จังหวัด / รหัสไปรษณีย์ คนละคอลัมน์
 // เพราะต้องเอาไปกรองและออกรายงานรายจังหวัด ถ้าเก็บรวมเป็นก้อนเดียวจะแยกไม่ออกทีหลัง
+//
+// จังหวัด/อำเภอ/ตำบล เลือกจากรายการเขตปกครองจริง (lib/thaiAddress.js)
+// เลือกไล่ลงมาทีละชั้น และรหัสไปรษณีย์เติมให้เองจากตำบลที่เลือก
+// พิมพ์เองไม่ได้ เพราะรหัสที่ไม่ตรงกับตำบลคือที่อยู่ที่ส่งของไม่ถึง
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { CUSTOMER_KINDS } from "@/lib/constants";
 import { nextCustCode } from "@/lib/db";
@@ -39,6 +43,23 @@ export default function Customers() {
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  /*
+   * ตารางเขตปกครองไทยมี 7,452 ตำบล ไฟล์จึงใหญ่ (~200 KB)
+   * โหลดแบบ dynamic เฉพาะตอนเปิดหน้านี้ ไม่ให้ติดไปกับทุกหน้าจอ
+   * โหลดไม่สำเร็จ (เน็ตหลุดกลางทาง) ให้ตกกลับไปพิมพ์เองได้ ดีกว่ากรอกที่อยู่ไม่ได้เลย
+   */
+  const [addr, setAddr] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    import("@/lib/thaiAddress")
+      .then((m) => alive && setAddr(m))
+      .catch(() => alive && setAddr(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const all = db.customers || [];
 
   const rows = useMemo(() => {
@@ -56,6 +77,46 @@ export default function Customers() {
 
   const isNew = form ? !all.some((c) => c.id === form.id) : false;
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  /* ------------------------------------------- ที่อยู่ตามเขตปกครองจริง */
+
+  // กรุงเทพฯ เรียก เขต/แขวง จังหวัดอื่นเรียก อำเภอ/ตำบล ป้ายต้องเปลี่ยนตาม
+  const words = addr && form ? addr.addressWords(form.province) : null;
+  const provinceList = addr ? addr.provinces() : [];
+  const districtList = addr && form ? addr.districtsOf(form.province) : [];
+  const subList = addr && form ? addr.subdistrictsOf(form.province, form.district) : [];
+
+  /** รหัสไปรษณีย์ที่ตรงกับตำบลที่เลือก — "" คือเลือกยังไม่ครบ หรือเป็นชื่อที่ไม่รู้จัก */
+  const autoPost =
+    addr && form ? addr.postcodeOf(form.province, form.district, form.subdistrict) : "";
+
+  /*
+   * ค่าเดิมที่ไม่มีในรายการ (นำเข้าไฟล์สำรองเก่า หรือชื่อเขตถูกเปลี่ยนภายหลัง)
+   * ต้องใส่กลับเข้าไปในตัวเลือกด้วย ไม่งั้นแค่เปิดฟอร์มมาแก้เบอร์โทร
+   * ที่อยู่เดิมก็หายไปเงียบ ๆ ตอนกดบันทึก
+   */
+  const withCurrent = (list, v) => (v && !list.includes(v) ? [v, ...list] : list);
+
+  /*
+   * ตำบลถูกแต่รหัสไปรษณีย์ผิด = ข้อมูลเก่าที่กรอกมือไว้ แก้ให้ตรงตั้งแต่เปิดฟอร์ม
+   * ไม่รอให้ผู้ใช้ไปแตะตำบลก่อน เพราะเขาไม่มีทางรู้ว่ารหัสเดิมผิด
+   */
+  useEffect(() => {
+    if (!autoPost) return;
+    setForm((f) => (f && f.postcode !== autoPost ? { ...f, postcode: autoPost } : f));
+  }, [autoPost]);
+
+  // เลือกชั้นบนแล้วต้องล้างชั้นล่างเสมอ ไม่งั้นจะเหลืออำเภอของจังหวัดเดิมค้างอยู่
+  const pickProvince = (v) =>
+    setForm((f) => ({ ...f, province: v, district: "", subdistrict: "", postcode: "" }));
+  const pickDistrict = (v) =>
+    setForm((f) => ({ ...f, district: v, subdistrict: "", postcode: "" }));
+  const pickSub = (v) =>
+    setForm((f) => ({
+      ...f,
+      subdistrict: v,
+      postcode: addr ? addr.postcodeOf(f.province, f.district, v) : f.postcode,
+    }));
 
   async function save() {
     if (busy) return;
@@ -162,8 +223,8 @@ export default function Customers() {
                 <th style={{ width: 90 }}>รหัสลูกค้า</th>
                 <th style={{ minWidth: 200 }}>ชื่อลูกค้า</th>
                 <th style={{ minWidth: 200 }}>ที่อยู่</th>
-                <th style={{ minWidth: 130 }}>ตำบล</th>
-                <th style={{ minWidth: 130 }}>อำเภอ</th>
+                <th style={{ minWidth: 130 }}>ตำบล / แขวง</th>
+                <th style={{ minWidth: 130 }}>อำเภอ / เขต</th>
                 <th style={{ minWidth: 140 }}>จังหวัด</th>
                 <th style={{ width: 110 }}>รหัสไปรษณีย์</th>
                 <th style={{ minWidth: 130 }}>เบอร์โทร</th>
@@ -276,44 +337,122 @@ export default function Customers() {
               />
             </div>
 
-            <div className="field">
-              <label className="lbl" htmlFor="cf_sub">ตำบล / แขวง</label>
-              <input
-                className="inp"
-                id="cf_sub"
-                value={form.subdistrict}
-                onChange={(e) => set("subdistrict", e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label className="lbl" htmlFor="cf_dis">อำเภอ / เขต</label>
-              <input
-                className="inp"
-                id="cf_dis"
-                value={form.district}
-                onChange={(e) => set("district", e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label className="lbl" htmlFor="cf_prov">จังหวัด</label>
-              <input
-                className="inp"
-                id="cf_prov"
-                value={form.province}
-                onChange={(e) => set("province", e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label className="lbl" htmlFor="cf_post">รหัสไปรษณีย์</label>
-              <input
-                className="inp"
-                id="cf_post"
-                value={form.postcode}
-                inputMode="numeric"
-                maxLength={5}
-                onChange={(e) => set("postcode", e.target.value.replace(/\D/g, ""))}
-              />
-            </div>
+            {addr ? (
+              <>
+                {/* เลือกไล่ลงมา: จังหวัด -> อำเภอ/เขต -> ตำบล/แขวง -> รหัสไปรษณีย์เติมให้เอง */}
+                <div className="field">
+                  <label className="lbl" htmlFor="cf_prov">จังหวัด</label>
+                  <select
+                    className="sel"
+                    id="cf_prov"
+                    value={form.province}
+                    onChange={(e) => pickProvince(e.target.value)}
+                  >
+                    <option value="">— เลือกจังหวัด —</option>
+                    {withCurrent(provinceList, form.province).map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="lbl" htmlFor="cf_dis">{words.district}</label>
+                  <select
+                    className="sel"
+                    id="cf_dis"
+                    value={form.district}
+                    onChange={(e) => pickDistrict(e.target.value)}
+                    disabled={!form.province}
+                  >
+                    <option value="">
+                      {form.province ? "— เลือก" + words.district + " —" : "เลือกจังหวัดก่อน"}
+                    </option>
+                    {withCurrent(districtList, form.district).map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="lbl" htmlFor="cf_sub">{words.subdistrict}</label>
+                  <select
+                    className="sel"
+                    id="cf_sub"
+                    value={form.subdistrict}
+                    onChange={(e) => pickSub(e.target.value)}
+                    disabled={!form.district}
+                  >
+                    <option value="">
+                      {form.district ? "— เลือก" + words.subdistrict + " —" : "เลือก" + words.district + "ก่อน"}
+                    </option>
+                    {withCurrent(subList, form.subdistrict).map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label className="lbl" htmlFor="cf_post">รหัสไปรษณีย์</label>
+                  {autoPost ? (
+                    /* ตรงกับตำบลที่เลือกแล้ว แก้เองไม่ได้ รหัสที่ไม่ตรงคือของส่งไม่ถึง */
+                    <input className="inp" id="cf_post" value={form.postcode} readOnly />
+                  ) : (
+                    <input
+                      className="inp"
+                      id="cf_post"
+                      value={form.postcode}
+                      inputMode="numeric"
+                      maxLength={5}
+                      placeholder={form.subdistrict ? "" : "เลือก" + words.subdistrict + "แล้วเติมให้เอง"}
+                      onChange={(e) => set("postcode", e.target.value.replace(/\D/g, ""))}
+                    />
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* โหลดตารางเขตปกครองไม่ได้ ให้พิมพ์เองไปก่อน ดีกว่ากรอกที่อยู่ไม่ได้เลย */}
+                <div className="field">
+                  <label className="lbl" htmlFor="cf_prov">จังหวัด</label>
+                  <input
+                    className="inp"
+                    id="cf_prov"
+                    value={form.province}
+                    onChange={(e) => set("province", e.target.value)}
+                    placeholder={addr === false ? "" : "กำลังโหลดรายชื่อจังหวัด…"}
+                  />
+                </div>
+                <div className="field">
+                  <label className="lbl" htmlFor="cf_dis">อำเภอ / เขต</label>
+                  <input
+                    className="inp"
+                    id="cf_dis"
+                    value={form.district}
+                    onChange={(e) => set("district", e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label className="lbl" htmlFor="cf_sub">ตำบล / แขวง</label>
+                  <input
+                    className="inp"
+                    id="cf_sub"
+                    value={form.subdistrict}
+                    onChange={(e) => set("subdistrict", e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label className="lbl" htmlFor="cf_post">รหัสไปรษณีย์</label>
+                  <input
+                    className="inp"
+                    id="cf_post"
+                    value={form.postcode}
+                    inputMode="numeric"
+                    maxLength={5}
+                    onChange={(e) => set("postcode", e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+              </>
+            )}
             <div className="field span2">
               <label className="lbl" htmlFor="cf_phone">เบอร์โทร</label>
               <input
