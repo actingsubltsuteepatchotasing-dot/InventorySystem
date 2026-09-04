@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "./Toast";
 import {
   IcAdjust, IcBox, IcCart, IcChart, IcChevron, IcDash, IcData, IcGrid, IcIn, IcMap,
-  IcMenu, IcMove, IcOut, IcReport, Logo,
+  IcMenu, IcMove, IcOut, IcPin, IcReport, Logo,
 } from "./Icons";
 import BackupModal from "./BackupModal";
 import ChatWidget from "./ChatWidget";
@@ -22,6 +22,9 @@ import Locations from "./views/Locations";
 import POS from "./views/POS";
 import Reports from "./views/Reports";
 import Graphs from "./views/Graphs";
+import Customers from "./views/Customers";
+import DocGroups from "./views/DocGroups";
+import WarehouseSetup from "./views/WarehouseSetup";
 
 const NAV = [
   {
@@ -49,6 +52,14 @@ const NAV = [
       { id: "products", Icon: IcBox, title: "ข้อมูลสินค้า", sub: "รายละเอียด รูปภาพ และบาร์โค๊ด" },
       { id: "provinces", Icon: IcMap, title: "สินค้าตามจังหวัด", sub: "แผนที่และยอดคงเหลือรายจังหวัด" },
       { id: "locations", Icon: IcGrid, title: "ผังที่เก็บสินค้า", sub: "กำหนดตำแหน่งจัดเก็บแบบเป็นภาพ" },
+      { id: "customers", Icon: IcPin, title: "รายละเอียดลูกค้า", sub: "ทะเบียนลูกค้าและที่อยู่" },
+    ],
+  },
+  {
+    group: "การจัดการระบบ",
+    items: [
+      { id: "docgroups", Icon: IcReport, title: "การกำหนดกลุ่มเอกสาร", sub: "รูปแบบเลขที่เอกสารแบบรันนิ่ง" },
+      { id: "whsetup", Icon: IcData, title: "กำหนดคลังและที่เก็บ", sub: "เพิ่ม แก้ไข และลบคลังกับช่องเก็บ" },
     ],
   },
   {
@@ -63,6 +74,18 @@ const NAV = [
 const ALL_ITEMS = NAV.flatMap((g) => g.items);
 
 const FOOT_KEY = "ultra-side-foot";
+const NAV_KEY = "ultra-nav-folded";
+
+/** ชื่อกลุ่มที่ถูกหุบอยู่ อ่านจากเครื่องผู้ใช้ ค่าเสียหายก็ถือว่าไม่มีกลุ่มไหนหุบ */
+function readFolded() {
+  try {
+    const raw = window.localStorage.getItem(NAV_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : [];
+  } catch (e) {
+    return [];
+  }
+}
 
 export default function Shell() {
   const { db, ready, error, seeded, reload } = useInv();
@@ -76,6 +99,24 @@ export default function Shell() {
    * จำค่าไว้ในเครื่อง แต่ต้องอ่านใน useEffect ไม่งั้นพังตอน server render
    */
   const [footOpen, setFootOpen] = useState(true);
+
+  /**
+   * กลุ่มเมนูที่ถูกหุบไว้ เก็บเป็นรายชื่อกลุ่ม ไม่ใช่หมายเลขลำดับ
+   * เพราะลำดับกลุ่มเปลี่ยนได้เมื่อเพิ่มเมนูใหม่ แล้วจะไปหุบผิดกลุ่ม
+   */
+  const [folded, setFolded] = useState([]);
+
+  useEffect(() => {
+    setFolded(readFolded());
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NAV_KEY, JSON.stringify(folded));
+    } catch (e) {
+      // เก็บไม่ได้ก็ยังใช้งานได้ แค่จำค่าข้ามครั้งไม่ได้
+    }
+  }, [folded]);
 
   useEffect(() => {
     try {
@@ -119,7 +160,7 @@ export default function Shell() {
               (รันซ้ำได้ ไม่ลบข้อมูลเดิม)
             </li>
             <li>
-              ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทั้ง 7 แถว
+              ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทุกแถว
             </li>
             <li>กลับมาที่หน้านี้แล้วกด “ลองใหม่” (ไม่ต้อง deploy ใหม่)</li>
           </ol>
@@ -154,6 +195,11 @@ export default function Shell() {
     setView(id);
     setMenuOpen(false);
     window.scrollTo(0, 0);
+
+    // ไปหน้าที่อยู่ในกลุ่มที่หุบไว้ (เช่นกดทางลัดจากแดชบอร์ด) ให้กางกลุ่มนั้นออก
+    // ไม่งั้นเมนูจะไม่มีอะไรไฮไลต์เลย คนใช้จะงงว่าตัวเองอยู่ตรงไหน
+    const g = NAV.find((x) => x.items.some((i) => i.id === id));
+    if (g) setFolded((prev) => prev.filter((x) => x !== g.group));
   }
 
   return (
@@ -168,21 +214,42 @@ export default function Shell() {
         </div>
 
         <nav className="side-nav">
-          {NAV.map((g) => (
-            <div key={g.group}>
-              <div className="nav-group">{g.group}</div>
-              {g.items.map(({ id, Icon, title }) => (
+          {NAV.map((g) => {
+            const open = !folded.includes(g.group);
+            const id = "nav-" + NAV.indexOf(g);
+            return (
+              <div key={g.group}>
                 <button
-                  key={id}
-                  className={"nav-item" + (id === view ? " active" : "")}
-                  onClick={() => navigate(id)}
+                  type="button"
+                  className={"nav-group" + (open ? "" : " folded")}
+                  onClick={() =>
+                    setFolded((prev) =>
+                      prev.includes(g.group)
+                        ? prev.filter((x) => x !== g.group)
+                        : [...prev, g.group]
+                    )
+                  }
+                  aria-expanded={open}
+                  aria-controls={id}
                 >
-                  <Icon size={18} stroke={1.9} />
-                  {title}
+                  <span>{g.group}</span>
+                  <IcChevron size={14} />
                 </button>
-              ))}
-            </div>
-          ))}
+                <div id={id} hidden={!open}>
+                  {g.items.map((it) => (
+                    <button
+                      key={it.id}
+                      className={"nav-item" + (it.id === view ? " active" : "")}
+                      onClick={() => navigate(it.id)}
+                    >
+                      <it.Icon size={18} stroke={1.9} />
+                      {it.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div className={"side-foot" + (footOpen ? "" : " folded")}>
@@ -255,6 +322,9 @@ export default function Shell() {
           {view === "provinces" && <Provinces />}
           {view === "reports" && <Reports />}
           {view === "graphs" && <Graphs />}
+          {view === "customers" && <Customers />}
+          {view === "docgroups" && <DocGroups />}
+          {view === "whsetup" && <WarehouseSetup />}
         </div>
       </main>
 

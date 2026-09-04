@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 7 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 9 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() และ create_sale()
 --   4. GRANT สิทธิ์ระดับตารางให้ role authenticated
@@ -398,6 +398,52 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- ลูกค้า
+-- ----------------------------------------------------------------------------
+-- ที่อยู่แยกเป็น ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์ คนละคอลัมน์
+-- เพราะต้องเอาไปกรองและออกรายงานรายจังหวัด ถ้าเก็บรวมเป็นก้อนเดียวจะแยกไม่ออก
+create table if not exists public.customers (
+  id          text primary key,
+  code        text not null,
+  name        text not null,
+  address     text not null default '',
+  subdistrict text not null default '',
+  district    text not null default '',
+  province    text not null default '',
+  postcode    text not null default '',
+  phone       text not null default '',
+  kind        text not null default '',
+  created_at  timestamptz not null default now()
+);
+
+-- รหัสลูกค้าต้องไม่ซ้ำ เพราะเป็นตัวที่คนใช้อ้างถึงกันในเอกสาร
+create unique index if not exists customers_code_uniq on public.customers (code);
+
+-- ============================================================================
+-- กลุ่มเอกสาร (การกำหนดเลขที่เอกสารแบบรันนิ่ง)
+-- ----------------------------------------------------------------------------
+-- หนึ่งแถวคือหนึ่งชนิดรายการ (RECEIVE / ISSUE / TRANSFER / ADJUST / SALE)
+-- เก็บเฉพาะ "รูปแบบ" ของเลขที่ ไม่เก็บตัวนับ
+--
+-- ทำไมไม่เก็บตัวนับไว้ในตารางนี้:
+--   ฐานข้อมูลใช้ร่วมกันหลายเครื่อง ถ้าเก็บตัวนับแล้วสองเครื่องอ่านพร้อมกัน
+--   จะได้เลขซ้ำกัน ระบบจึงหาเลขถัดไปจากเลขสูงสุดที่มีอยู่จริงใน txns เสมอ
+--   (ดู nextDocNo ใน lib/db.js) ตารางนี้บอกแค่ว่า prefix หน้าตาเป็นอย่างไร
+create table if not exists public.doc_groups (
+  id         text primary key,
+  name       text not null,
+  prefix     text not null,
+  period     text not null default 'month',
+  digits     integer not null default 4,
+  created_at timestamptz not null default now(),
+
+  -- ต่อเนื่องตลอด / ขึ้นเลข 1 ใหม่ทุกปี / ขึ้นเลข 1 ใหม่ทุกเดือน
+  constraint doc_groups_period check (period in ('none', 'year', 'month')),
+  -- 1 หลักสั้นเกินจนชนกันง่าย เกิน 8 หลักก็เกินความจำเป็น
+  constraint doc_groups_digits check (digits between 2 and 8)
+);
+
 -- ------------------------------------------------------------ สิทธิ์ระดับตาราง
 -- สำคัญ: การเข้าถึงตารางต้องผ่าน 2 ด่าน
 --   ด่าน 1  GRANT ระดับตาราง  -> ไม่ผ่านจะได้ HTTP 403 / SQLSTATE 42501
@@ -413,6 +459,8 @@ grant all privileges on table public.locations         to authenticated;
 grant all privileges on table public.product_locations to authenticated;
 grant all privileges on table public.sales             to authenticated;
 grant all privileges on table public.sale_items        to authenticated;
+grant all privileges on table public.doc_groups        to authenticated;
+grant all privileges on table public.customers         to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb) to authenticated;
 grant execute on function public.stock_of(text, text)        to authenticated;
@@ -428,7 +476,8 @@ declare
 begin
   foreach t in array array[
     'warehouses', 'products', 'txns',
-    'locations', 'product_locations', 'sales', 'sale_items'
+    'locations', 'product_locations', 'sales', 'sale_items',
+    'doc_groups', 'customers'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -443,7 +492,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 7 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 9 ตารางแล้ว';
 end
 $$;
 
@@ -499,6 +548,7 @@ select
   end                                             as "ผล"
 from (values
   ('warehouses'), ('products'), ('txns'),
-  ('locations'), ('product_locations'), ('sales'), ('sale_items')
+  ('locations'), ('product_locations'), ('sales'), ('sale_items'),
+  ('doc_groups'), ('customers')
 ) as x(name)
 order by x.name;

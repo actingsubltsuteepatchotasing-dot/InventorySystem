@@ -36,7 +36,7 @@ export default function SetupNotice({ feature, tables }) {
           </span>
         </li>
         <li>
-          ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทั้ง 7 แถว
+          ดูตารางสรุปท้ายไฟล์ คอลัมน์ <code>ผล</code> ต้องขึ้น <code>ผ่าน</code> ครบทุกแถว
         </li>
         <li>กลับมาที่หน้านี้แล้วกดปุ่มด้านล่าง</li>
       </ol>

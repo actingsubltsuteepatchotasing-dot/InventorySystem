@@ -301,7 +301,8 @@ export default function AdjustScreen() {
             <tr>
               <th style={{ width: 40 }}>#</th>
               <th style={{ minWidth: 210 }}>สินค้า</th>
-              <th style={{ minWidth: 170 }}>คลัง · ที่เก็บ</th>
+              <th style={{ minWidth: 165 }}>คลังสินค้า</th>
+              <th style={{ minWidth: 165 }}>ที่เก็บสินค้า</th>
               <th className="num" style={{ width: 104 }}>ตามบัญชี</th>
               <th className="num" style={{ width: 164 }}>นับได้จริง</th>
               <th className="num" style={{ width: 96 }}>ผลต่าง</th>
@@ -326,23 +327,25 @@ export default function AdjustScreen() {
                     />
                   </td>
 
+                  {/* คลังกับที่เก็บแยกคนละคอลัมน์ ให้เรียงเหมือนหน้าจอรับสินค้า */}
                   <td>
-                    {/* คลังกับที่เก็บของแถวนี้ เปลี่ยนคลังแล้วที่เก็บเด้งเป็นช่องแรกให้ */}
+                    {/* เปลี่ยนคลังแล้วที่เก็บเด้งเป็นช่องแรกให้ ไม่ปล่อยค้างช่องของคลังเดิม */}
                     <WarehouseSelect
                       db={db}
                       id={"a_wh_" + r.key}
                       value={r.whId}
                       onChange={(w) => setRow(r.key, { whId: w, locId: firstLocOf(db, w) })}
                     />
-                    <div style={{ marginTop: 5 }}>
-                      <LocationSelect
-                        db={db}
-                        whId={r.whId}
-                        id={"a_loc_" + r.key}
-                        value={r.locId}
-                        onChange={(l) => setRow(r.key, { locId: l })}
-                      />
-                    </div>
+                  </td>
+
+                  <td>
+                    <LocationSelect
+                      db={db}
+                      whId={r.whId}
+                      id={"a_loc_" + r.key}
+                      value={r.locId}
+                      onChange={(l) => setRow(r.key, { locId: l })}
+                    />
                   </td>
 
                   <td className="num">
@@ -408,7 +411,7 @@ export default function AdjustScreen() {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={5}>
+              <td colSpan={6}>
                 รวม {rows.length} บรรทัด · ต้องปรับปรุง {filled.length} บรรทัด
               </td>
               <td className="num">
