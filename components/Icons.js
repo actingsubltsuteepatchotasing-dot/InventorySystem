@@ -60,6 +60,7 @@ export const IcClose = (p) => <Ico stroke={2.2} {...p}><path d="M18 6L6 18M6 6l1
 export const IcTrash = (p) => (
   <Ico stroke={2.2} {...p}><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></Ico>
 );
+export const IcChevron = (p) => <Ico stroke={2.4} {...p}><path d="M6 9l6 6 6-6" /></Ico>;
 export const IcCheck = (p) => <Ico stroke={3} {...p}><path d="M20 6L9 17l-5-5" /></Ico>;
 export const IcMenu = (p) => <Ico {...p}><path d="M3 6h18M3 12h18M3 18h18" /></Ico>;
 export const IcData = (p) => (

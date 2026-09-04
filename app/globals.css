@@ -462,6 +462,27 @@ table { border-collapse: collapse; width: 100%; }
 /* ข้อความสรุปจาง ๆ ได้ แต่แถบผู้ใช้ต้องอ่านชัด จึงแยก opacity กันคนละชั้น */
 .side-foot .side-meta { opacity: 0.82; }
 
+/* ปุ่มหุบ/ขยายแถบผู้ใช้ */
+.side-fold {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s, background 0.15s, transform 0.2s;
+}
+.side-fold:hover { opacity: 1; background: rgba(255, 255, 255, 0.18); }
+.side-fold:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+/* ลูกศรชี้ลงตอนกางอยู่ พลิกขึ้นเมื่อหุบ จะได้รู้ว่ากดแล้วเกิดอะไร */
+.side-foot.folded .side-fold { transform: rotate(180deg); }
+
 /* ชื่อผู้ใช้ + ปุ่มออกจากระบบ ท้ายแถบเมนู */
 .side-user {
   display: flex;

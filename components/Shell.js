@@ -5,8 +5,8 @@ import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "./Toast";
 import {
-  IcAdjust, IcBox, IcCart, IcChart, IcDash, IcData, IcGrid, IcIn, IcMap, IcMenu, IcMove,
-  IcOut, IcReport, Logo,
+  IcAdjust, IcBox, IcCart, IcChart, IcChevron, IcDash, IcData, IcGrid, IcIn, IcMap,
+  IcMenu, IcMove, IcOut, IcReport, Logo,
 } from "./Icons";
 import BackupModal from "./BackupModal";
 import ChatWidget from "./ChatWidget";
@@ -62,12 +62,36 @@ const NAV = [
 
 const ALL_ITEMS = NAV.flatMap((g) => g.items);
 
+const FOOT_KEY = "ultra-side-foot";
+
 export default function Shell() {
   const { db, ready, error, seeded, reload } = useInv();
   const { user, signOut } = useAuth();
   const toast = useToast();
   const [view, setView] = useState("dash");
   const [menuOpen, setMenuOpen] = useState(false);
+
+  /**
+   * แถบผู้ใช้ท้ายเมนู หุบไว้ได้เพื่อคืนพื้นที่ให้รายการเมนู
+   * จำค่าไว้ในเครื่อง แต่ต้องอ่านใน useEffect ไม่งั้นพังตอน server render
+   */
+  const [footOpen, setFootOpen] = useState(true);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(FOOT_KEY) === "0") setFootOpen(false);
+    } catch (e) {
+      // เบราว์เซอร์ปิด storage — ใช้ค่าเริ่มต้นคือกางไว้
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(FOOT_KEY, footOpen ? "1" : "0");
+    } catch (e) {
+      // เก็บไม่ได้ก็ยังใช้งานได้ แค่จำค่าข้ามครั้งไม่ได้
+    }
+  }, [footOpen]);
   const [backup, setBackup] = useState(false);
 
   // แจ้งเมื่อระบบสร้างข้อมูลตัวอย่างให้อัตโนมัติเพราะฐานข้อมูลยังว่าง
@@ -161,22 +185,38 @@ export default function Shell() {
           ))}
         </nav>
 
-        <div className="side-foot">
+        <div className={"side-foot" + (footOpen ? "" : " folded")}>
           <div className="side-user">
             <span className="avatar" aria-hidden="true">{initials}</span>
-            <span className="uname" title={email}>{email}</span>
+            {/* ตอนหุบ ซ่อนอีเมลอย่างเดียว ปุ่มออกจากระบบยังอยู่ให้กดได้เสมอ */}
+            {footOpen ? (
+              <span className="uname" title={email}>{email}</span>
+            ) : null}
             <button className="btn btn-g btn-sm" onClick={signOut}>
               ออกจากระบบ
             </button>
+            <button
+              type="button"
+              className="side-fold"
+              onClick={() => setFootOpen((v) => !v)}
+              aria-expanded={footOpen}
+              aria-controls="side-foot-detail"
+              title={footOpen ? "ย่อแถบนี้" : "ขยายแถบนี้"}
+              aria-label={footOpen ? "ย่อแถบผู้ใช้" : "ขยายแถบผู้ใช้"}
+            >
+              <IcChevron size={16} />
+            </button>
           </div>
 
-          <div className="side-meta">
-            คลังที่ใช้งาน: <b>{db.warehouses.length} คลังทั่วประเทศ</b>
-            {" · "}
-            <b>{db.locations.length} ที่เก็บ</b>
-          </div>
-          <div className="side-meta" style={{ marginTop: 4, opacity: 0.75 }}>
-            เวอร์ชัน 2.0 · ข้อมูลอยู่บน Supabase
+          <div id="side-foot-detail" hidden={!footOpen}>
+            <div className="side-meta">
+              คลังที่ใช้งาน: <b>{db.warehouses.length} คลังทั่วประเทศ</b>
+              {" · "}
+              <b>{db.locations.length} ที่เก็บ</b>
+            </div>
+            <div className="side-meta" style={{ marginTop: 4, opacity: 0.75 }}>
+              เวอร์ชัน 2.0 · ข้อมูลอยู่บน Supabase
+            </div>
           </div>
         </div>
       </aside>
