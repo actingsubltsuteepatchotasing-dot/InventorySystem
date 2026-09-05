@@ -34,6 +34,12 @@ function threeMonthsAgo() {
 
 export default function Reports() {
   const inv = useInv();
+
+  /*
+   * สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มบันทึกถูกปิด เข้ามาดูได้อย่างเดียว
+   * ไม่ติ๊ก "เปลี่ยนวันที่" แล้วช่องวันที่ล็อกไว้ (ดูหน้ากำหนดสิทธิการใช้งาน)
+   */
+  const perm = inv.perm("reports");
   const { db } = inv;
   const toast = useToast();
   const print = usePrint();
@@ -61,11 +67,11 @@ export default function Reports() {
     <div className="row" style={{ marginBottom: 15, alignItems: "flex-end" }}>
       <div style={{ minWidth: 150 }}>
         <label className="lbl" htmlFor="r_from">ตั้งแต่วันที่</label>
-        <input className="inp" type="date" id="r_from" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <input className="inp" type="date" id="r_from" value={from} disabled={!perm.date} onChange={(e) => setFrom(e.target.value)} />
       </div>
       <div style={{ minWidth: 150 }}>
         <label className="lbl" htmlFor="r_to">ถึงวันที่</label>
-        <input className="inp" type="date" id="r_to" value={to} onChange={(e) => setTo(e.target.value)} />
+        <input className="inp" type="date" id="r_to" value={to} disabled={!perm.date} onChange={(e) => setTo(e.target.value)} />
       </div>
       <div className="form-grid" style={{ margin: 0, minWidth: 420, flex: "1 1 420px" }}>
         <WhLocFields

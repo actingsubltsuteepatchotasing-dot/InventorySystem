@@ -20,6 +20,12 @@ const QUICK = [
 
 export default function Dashboard({ onNavigate }) {
   const inv = useInv();
+
+  /*
+   * สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มบันทึกถูกปิด เข้ามาดูได้อย่างเดียว
+   * ไม่ติ๊ก "เปลี่ยนวันที่" แล้วช่องวันที่ล็อกไว้ (ดูหน้ากำหนดสิทธิการใช้งาน)
+   */
+  const perm = inv.perm("dash");
   const { db } = inv;
 
   // ค่าเริ่มต้น 6 เดือนล่าสุด เท่ากับกราฟที่เคยแสดงไว้เดิม
@@ -98,6 +104,7 @@ export default function Dashboard({ onNavigate }) {
             type="date"
             id="d_from"
             value={from}
+            disabled={!perm.date}
             max={to || undefined}
             onChange={(e) => setFrom(e.target.value)}
           />
@@ -109,6 +116,7 @@ export default function Dashboard({ onNavigate }) {
             type="date"
             id="d_to"
             value={to}
+            disabled={!perm.date}
             min={from || undefined}
             onChange={(e) => setTo(e.target.value)}
           />

@@ -27,6 +27,9 @@ const kindOf = (id) => LOCATION_KINDS.find((k) => k.id === id) || LOCATION_KINDS
 
 export default function Locations() {
   const inv = useInv();
+
+  // สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มที่เขียนข้อมูลถูกปิด ดูได้อย่างเดียว
+  const perm = inv.perm("locations");
   const { db } = inv;
   const toast = useToast();
   const print = usePrint();
@@ -161,7 +164,11 @@ export default function Locations() {
         title="ผังที่เก็บสินค้า"
         actions={
           <>
-            <button className="btn btn-p btn-sm" onClick={() => setEditing({ location: null })}>
+            <button
+              className="btn btn-p btn-sm"
+              onClick={() => setEditing({ location: null })}
+              disabled={!perm.edit}
+            >
               <IcPlus size={15} />
               เพิ่มช่องเก็บ
             </button>
@@ -327,6 +334,7 @@ export default function Locations() {
 
 function BinPanel({ bin, onClose, onEdit, busy, setBusy }) {
   const inv = useInv();
+  const perm = inv.perm("locations");
   const { db } = inv;
   const toast = useToast();
 
@@ -472,7 +480,7 @@ function BinPanel({ bin, onClose, onEdit, busy, setBusy }) {
                     <button
                       className="btn btn-d btn-icon"
                       onClick={() => removeItem(pl)}
-                      disabled={busy}
+                      disabled={busy || !perm.edit}
                       title="ถอดออกจากช่อง"
                     >
                       <IcTrash size={14} />
@@ -494,6 +502,7 @@ function BinPanel({ bin, onClose, onEdit, busy, setBusy }) {
 
 function LocationForm({ location, whId, onClose, onDeleted }) {
   const inv = useInv();
+  const perm = inv.perm("locations");
   const { db } = inv;
   const toast = useToast();
   const isNew = !location;
@@ -594,7 +603,7 @@ function LocationForm({ location, whId, onClose, onDeleted }) {
             <button
               className="btn btn-d"
               onClick={remove}
-              disabled={busy || binLeft > 0}
+              disabled={busy || binLeft > 0 || !perm.edit}
               title={
                 binLeft > 0
                   ? "ลบไม่ได้ — ยังมีสินค้าในช่องนี้ " + num(binLeft, 0) + " หน่วย"
@@ -605,7 +614,7 @@ function LocationForm({ location, whId, onClose, onDeleted }) {
               ลบช่องเก็บ
             </button>
           ) : null}
-          <button className="btn btn-p" onClick={save} disabled={busy}>
+          <button className="btn btn-p" onClick={save} disabled={busy || !perm.edit}>
             {busy ? "กำลังบันทึก…" : "บันทึก"}
           </button>
         </>

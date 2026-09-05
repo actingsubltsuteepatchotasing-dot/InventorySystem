@@ -15,6 +15,9 @@ import SetupNotice from "../SetupNotice";
 
 export default function Company() {
   const inv = useInv();
+
+  // สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มที่เขียนข้อมูลถูกปิด ดูได้อย่างเดียว
+  const perm = inv.perm("company");
   const { db } = inv;
   const toast = useToast();
 
@@ -79,7 +82,7 @@ export default function Company() {
             <Badge kind={ready ? "ok" : "warn"}>
               {ready ? "พร้อมออกใบกำกับภาษี" : "ยังกรอกไม่ครบ"}
             </Badge>
-            <button className="btn btn-p btn-sm" onClick={save} disabled={busy}>
+            <button className="btn btn-p btn-sm" onClick={save} disabled={busy || !perm.edit}>
               {busy ? "กำลังบันทึก…" : "บันทึก"}
             </button>
           </>

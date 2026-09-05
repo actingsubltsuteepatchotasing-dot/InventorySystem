@@ -14,6 +14,9 @@ import { LabelSheetBody } from "./printBodies";
 
 export default function Products() {
   const inv = useInv();
+
+  // สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มที่เขียนข้อมูลถูกปิด ดูได้อย่างเดียว
+  const perm = inv.perm("products");
   const { db } = inv;
   const print = usePrint();
 
@@ -75,7 +78,11 @@ export default function Products() {
         title="ข้อมูลสินค้า"
         actions={
           <>
-            <button className="btn btn-p btn-sm" onClick={() => setEditing({ id: null })}>
+            <button
+              className="btn btn-p btn-sm"
+              onClick={() => setEditing({ id: null })}
+              disabled={!perm.edit}
+            >
               <IcPlus size={15} />
               เพิ่มสินค้าใหม่
             </button>

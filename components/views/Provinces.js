@@ -20,6 +20,9 @@ import { CountSheetBody } from "./printBodies";
 
 export default function Provinces() {
   const inv = useInv();
+
+  // สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มที่เขียนข้อมูลถูกปิด ดูได้อย่างเดียว
+  const perm = inv.perm("provinces");
   const { db } = inv;
   const print = usePrint();
   const toast = useToast();
@@ -192,7 +195,7 @@ export default function Provinces() {
           title={"แผนที่ตั้งคลัง — " + w.name}
           actions={
             <>
-              <button className="btn btn-p btn-sm" onClick={openPin}>
+              <button className="btn btn-p btn-sm" onClick={openPin} disabled={!perm.edit}>
                 <IcPin size={15} />
                 ปักหมุดตำแหน่ง
               </button>
@@ -315,7 +318,7 @@ export default function Provinces() {
               <button className="btn btn-g" onClick={() => setPin(null)} disabled={saving}>
                 ยกเลิก
               </button>
-              <button className="btn btn-p" onClick={savePin} disabled={saving}>
+              <button className="btn btn-p" onClick={savePin} disabled={saving || !perm.edit}>
                 บันทึกตำแหน่ง
               </button>
             </>

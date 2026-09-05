@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useInv } from "@/lib/store";
+import { PERMS_SCREEN } from "@/lib/constants";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "./Toast";
 import {
@@ -28,6 +29,8 @@ import WarehouseSetup from "./views/WarehouseSetup";
 import SalesInvoice from "./views/SalesInvoice";
 import Shipping from "./views/Shipping";
 import Company from "./views/Company";
+import ShipStatus from "./views/ShipStatus";
+import Permissions from "./views/Permissions";
 
 const NAV = [
   {
@@ -49,6 +52,7 @@ const NAV = [
       { id: "pos", Icon: IcCart, title: "ขายสินค้า (POS)", sub: "ยิงบาร์โค๊ด ขาย และออกใบเสร็จ" },
       { id: "invoice", Icon: IcReport, title: "ขายสินค้าและบริการ", sub: "ออกใบกำกับภาษีเต็มรูปแบบ" },
       { id: "shipping", Icon: IcMap, title: "การจัดส่งสินค้า", sub: "เส้นทางและสถานะการส่งของ" },
+      { id: "shipstatus", Icon: IcChart, title: "สถานะการจัดส่ง", sub: "ค้นหาและติดตามทั้งกอง" },
     ],
   },
   {
@@ -66,6 +70,7 @@ const NAV = [
       { id: "docgroups", Icon: IcReport, title: "การกำหนดกลุ่มเอกสาร", sub: "รูปแบบเลขที่เอกสารแบบรันนิ่ง" },
       { id: "whsetup", Icon: IcData, title: "กำหนดคลังและที่เก็บ", sub: "เพิ่ม แก้ไข และลบคลังกับช่องเก็บ" },
       { id: "company", Icon: IcBox, title: "ข้อมูลกิจการ", sub: "ผู้ออกใบกำกับภาษี" },
+      { id: "perms", Icon: IcData, title: "กำหนดสิทธิการใช้งาน", sub: "เลือกว่าหน้าจอไหนแสดงและแก้ไขได้" },
     ],
   },
   {
@@ -94,7 +99,8 @@ function readFolded() {
 }
 
 export default function Shell() {
-  const { db, ready, error, seeded, reload } = useInv();
+  const inv = useInv();
+  const { db, ready, error, seeded, reload } = inv;
   const { user, signOut } = useAuth();
   const toast = useToast();
   const [view, setView] = useState("dash");
@@ -193,7 +199,25 @@ export default function Shell() {
     );
   }
 
-  const current = ALL_ITEMS.find((i) => i.id === view) || ALL_ITEMS[0];
+  /*
+   * เมนูที่แสดงจริง = เฉพาะหน้าจอที่ติ๊ก "แสดงหน้าจอ" ไว้ที่หน้ากำหนดสิทธิ
+   *
+   * หน้ากำหนดสิทธิเองต้องอยู่เสมอ ปิดตัวเองไม่ได้
+   * ไม่งั้นคนตั้งค่าจะล็อกตัวเองออกถาวร แก้กลับได้ทางเดียวคือแก้ในฐานข้อมูลตรง ๆ
+   */
+  const nav = NAV.map((g) => ({
+    ...g,
+    items: g.items.filter((it) => it.id === PERMS_SCREEN || inv.perm(it.id).view),
+  })).filter((g) => g.items.length);
+
+  const shown = nav.flatMap((g) => g.items);
+
+  /*
+   * หน้าที่เปิดอยู่ถูกปิดสิทธิไประหว่างใช้งาน ให้เด้งไปหน้าแรกที่ยังเปิดอยู่
+   * คำนวณสด ไม่ใช้ effect เพราะ effect จะวาดหน้าที่ไม่มีสิทธิให้เห็นแวบหนึ่งก่อน
+   */
+  const current = shown.find((i) => i.id === view) || shown[0] || ALL_ITEMS[0];
+  const activeView = current.id;
   const email = user && user.email ? user.email : "ผู้ใช้";
   const initials = email.slice(0, 2).toUpperCase();
 
@@ -204,7 +228,7 @@ export default function Shell() {
 
     // ไปหน้าที่อยู่ในกลุ่มที่หุบไว้ (เช่นกดทางลัดจากแดชบอร์ด) ให้กางกลุ่มนั้นออก
     // ไม่งั้นเมนูจะไม่มีอะไรไฮไลต์เลย คนใช้จะงงว่าตัวเองอยู่ตรงไหน
-    const g = NAV.find((x) => x.items.some((i) => i.id === id));
+    const g = nav.find((x) => x.items.some((i) => i.id === id));
     if (g) setFolded((prev) => prev.filter((x) => x !== g.group));
   }
 
@@ -220,9 +244,9 @@ export default function Shell() {
         </div>
 
         <nav className="side-nav">
-          {NAV.map((g) => {
+          {nav.map((g) => {
             const open = !folded.includes(g.group);
-            const id = "nav-" + NAV.indexOf(g);
+            const id = "nav-" + g.group;
             return (
               <div key={g.group}>
                 <button
@@ -245,7 +269,7 @@ export default function Shell() {
                   {g.items.map((it) => (
                     <button
                       key={it.id}
-                      className={"nav-item" + (it.id === view ? " active" : "")}
+                      className={"nav-item" + (it.id === activeView ? " active" : "")}
                       onClick={() => navigate(it.id)}
                     >
                       <it.Icon size={18} stroke={1.9} />
@@ -317,23 +341,25 @@ export default function Shell() {
 
         <div className="content">
           <SetupBanner />
-          {view === "dash" && <Dashboard onNavigate={navigate} />}
-          {view === "receive" && <TxnScreen key="receive" type="RECEIVE" />}
-          {view === "issue" && <TxnScreen key="issue" type="ISSUE" />}
-          {view === "transfer" && <TxnScreen key="transfer" type="TRANSFER" />}
-          {view === "adjust" && <AdjustScreen />}
-          {view === "pos" && <POS />}
-          {view === "locations" && <Locations />}
-          {view === "products" && <Products />}
-          {view === "provinces" && <Provinces />}
-          {view === "reports" && <Reports />}
-          {view === "graphs" && <Graphs />}
-          {view === "invoice" && <SalesInvoice />}
-          {view === "shipping" && <Shipping />}
-          {view === "company" && <Company />}
-          {view === "customers" && <Customers />}
-          {view === "docgroups" && <DocGroups />}
-          {view === "whsetup" && <WarehouseSetup />}
+          {activeView === "dash" && <Dashboard onNavigate={navigate} />}
+          {activeView === "receive" && <TxnScreen key="receive" type="RECEIVE" />}
+          {activeView === "issue" && <TxnScreen key="issue" type="ISSUE" />}
+          {activeView === "transfer" && <TxnScreen key="transfer" type="TRANSFER" />}
+          {activeView === "adjust" && <AdjustScreen />}
+          {activeView === "pos" && <POS />}
+          {activeView === "locations" && <Locations />}
+          {activeView === "products" && <Products />}
+          {activeView === "provinces" && <Provinces />}
+          {activeView === "reports" && <Reports />}
+          {activeView === "graphs" && <Graphs />}
+          {activeView === "invoice" && <SalesInvoice />}
+          {activeView === "shipstatus" && <ShipStatus />}
+          {activeView === "perms" && <Permissions />}
+          {activeView === "shipping" && <Shipping />}
+          {activeView === "company" && <Company />}
+          {activeView === "customers" && <Customers />}
+          {activeView === "docgroups" && <DocGroups />}
+          {activeView === "whsetup" && <WarehouseSetup />}
         </div>
       </main>
 

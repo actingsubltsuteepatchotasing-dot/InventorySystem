@@ -19,6 +19,9 @@ const periodName = (id) => (DOC_PERIODS.find((p) => p.id === id) || DOC_PERIODS[
 
 export default function DocGroups() {
   const inv = useInv();
+
+  // สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มที่เขียนข้อมูลถูกปิด ดูได้อย่างเดียว
+  const perm = inv.perm("docgroups");
   const { db } = inv;
   const toast = useToast();
 
@@ -252,7 +255,7 @@ export default function DocGroups() {
                   <td>
                     {isEdit ? (
                       <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                        <button className="btn btn-p btn-sm" onClick={save} disabled={busy}>
+                        <button className="btn btn-p btn-sm" onClick={save} disabled={busy || !perm.edit}>
                           บันทึก
                         </button>
                         <button
@@ -270,7 +273,7 @@ export default function DocGroups() {
                       <button
                         className="btn btn-o btn-sm"
                         onClick={() => startEdit(r)}
-                        disabled={!!editing}
+                        disabled={!!editing || !perm.edit}
                       >
                         แก้ไข
                       </button>

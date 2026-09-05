@@ -37,6 +37,9 @@ const blank = (code) => ({
 
 export default function Customers() {
   const inv = useInv();
+
+  // สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มที่เขียนข้อมูลถูกปิด ดูได้อย่างเดียว
+  const perm = inv.perm("customers");
   const { db } = inv;
   const toast = useToast();
 
@@ -197,7 +200,11 @@ export default function Customers() {
                 ? all.length + " ราย"
                 : rows.length + " จาก " + all.length + " ราย"}
             </Badge>
-            <button className="btn btn-p btn-sm" onClick={() => setForm(blank(nextCustCode(db)))}>
+            <button
+              className="btn btn-p btn-sm"
+              onClick={() => setForm(blank(nextCustCode(db)))}
+              disabled={!perm.edit}
+            >
               <IcPlus size={15} />
               เพิ่มลูกค้า
             </button>
@@ -269,7 +276,7 @@ export default function Customers() {
                       <button
                         className="btn btn-d btn-icon"
                         onClick={() => remove(c)}
-                        disabled={busy}
+                        disabled={busy || !perm.edit}
                         title="ลบลูกค้า"
                       >
                         <IcTrash size={14} />
@@ -297,7 +304,7 @@ export default function Customers() {
               <button className="btn btn-g" onClick={() => setForm(null)} disabled={busy}>
                 ยกเลิก
               </button>
-              <button className="btn btn-p" onClick={save} disabled={busy}>
+              <button className="btn btn-p" onClick={save} disabled={busy || !perm.edit}>
                 บันทึก
               </button>
             </>

@@ -26,6 +26,13 @@ import SetupNotice from "../SetupNotice";
 
 export default function TxnScreen({ type }) {
   const inv = useInv();
+
+  /*
+   * สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มบันทึกถูกปิด เข้ามาดูได้อย่างเดียว
+   * ไม่ติ๊ก "เปลี่ยนวันที่" แล้วช่องวันที่ล็อกไว้ (ดูหน้ากำหนดสิทธิการใช้งาน)
+   */
+  // หน้าจอนี้ใช้ร่วมกันสามหน้า id ของสิทธิจึงมาจากชนิดรายการ (RECEIVE -> receive)
+  const perm = inv.perm(type.toLowerCase());
   const { db } = inv;
   const { user } = useAuth();
   const toast = useToast();
@@ -308,7 +315,7 @@ export default function TxnScreen({ type }) {
             <button
               className="btn btn-p btn-sm"
               onClick={saveDoc}
-              disabled={saving || !filled.length}
+              disabled={saving || !filled.length || !perm.edit}
             >
               {saving ? "กำลังบันทึก…" : "บันทึกเอกสาร"}
             </button>
@@ -330,6 +337,7 @@ export default function TxnScreen({ type }) {
               type="date"
               id="f_date"
               value={date}
+              disabled={!perm.date}
               onChange={(e) => setDate(e.target.value)}
             />
           </div>

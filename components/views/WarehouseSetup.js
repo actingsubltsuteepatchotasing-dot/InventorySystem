@@ -42,6 +42,9 @@ const blankLoc = (whId) => ({
 
 export default function WarehouseSetup() {
   const inv = useInv();
+
+  // สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มที่เขียนข้อมูลถูกปิด ดูได้อย่างเดียว
+  const perm = inv.perm("whsetup");
   const { db } = inv;
   const toast = useToast();
 
@@ -246,7 +249,11 @@ export default function WarehouseSetup() {
       <Card
         title="คลังสินค้า"
         actions={
-          <button className="btn btn-p btn-sm" onClick={() => setWhForm(blankWh())}>
+          <button
+            className="btn btn-p btn-sm"
+            onClick={() => setWhForm(blankWh())}
+            disabled={!perm.edit}
+          >
             <IcPlus size={15} />
             เพิ่มคลัง
           </button>
@@ -420,7 +427,7 @@ export default function WarehouseSetup() {
               <button className="btn btn-g" onClick={() => setWhForm(null)} disabled={busy}>
                 ยกเลิก
               </button>
-              <button className="btn btn-p" onClick={saveWh} disabled={busy}>
+              <button className="btn btn-p" onClick={saveWh} disabled={busy || !perm.edit}>
                 บันทึก
               </button>
             </>
@@ -496,7 +503,7 @@ export default function WarehouseSetup() {
               <button className="btn btn-g" onClick={() => setLocForm(null)} disabled={busy}>
                 ยกเลิก
               </button>
-              <button className="btn btn-p" onClick={saveLoc} disabled={busy}>
+              <button className="btn btn-p" onClick={saveLoc} disabled={busy || !perm.edit}>
                 บันทึก
               </button>
             </>

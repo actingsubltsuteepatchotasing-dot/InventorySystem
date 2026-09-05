@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 12 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 13 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() และ create_invoice()
 --   4. GRANT สิทธิ์ระดับตารางให้ role authenticated
@@ -506,9 +506,22 @@ create table if not exists public.invoices (
   ts            bigint not null,
   created_at    timestamptz not null default now(),
 
-  constraint invoices_ship_status check (ship_status in ('PACKING', 'SHIPPED', 'DELIVERED')),
   constraint invoices_vat_rate check (vat_rate >= 0 and vat_rate <= 100)
 );
+
+-- จังหวัดปลายทาง เก็บแยกจากที่อยู่เต็มเพราะหน้าสถานะการจัดส่งกรองรายจังหวัด
+-- แกะจากสตริงที่อยู่ทีหลังไม่ได้ ชื่อจังหวัดมีเว้นวรรคและคำนำหน้าไม่คงที่
+alter table public.invoices add column if not exists cust_province text not null default '';
+
+-- สถานะจัดส่งเพิ่ม PACKED (จัดสินค้าเสร็จแล้ว) คั่นระหว่างกำลังจัดกับส่งแล้ว
+-- ประกาศเป็น do block เพราะฐานข้อมูลเดิมมี constraint ชุดสามสถานะอยู่แล้ว
+do $ship_status$
+begin
+  alter table public.invoices drop constraint if exists invoices_ship_status;
+  alter table public.invoices add constraint invoices_ship_status
+    check (ship_status in ('PACKING', 'PACKED', 'SHIPPED', 'DELIVERED'));
+end
+$ship_status$;
 
 -- เลขที่เอกสารห้ามซ้ำ เพราะเป็นตัวที่ยิงบาร์โค๊ดค้นหาที่หน้าจัดส่ง
 create unique index if not exists invoices_doc_no_key on public.invoices (doc_no);
@@ -568,7 +581,7 @@ declare
 begin
   insert into public.invoices (
     id, doc_no, date, customer_id,
-    cust_code, cust_name, cust_address, cust_tax_id, cust_branch,
+    cust_code, cust_name, cust_address, cust_province, cust_tax_id, cust_branch,
     vat_rate, items_total, bill_discount, base, vat, total, note,
     ship_status, ship_from, ship_note, user_name, ts
   )
@@ -580,6 +593,7 @@ begin
     coalesce(p_inv ->> 'cust_code', ''),
     coalesce(p_inv ->> 'cust_name', ''),
     coalesce(p_inv ->> 'cust_address', ''),
+    coalesce(p_inv ->> 'cust_province', ''),
     coalesce(p_inv ->> 'cust_tax_id', ''),
     coalesce(p_inv ->> 'cust_branch', ''),
     (p_inv ->> 'vat_rate')::numeric,
@@ -685,6 +699,22 @@ begin
 end;
 $create_invoice$;
 
+-- ============================================================================
+-- สิทธิการใช้งานหน้าจอ
+-- ----------------------------------------------------------------------------
+-- หนึ่งแถวคือหนึ่งหน้าจอ ไม่มีแถว = ยังไม่ได้จำกัดสิทธิ ใช้ได้เต็มทุกอย่าง
+-- (ค่าเริ่มต้นต้องเป็น "เปิดหมด" ไม่ใช่ "ปิดหมด" ไม่งั้นระบบที่ยังไม่ตั้งค่า
+--  จะเปิดมาแล้วว่างเปล่าจนคนใช้คิดว่าโปรแกรมพัง)
+--
+-- สิทธินี้เป็นของทั้งระบบ ไม่ได้แยกรายผู้ใช้ — ระบบยังไม่มีตารางบทบาทผู้ใช้
+create table if not exists public.screen_perms (
+  id         text primary key,
+  can_view   boolean not null default true,
+  can_edit   boolean not null default true,
+  can_date   boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
 -- ------------------------------------------------------------ สิทธิ์ระดับตาราง
 -- สำคัญ: การเข้าถึงตารางต้องผ่าน 2 ด่าน
 --   ด่าน 1  GRANT ระดับตาราง  -> ไม่ผ่านจะได้ HTTP 403 / SQLSTATE 42501
@@ -705,6 +735,7 @@ grant all privileges on table public.customers         to authenticated;
 grant all privileges on table public.company           to authenticated;
 grant all privileges on table public.invoices          to authenticated;
 grant all privileges on table public.invoice_items     to authenticated;
+grant all privileges on table public.screen_perms      to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -722,7 +753,8 @@ begin
   foreach t in array array[
     'warehouses', 'products', 'txns',
     'locations', 'product_locations', 'sales', 'sale_items',
-    'doc_groups', 'customers', 'company', 'invoices', 'invoice_items'
+    'doc_groups', 'customers', 'company', 'invoices', 'invoice_items',
+    'screen_perms'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -737,7 +769,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 12 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 13 ตารางแล้ว';
 end
 $$;
 
@@ -794,6 +826,7 @@ select
 from (values
   ('warehouses'), ('products'), ('txns'),
   ('locations'), ('product_locations'), ('sales'), ('sale_items'),
-  ('doc_groups'), ('customers'), ('company'), ('invoices'), ('invoice_items')
+  ('doc_groups'), ('customers'), ('company'), ('invoices'), ('invoice_items'),
+  ('screen_perms')
 ) as x(name)
 order by x.name;

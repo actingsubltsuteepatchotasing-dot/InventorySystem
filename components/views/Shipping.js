@@ -22,6 +22,9 @@ const statusOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
 
 export default function Shipping() {
   const inv = useInv();
+
+  // ไม่ติ๊ก "แก้ไข" แล้วดูได้อย่างเดียว เปลี่ยนสถานะและต้นทางไม่ได้
+  const perm = inv.perm("shipping");
   const { db } = inv;
   const toast = useToast();
 
@@ -265,7 +268,7 @@ export default function Shipping() {
                   id="sp_from"
                   value={doc.shipFrom || ""}
                   onChange={(e) => setOrigin(e.target.value)}
-                  disabled={busy}
+                  disabled={busy || !perm.edit}
                 >
                   <option value="">— ยังไม่ระบุต้นทาง —</option>
                   {db.warehouses.map((w) => (
@@ -316,7 +319,7 @@ export default function Shipping() {
                     key={s.id}
                     className={"ship-step" + (active ? " active" : done ? " done" : "")}
                     onClick={() => setStatus(doc.id, s.id)}
-                    disabled={busy}
+                    disabled={busy || !perm.edit}
                   >
                     <span className="no">{i + 1}</span>
                     <span className="nm">{s.name}</span>

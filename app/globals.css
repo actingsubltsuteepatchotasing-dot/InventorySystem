@@ -1707,3 +1707,33 @@ tr.row-active > td:first-child {
 }
 .ship-step.active .no { background: var(--brand); color: #fff; }
 .ship-step:disabled { opacity: 0.6; cursor: default; }
+
+/* ตารางกำหนดสิทธิการใช้งาน */
+.perm-group > td {
+  background: var(--bg-soft);
+  font-weight: 700;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+/* แถวที่ปิดการแสดงผลต้องดูจางกว่าชัด ๆ จะได้กวาดตาเห็นว่าปิดอะไรไว้บ้าง */
+.perm-off > td { opacity: 0.45; }
+.chk { width: 17px; height: 17px; accent-color: var(--brand); cursor: pointer; }
+.note-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+.note-list li { margin-bottom: 6px; }
+
+/* จุดสีของสถานะการจัดส่ง */
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex: none;
+}
+.ship-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; }
+.ship-legend span { display: inline-flex; align-items: center; }
+
+.ship-cell { display: inline-flex; align-items: center; }
+.sel-sm { padding: 4px 8px; font-size: 12.5px; height: auto; }

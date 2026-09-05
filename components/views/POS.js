@@ -32,6 +32,12 @@ const clampBill = (n, max = BILL_MAX) =>
 
 export default function POS() {
   const inv = useInv();
+
+  /*
+   * สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มบันทึกถูกปิด เข้ามาดูได้อย่างเดียว
+   * ไม่ติ๊ก "เปลี่ยนวันที่" แล้วช่องวันที่ล็อกไว้ (ดูหน้ากำหนดสิทธิการใช้งาน)
+   */
+  const perm = inv.perm("pos");
   const { db } = inv;
   const { user } = useAuth();
   const toast = useToast();
@@ -345,6 +351,7 @@ export default function POS() {
                 type="date"
                 id="pos_date"
                 value={date}
+                disabled={!perm.date}
                 onChange={(e) => setDate(e.target.value)}
               />
             </div>
@@ -653,7 +660,7 @@ export default function POS() {
               className="btn btn-p"
               style={{ width: "100%", padding: 13, fontSize: 16, marginTop: 12 }}
               onClick={checkout}
-              disabled={!lines.length || saving}
+              disabled={!lines.length || saving || !perm.edit}
             >
               {saving ? "กำลังบันทึก…" : "ชำระเงินและพิมพ์ใบเสร็จ"}
             </button>

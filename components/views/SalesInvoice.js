@@ -43,6 +43,12 @@ const shipOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
 
 export default function SalesInvoice() {
   const inv = useInv();
+
+  /*
+   * สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มบันทึกถูกปิด เข้ามาดูได้อย่างเดียว
+   * ไม่ติ๊ก "เปลี่ยนวันที่" แล้วช่องวันที่ล็อกไว้ (ดูหน้ากำหนดสิทธิการใช้งาน)
+   */
+  const perm = inv.perm("invoice");
   const { db } = inv;
   const { user } = useAuth();
   const toast = useToast();
@@ -198,6 +204,9 @@ export default function SalesInvoice() {
       custCode: cust.code,
       custName: cust.name,
       custAddress: customerAddress(cust),
+      // จังหวัดเก็บแยกด้วย เพราะหน้าสถานะการจัดส่งกรองรายจังหวัด
+      // แกะจากสตริงที่อยู่ทีหลังไม่ได้ ชื่อจังหวัดมีเว้นวรรคและคำนำหน้าไม่คงที่
+      custProvince: cust.province || "",
       custTaxId: cust.taxId || "",
       custBranch: cust.branch || "",
       vatRate: totals.rate,
@@ -298,7 +307,7 @@ export default function SalesInvoice() {
             <button
               className="btn btn-p btn-sm"
               onClick={saveDoc}
-              disabled={saving || !filled.length}
+              disabled={saving || !filled.length || !perm.edit}
             >
               {saving ? "กำลังบันทึก…" : "บันทึกและพิมพ์"}
             </button>
@@ -316,6 +325,7 @@ export default function SalesInvoice() {
               type="date"
               id="iv_date"
               value={date}
+              disabled={!perm.date}
               onChange={(e) => setDate(e.target.value)}
             />
           </div>

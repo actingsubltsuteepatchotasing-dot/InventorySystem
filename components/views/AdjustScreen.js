@@ -26,6 +26,12 @@ import { CountSheetBody } from "./printBodies";
 
 export default function AdjustScreen() {
   const inv = useInv();
+
+  /*
+   * สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มบันทึกถูกปิด เข้ามาดูได้อย่างเดียว
+   * ไม่ติ๊ก "เปลี่ยนวันที่" แล้วช่องวันที่ล็อกไว้ (ดูหน้ากำหนดสิทธิการใช้งาน)
+   */
+  const perm = inv.perm("adjust");
   const { db } = inv;
   const { user } = useAuth();
   const toast = useToast();
@@ -260,7 +266,7 @@ export default function AdjustScreen() {
             <button
               className="btn btn-p btn-sm"
               onClick={saveDoc}
-              disabled={saving || !filled.length}
+              disabled={saving || !filled.length || !perm.edit}
             >
               {saving ? "กำลังบันทึก…" : "บันทึกเอกสาร"}
             </button>
@@ -282,6 +288,7 @@ export default function AdjustScreen() {
               type="date"
               id="a_date"
               value={date}
+              disabled={!perm.date}
               onChange={(e) => setDate(e.target.value)}
             />
           </div>
