@@ -3,11 +3,14 @@
 // หน้าจอแสดงสถานะการจัดส่ง
 //
 // ทำงานบนข้อมูลชุดเดียวกับหน้า "การจัดส่งสินค้า" แต่คนละงาน:
-//   การจัดส่งสินค้า  = ทำงานทีละใบ ดูเส้นทางบนแผนที่ แล้วเดินสถานะ
-//   หน้านี้          = กวาดดูทั้งกองว่าใบไหนค้างอยู่ขั้นไหน ค้นและกรองได้ละเอียดกว่า
+//   การจัดส่งสินค้า  = ที่ทำงานจริง ยิงบาร์โค๊ดแล้วเปลี่ยนสถานะ
+//   หน้านี้          = กระดานแสดงผล กวาดดูทั้งกองว่าใบไหนค้างอยู่ขั้นไหน
 //
-// จึงเน้นตารางกับตัวกรอง ไม่มีแผนที่ และเปลี่ยนสถานะได้จากในตารางเลย
-// ไม่ต้องเปิดเข้าไปทีละใบ
+// หน้านี้ตั้งใจให้ "ดูอย่างเดียว" เปลี่ยนสถานะไม่ได้
+// สถานะต้องเกิดจากคนที่จับของจริงที่หน้าจัดส่งสินค้า ไม่ใช่จากคนที่นั่งดูกระดาน
+// ไม่งั้นสองที่แก้ชนกันแล้วไม่มีใครรู้ว่าของอยู่ไหนจริง ๆ
+//
+// แลกมาด้วยการทำให้ "อ่านง่ายจากระยะไกล": แถบไล่ขั้น จุดสี และหัวใบที่ยังไม่จบกะพริบ
 
 import { useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
@@ -19,13 +22,40 @@ import { Badge, Card, Empty, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const statusOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
+const stepOf = (id) => Math.max(0, SHIP_STATUS.findIndex((s) => s.id === id));
+
+/** ขั้นสุดท้ายคืองานที่จบแล้ว ที่เหลือคือของที่ยังอยู่ระหว่างทาง */
+const LAST_STEP = SHIP_STATUS.length - 1;
+
+/**
+ * แถบไล่ขั้นของใบหนึ่ง — ดูจากระยะไกลก็รู้ว่าไปถึงไหนแล้ว
+ * ขั้นที่ยังไม่จบจะกะพริบเบา ๆ ให้สะดุดตากว่าใบที่ส่งถึงแล้ว
+ */
+function ShipTrack({ status }) {
+  const at = stepOf(status);
+  const st = statusOf(status);
+  const done = at >= LAST_STEP;
+
+  return (
+    <span className="ship-pill" title={st.name}>
+      <span className="ship-track" aria-hidden="true">
+        {SHIP_STATUS.map((s, i) => (
+          <i
+            key={s.id}
+            className={"tick" + (i <= at ? " on" : "") + (i === at && !done ? " live" : "")}
+            style={{ background: i <= at ? st.color : undefined }}
+          />
+        ))}
+      </span>
+      <b style={{ color: st.color }}>{st.name}</b>
+    </span>
+  );
+}
 
 export default function ShipStatus() {
   const inv = useInv();
   const { db } = inv;
   const toast = useToast();
-
-  const canEdit = inv.perm("shipstatus").edit;
 
   const scanRef = useRef(null);
   const [term, setTerm] = useState("");
@@ -33,7 +63,6 @@ export default function ShipStatus() {
   const [province, setProvince] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [busy, setBusy] = useState("");
 
   const invoices = useMemo(
     () => (db.invoices || []).slice().sort((a, b) => b.ts - a.ts),
@@ -79,23 +108,6 @@ export default function ShipStatus() {
     setProvince("");
     setFrom("");
     setTo("");
-  }
-
-  async function move(v, next) {
-    if (busy || !canEdit) return;
-    setBusy(v.id);
-    try {
-      await inv.setInvoiceShip(v.id, {
-        shipStatus: next,
-        shipFrom: v.shipFrom,
-        shipNote: v.shipNote,
-        shipTs: Date.now(),
-      });
-    } catch (e) {
-      toast("เปลี่ยนสถานะไม่สำเร็จ: " + e.message, "err");
-    } finally {
-      setBusy("");
-    }
   }
 
   function clearFilters() {
@@ -247,10 +259,13 @@ export default function ShipStatus() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((v) => {
-                const st = statusOf(v.shipStatus);
-                return (
-                  <tr key={v.id}>
+              {rows.map((v, i) => (
+                  /* แถวไล่กันโผล่ทีละนิด ทำให้ตอนเปลี่ยนตัวกรองแล้วตารางไม่กระโดดใส่หน้า */
+                  <tr
+                    key={v.id}
+                    className="row-in"
+                    style={{ animationDelay: Math.min(i, 12) * 22 + "ms" }}
+                  >
                     <td className="code-cell">{v.docNo}</td>
                     <td>{thDate(v.date)}</td>
                     <td>{v.custCode}</td>
@@ -258,34 +273,10 @@ export default function ShipStatus() {
                     <td>{v.custProvince || "—"}</td>
                     <td className="num">{num(v.total, 2)}</td>
                     <td>
-                      {canEdit ? (
-                        /* เปลี่ยนสถานะได้จากในตารางเลย ไม่ต้องเปิดเข้าไปทีละใบ */
-                        <span className="ship-cell">
-                          <i className="dot" style={{ background: st.color }} />
-                          <select
-                            className="sel sel-sm"
-                            value={v.shipStatus}
-                            onChange={(e) => move(v, e.target.value)}
-                            disabled={busy === v.id}
-                            aria-label={"สถานะการจัดส่งของ " + v.docNo}
-                          >
-                            {SHIP_STATUS.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
-                        </span>
-                      ) : (
-                        <Badge kind={st.kind}>
-                          <i className="dot" style={{ background: st.color }} />
-                          {st.name}
-                        </Badge>
-                      )}
+                      <ShipTrack status={v.shipStatus} />
                     </td>
                   </tr>
-                );
-              })}
+              ))}
             </tbody>
           </TableWrap>
         ) : (

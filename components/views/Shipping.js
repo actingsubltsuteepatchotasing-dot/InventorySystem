@@ -8,6 +8,12 @@
 // ช่องเลขที่เอกสารรับได้ทั้งการยิงบาร์โค๊ดและการพิมพ์ค้นหา
 // เครื่องอ่านบาร์โค๊ดทำงานเหมือนคีย์บอร์ด: พิมพ์รวดเดียวแล้วกด Enter
 // จึงไม่ต้องต่ออุปกรณ์อะไรเป็นพิเศษ แค่ให้เคอร์เซอร์อยู่ในช่องนี้
+//
+// ยิงเจอแล้วเด้งกล่องให้เลือกสถานะทันที ไม่ใช่แค่เปิดใบขึ้นมาเฉย ๆ
+// เพราะคนที่ยิงคือคนที่กำลังจับของอยู่ตรงนั้น เขายิงเพื่อจะบอกว่า "ของถึงขั้นนี้แล้ว"
+// ถ้าให้ยิงเสร็จแล้วต้องเลื่อนหาปุ่มต่ออีก คือเพิ่มขั้นตอนให้คนที่มือไม่ว่าง
+//
+// สถานะทั้งระบบเปลี่ยนได้ที่นี่ที่เดียว หน้า "สถานะการจัดส่ง" เป็นกระดานดูอย่างเดียว
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
@@ -15,6 +21,7 @@ import { SHIP_STATUS } from "@/lib/constants";
 import { num, thDate, thDateTime } from "@/lib/format";
 import { useToast } from "../Toast";
 import { IcPin, IcReport } from "../Icons";
+import Modal from "../Modal";
 import { Badge, Card, Empty, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 
@@ -33,6 +40,9 @@ export default function Shipping() {
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
+
+  /** ใบที่เพิ่งยิงบาร์โค๊ดเจอ — ไม่ว่างเมื่อไรกล่องเลือกสถานะจะเด้งขึ้นมา */
+  const [scanned, setScanned] = useState("");
 
   const invoices = useMemo(
     () => (db.invoices || []).slice().sort((a, b) => b.ts - a.ts),
@@ -67,9 +77,10 @@ export default function Shipping() {
     if (hit) {
       setSelected(hit.id);
       setFilter("");
-      // ยิงใบถัดไปได้เลยโดยไม่ต้องเอาเมาส์มาคลิกช่องใหม่
       setTerm("");
-      if (scanRef.current) scanRef.current.focus();
+      // เด้งกล่องเลือกสถานะทันที คนยิงจะได้กดขั้นที่ของไปถึงแล้วจบในจังหวะเดียว
+      if (perm.edit) setScanned(hit.id);
+      else if (scanRef.current) scanRef.current.focus();
       return;
     }
 
@@ -84,20 +95,30 @@ export default function Shipping() {
 
   async function setStatus(id, status) {
     if (busy) return;
+    const target = invoices.find((v) => v.id === id);
+    if (!target) return;
+
     setBusy(true);
     try {
       await inv.setInvoiceShip(id, {
         shipStatus: status,
-        shipFrom: doc ? doc.shipFrom : "",
-        shipNote: doc ? doc.shipNote : "",
+        shipFrom: target.shipFrom,
+        shipNote: target.shipNote,
         shipTs: Date.now(),
       });
-      toast("เปลี่ยนสถานะเป็น " + statusOf(status).name + " แล้ว", "ok");
+      toast(target.docNo + " → " + statusOf(status).name, "ok");
     } catch (e) {
       toast("เปลี่ยนสถานะไม่สำเร็จ: " + e.message, "err");
     } finally {
       setBusy(false);
     }
+  }
+
+  /** เลือกสถานะจากกล่องที่เด้งหลังยิงบาร์โค๊ด แล้วกลับไปรอยิงใบถัดไป */
+  async function pickScanned(status) {
+    await setStatus(scanned, status);
+    setScanned("");
+    if (scanRef.current) scanRef.current.focus();
   }
 
   async function setOrigin(whId) {
@@ -121,6 +142,7 @@ export default function Shipping() {
     return <SetupNotice feature="หน้าจอการจัดส่งสินค้า" tables={["invoices", "invoice_items"]} />;
   }
 
+  const scanDoc = invoices.find((v) => v.id === scanned) || null;
   const origin = doc && doc.shipFrom ? inv.wh(doc.shipFrom) : null;
   const dest = doc ? doc.custAddress : "";
 
@@ -309,7 +331,18 @@ export default function Shipping() {
             </p>
           </Card>
 
-          <Card title={"สถานะการจัดส่ง — " + doc.docNo}>
+          <Card
+            title={"สถานะการจัดส่ง — " + doc.docNo}
+            actions={
+              <button
+                className="btn btn-o btn-sm"
+                onClick={() => setScanned(doc.id)}
+                disabled={!perm.edit}
+              >
+                เลือกสถานะ
+              </button>
+            }
+          >
             <div className="ship-steps">
               {SHIP_STATUS.map((s, i) => {
                 const active = doc.shipStatus === s.id;
@@ -365,6 +398,57 @@ export default function Shipping() {
             </TableWrap>
           </Card>
         </div>
+      ) : null}
+
+      {scanDoc ? (
+        <Modal
+          title={"เลือกสถานะ — " + scanDoc.docNo}
+          onClose={() => {
+            setScanned("");
+            if (scanRef.current) scanRef.current.focus();
+          }}
+          maxWidth={620}
+        >
+          <div className="scan-head">
+            <div>
+              <b>{scanDoc.custName}</b>
+              <div className="muted" style={{ fontSize: 12.5 }}>
+                {scanDoc.custCode} · {scanDoc.custProvince || "ไม่ระบุจังหวัด"} ·
+                {" "}ยอดสุทธิ {num(scanDoc.total, 2)} บาท
+              </div>
+            </div>
+            <Badge kind={statusOf(scanDoc.shipStatus).kind}>
+              ตอนนี้: {statusOf(scanDoc.shipStatus).name}
+            </Badge>
+          </div>
+
+          <p className="muted" style={{ fontSize: 12.5 }}>
+            กดขั้นที่ของไปถึงแล้ว · เลือกเสร็จกล่องจะปิดเองและกลับไปรอยิงใบถัดไป
+          </p>
+
+          <div className="scan-pick">
+            {SHIP_STATUS.map((st, i) => {
+              const at = SHIP_STATUS.findIndex((x) => x.id === scanDoc.shipStatus);
+              return (
+                <button
+                  key={st.id}
+                  className={
+                    "scan-opt" +
+                    (st.id === scanDoc.shipStatus ? " now" : "") +
+                    (i < at ? " past" : "")
+                  }
+                  style={{ "--c": st.color }}
+                  onClick={() => pickScanned(st.id)}
+                  disabled={busy}
+                >
+                  <span className="no">{i + 1}</span>
+                  <span className="nm">{st.name}</span>
+                  {st.id === scanDoc.shipStatus ? <span className="tag">สถานะปัจจุบัน</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

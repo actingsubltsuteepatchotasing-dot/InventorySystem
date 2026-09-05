@@ -1735,5 +1735,84 @@ tr.row-active > td:first-child {
 .ship-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; }
 .ship-legend span { display: inline-flex; align-items: center; }
 
-.ship-cell { display: inline-flex; align-items: center; }
-.sel-sm { padding: 4px 8px; font-size: 12.5px; height: auto; }
+
+/* ---------- กระดานสถานะการจัดส่ง ---------- */
+
+/* แถวไล่กันโผล่ ตอนเปลี่ยนตัวกรองตารางจะได้ไม่กระโดดใส่หน้า */
+.row-in { animation: row-in 0.28s ease-out both; }
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.ship-pill { display: inline-flex; flex-direction: column; gap: 5px; }
+.ship-pill b { font-size: 12.5px; line-height: 1.2; }
+.ship-track { display: flex; gap: 3px; }
+.ship-track .tick {
+  width: 26px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border);
+  transition: background 0.25s;
+}
+/* ขั้นที่กำลังทำอยู่กะพริบเบา ๆ ให้สะดุดตากว่าใบที่ส่งถึงแล้ว */
+.ship-track .tick.live { animation: tick-live 1.5s ease-in-out infinite; }
+@keyframes tick-live {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.32; }
+}
+
+/* ---------- กล่องเลือกสถานะหลังยิงบาร์โค๊ด ---------- */
+.scan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.scan-pick { display: grid; gap: 9px; margin-top: 10px; }
+.scan-opt {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 13px 15px;
+  border: 1.5px solid var(--border);
+  border-left: 5px solid var(--c);
+  border-radius: 11px;
+  background: var(--card);
+  font-family: inherit;
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg);
+  transition: border-color 0.15s, background 0.15s, transform 0.08s;
+}
+.scan-opt:hover:not(:disabled) { background: var(--bg-soft); }
+/* ปุ่มใหญ่ กดง่ายตอนมือถือของอยู่ และเด้งนิดหนึ่งให้รู้ว่ากดติดแล้ว */
+.scan-opt:active:not(:disabled) { transform: scale(0.985); }
+.scan-opt .no {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: var(--c);
+  color: #fff;
+}
+.scan-opt .nm { font-weight: 600; }
+.scan-opt.past .no { opacity: 0.4; }
+.scan-opt.past .nm { opacity: 0.6; }
+.scan-opt.now { border-color: var(--c); background: var(--bg-soft); }
+.scan-opt .tag {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--fg-faint);
+}
+.scan-opt:disabled { opacity: 0.55; cursor: default; }
