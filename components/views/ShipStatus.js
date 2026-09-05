@@ -425,6 +425,7 @@ export default function ShipStatus() {
                     <td>{v.custCode}</td>
                     <td>{v.custName}</td>
                     <td>{v.custProvince || "—"}</td>
+                    <td className="num">{num(v.total, 2)}</td>
                     {/* ระยะทางตามถนนจริงจากคลังต้นทางไปที่อยู่ลูกค้า
                         คำนวณและเก็บไว้ที่หน้าการจัดส่งสินค้า หน้านี้แค่แสดง */}
                     <td className="num" title={v.shipKm === null ? "ยังไม่ได้คำนวณระยะทาง" : ""}>
