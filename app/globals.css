@@ -1824,3 +1824,12 @@ tr.row-active > td:first-child {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+/* คำอธิบายใต้ช่องกรอก */
+.field .hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--fg-faint);
+  line-height: 1.4;
+}

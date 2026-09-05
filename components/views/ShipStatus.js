@@ -36,6 +36,14 @@ const AUTO_MS = 10 * 60 * 1000;
 const clock = (ts) =>
   new Date(ts).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 
+/**
+ * ตัดตัวคั่นออกให้เทียบกันได้
+ *
+ * คนพิมพ์เลขที่เอกสารกันคนละแบบ: IV-202609-0001 / iv2026090001 / IV 202609 0001
+ * ถ้าเทียบตรง ๆ จะหาไม่เจอทั้งที่พิมพ์ถูก
+ */
+const squash = (v) => String(v || "").toLowerCase().replace(/[\s\-\/.,]/g, "");
+
 /** ขั้นสุดท้ายคืองานที่จบแล้ว ที่เหลือคือของที่ยังอยู่ระหว่างทาง */
 const LAST_STEP = SHIP_STATUS.length - 1;
 
@@ -97,21 +105,52 @@ export default function ShipStatus() {
     return [...set].sort((a, b) => a.localeCompare(b, "th"));
   }, [invoices]);
 
+  /** พิมพ์ค้นหาอยู่หรือเปล่า — เปลี่ยนความหมายของช่วงวันที่ไปเลย (ดูใน rows) */
+  const words = useMemo(
+    () => term.trim().toLowerCase().split(/\s+/).filter(Boolean),
+    [term]
+  );
+  const searching = words.length > 0;
+
   const rows = useMemo(() => {
-    const s = term.trim().toLowerCase();
     return invoices.filter((v) => {
       if (status && v.shipStatus !== status) return false;
       if (province && v.custProvince !== province) return false;
-      // วันที่เป็นรูปแบบ YYYY-MM-DD จึงเทียบเป็นสตริงได้ตรง ๆ ไม่ต้องแปลงเป็น Date
-      if (from && v.date < from) return false;
-      if (to && v.date > to) return false;
-      if (!s) return true;
-      return [v.docNo, v.custCode, v.custName, v.custProvince, v.custAddress, thDate(v.date)]
+
+      /*
+       * ไม่ได้ค้นหา = กระดานงานของช่วงวันที่ที่เลือก (ค่าตั้งต้นคือวันนี้)
+       * ค้นหา       = ค้นทั้งหมดทุกวันที่ ไม่สนช่วงวันที่
+       *
+       * เพราะคนที่พิมพ์ชื่อลูกค้าลงไปคือคนที่ "กำลังตามหาใบนั้น"
+       * ไม่ใช่คนที่อยากดูเฉพาะใบของวันนี้ ถ้ายังกรองวันที่อยู่
+       * เขาจะพิมพ์ถูกทุกตัวแต่ได้ตารางว่าง แล้วนึกว่าไม่มีใบนั้นในระบบ
+       * ช่องวันที่จึงถูกปิดไว้ตอนค้นหา ให้เห็นชัดว่าไม่ได้ใช้ ไม่ใช่แอบข้ามเงียบ ๆ
+       */
+      if (!searching) {
+        // วันที่เป็นรูปแบบ YYYY-MM-DD จึงเทียบเป็นสตริงได้ตรง ๆ ไม่ต้องแปลงเป็น Date
+        if (from && v.date < from) return false;
+        if (to && v.date > to) return false;
+        return true;
+      }
+
+      const hay = [
+        v.docNo,
+        v.custCode,
+        v.custName,
+        v.custProvince,
+        v.custAddress,
+        v.date,
+        thDate(v.date),
+        statusOf(v.shipStatus).name,
+      ]
         .join(" ")
-        .toLowerCase()
-        .includes(s);
+        .toLowerCase();
+      const tight = squash(hay);
+
+      // ทุกคำที่พิมพ์ต้องเจอ (คนละช่องกันก็ได้) เช่น "สมชาย สงขลา" หรือ "IV-2026 ส่งแล้ว"
+      return words.every((w) => hay.includes(w) || tight.includes(squash(w)));
     });
-  }, [invoices, term, status, province, from, to]);
+  }, [invoices, words, searching, status, province, from, to]);
 
   /* ------------------------------------------------- ดึงข้อมูลใหม่ */
 
@@ -188,16 +227,19 @@ export default function ShipStatus() {
   function submitScan() {
     const s = term.trim();
     if (!s) return;
-    const hit = invoices.find((v) => v.docNo.toLowerCase() === s.toLowerCase());
-    if (!hit) {
-      return toast(rows.length ? "ไม่พบเลขที่ตรงเป๊ะ — แสดงผลใกล้เคียงแทน" : "ไม่พบเอกสารเลขที่ " + s,
-        rows.length ? "warn" : "err");
-    }
-    // เลขตรงเป๊ะแล้วให้ล้างตัวกรองอื่น ไม่งั้นใบที่ยิงมาอาจถูกกรองทิ้งจนไม่เห็น
+    // ตัวกรองอื่นต้องหลุดทุกครั้งที่กดค้นหา ไม่งั้นสิ่งที่ค้นเจออาจถูกกรองทิ้งจนไม่เห็น
     setStatus("");
     setProvince("");
-    setFrom("");
-    setTo("");
+
+    const hit = invoices.find((v) => squash(v.docNo) === squash(s));
+    if (hit) return;
+
+    toast(
+      rows.length
+        ? "ไม่พบเลขที่ตรงเป๊ะ — แสดงรายการที่ใกล้เคียง " + rows.length + " รายการ"
+        : "ไม่พบรายการที่ตรงกับ " + s,
+      rows.length ? "warn" : "err"
+    );
   }
 
   /** ล้างกลับไปที่ค่าตั้งต้น ซึ่งคือ "งานของวันนี้" ไม่ใช่ "ทุกวัน" */
@@ -233,7 +275,7 @@ export default function ShipStatus() {
   // ค่าตั้งต้น (วันนี้) ไม่นับว่ากรองอยู่ ไม่งั้นปุ่มล้างตัวกรองจะขึ้นค้างตลอดเวลา
   const today = todayISO();
   const filtering = !!(
-    term || status || province || from !== today || to !== today
+    term || status || province || (!searching && (from !== today || to !== today))
   );
 
   return (
@@ -280,6 +322,11 @@ export default function ShipStatus() {
               }}
               placeholder="ยิงบาร์โค๊ด หรือพิมพ์ เลขที่เอกสาร / รหัสลูกค้า / ชื่อลูกค้า / จังหวัด / วันที่"
             />
+            <span className="hint">
+              {searching
+                ? "ค้นทุกวันที่ ไม่จำกัดช่วงวันที่ · พิมพ์หลายคำได้ ระบบหาใบที่มีครบทุกคำ"
+                : "เว้นว่างไว้ = แสดงงานตามช่วงวันที่ที่เลือก"}
+            </span>
           </div>
 
           <div className="field">
@@ -321,6 +368,8 @@ export default function ShipStatus() {
               type="date"
               id="ss_from"
               value={from}
+              disabled={searching}
+              title={searching ? "ขณะค้นหาจะค้นทุกวันที่" : ""}
               onChange={(e) => setFrom(e.target.value)}
             />
           </div>
@@ -331,6 +380,8 @@ export default function ShipStatus() {
               type="date"
               id="ss_to"
               value={to}
+              disabled={searching}
+              title={searching ? "ขณะค้นหาจะค้นทุกวันที่" : ""}
               onChange={(e) => setTo(e.target.value)}
             />
           </div>
