@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
 import { SHIP_STATUS } from "@/lib/constants";
 import { num, thDate, thDateTime } from "@/lib/format";
+import { geocodeAddress, roadDistance } from "@/lib/geo";
 import { useToast } from "../Toast";
 import { IcPin, IcReport } from "../Icons";
 import Modal from "../Modal";
@@ -26,6 +27,9 @@ import { Badge, Card, Empty, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const statusOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
+
+/** หน่วงเวลาแบบสั้น ใช้เว้นจังหวะไม่ให้ยิงบริการภายนอกรัวเกินที่เขาอนุญาต */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export default function Shipping() {
   const inv = useInv();
@@ -43,6 +47,9 @@ export default function Shipping() {
 
   /** ใบที่เพิ่งยิงบาร์โค๊ดเจอ — ไม่ว่างเมื่อไรกล่องเลือกสถานะจะเด้งขึ้นมา */
   const [scanned, setScanned] = useState("");
+
+  /** ข้อความบอกความคืบหน้าตอนคำนวณระยะทางเป็นชุด */
+  const [calc, setCalc] = useState("");
 
   const invoices = useMemo(
     () => (db.invoices || []).slice().sort((a, b) => b.ts - a.ts),
@@ -121,6 +128,89 @@ export default function Shipping() {
     if (scanRef.current) scanRef.current.focus();
   }
 
+  /*
+   * คำนวณระยะทางของใบหนึ่ง แล้วเก็บผลไว้
+   *
+   * ทำที่หน้านี้ ไม่ใช่ที่กระดานสถานะ เพราะระยะทางรู้ได้ก็ต่อเมื่อรู้คลังต้นทางแล้ว
+   * ซึ่งเป็นค่าที่ตั้งกันที่หน้านี้ และกระดานเป็นหน้าดูอย่างเดียว
+   *
+   * พิกัดปลายทางถูกเก็บไว้ในใบด้วย ครั้งหน้าเปลี่ยนคลังต้นทางจะได้ไม่ต้องแปลงที่อยู่ใหม่
+   * (การแปลงที่อยู่เป็นพิกัดจำกัด 1 คำขอต่อวินาที ส่วนการหาเส้นทางไม่จำกัด)
+   */
+  async function computeKm(v, whId) {
+    const wh = inv.wh(whId || v.shipFrom);
+    if (!wh) return { ok: false, why: "ยังไม่ได้เลือกคลังต้นทาง" };
+    if (!v.custAddress) return { ok: false, why: "ใบนี้ไม่มีที่อยู่จัดส่ง" };
+
+    let lat = v.custLat;
+    let lng = v.custLng;
+    let geocoded = false;
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      const hit = await geocodeAddress(v.custAddress);
+      if (!hit) return { ok: false, why: "หาพิกัดจากที่อยู่ไม่ได้" };
+      lat = hit.lat;
+      lng = hit.lng;
+      geocoded = true;
+    }
+
+    const route = await roadDistance({ lat: wh.lat, lng: wh.lng }, { lat, lng });
+    if (!route) return { ok: false, why: "หาเส้นทางระหว่างสองจุดไม่ได้" };
+
+    await inv.setInvoiceDistance(v.id, {
+      custLat: lat,
+      custLng: lng,
+      shipKm: route.km,
+      shipKmAt: Date.now(),
+    });
+    return { ok: true, km: route.km, geocoded };
+  }
+
+  async function calcOne(v) {
+    if (calc) return;
+    setCalc("กำลังคำนวณ…");
+    try {
+      const r = await computeKm(v);
+      toast(r.ok ? v.docNo + " ระยะทาง " + num(r.km, 1) + " กม." : r.why, r.ok ? "ok" : "warn");
+    } catch (e) {
+      toast("คำนวณระยะทางไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setCalc("");
+    }
+  }
+
+  /**
+   * เติมระยะทางให้ใบที่ยังไม่มี ทีละใบ
+   *
+   * ต้องเว้นจังหวะระหว่างใบ เพราะบริการแปลงที่อยู่เป็นพิกัดอนุญาต 1 คำขอต่อวินาที
+   * ยิงรัวจะโดนบล็อกทั้งชุดแล้วไม่ได้อะไรเลยสักใบ
+   */
+  async function calcMissing() {
+    if (calc) return;
+    const todo = invoices.filter((v) => v.shipKm === null && v.shipFrom && v.custAddress);
+    if (!todo.length) return toast("ไม่มีใบที่ต้องคำนวณระยะทาง", "warn");
+
+    let done = 0;
+    let failed = 0;
+    for (let i = 0; i < todo.length; i++) {
+      setCalc("กำลังคำนวณ " + (i + 1) + "/" + todo.length + "…");
+      try {
+        const r = await computeKm(todo[i]);
+        if (r.ok) done++;
+        else failed++;
+        // เว้นจังหวะเฉพาะตอนที่เพิ่งแปลงที่อยู่ไป ใบที่มีพิกัดอยู่แล้วไม่ต้องรอ
+        if (r.geocoded && i < todo.length - 1) await sleep(1200);
+      } catch (e) {
+        failed++;
+      }
+    }
+    setCalc("");
+    toast(
+      "คำนวณระยะทางแล้ว " + done + " ใบ" + (failed ? " · ไม่สำเร็จ " + failed + " ใบ" : ""),
+      failed ? "warn" : "ok"
+    );
+  }
+
   async function setOrigin(whId) {
     if (busy || !doc) return;
     setBusy(true);
@@ -131,6 +221,18 @@ export default function Shipping() {
         shipNote: doc.shipNote,
         shipTs: doc.shipTs,
       });
+      // เปลี่ยนต้นทางแล้วระยะทางเดิมใช้ไม่ได้ คำนวณใหม่ให้เลยตรงนี้
+      // เพราะเป็นจังหวะเดียวที่รู้แน่ว่าค่ามันเปลี่ยน
+      if (whId) {
+        setCalc("กำลังคำนวณระยะทาง…");
+        try {
+          await computeKm(doc, whId);
+        } catch (e) {
+          // คำนวณไม่ได้ก็ไม่เป็นไร ต้นทางบันทึกไปแล้ว กดปุ่มคำนวณเองทีหลังได้
+        } finally {
+          setCalc("");
+        }
+      }
     } catch (e) {
       toast("บันทึกต้นทางไม่สำเร็จ: " + e.message, "err");
     } finally {
@@ -141,6 +243,10 @@ export default function Shipping() {
   if (!inv.invoicesReady) {
     return <SetupNotice feature="หน้าจอการจัดส่งสินค้า" tables={["invoices", "invoice_items"]} />;
   }
+
+  const missingKm = invoices.filter(
+    (v) => v.shipKm === null && v.shipFrom && v.custAddress
+  ).length;
 
   const scanDoc = invoices.find((v) => v.id === scanned) || null;
   const origin = doc && doc.shipFrom ? inv.wh(doc.shipFrom) : null;
@@ -179,6 +285,11 @@ export default function Shipping() {
                 {s.name} {invoices.filter((v) => v.shipStatus === s.id).length}
               </Badge>
             ))}
+            {missingKm && perm.edit ? (
+              <button className="btn btn-o btn-sm" onClick={calcMissing} disabled={!!calc}>
+                {calc || "คำนวณระยะทาง (" + missingKm + ")"}
+              </button>
+            ) : null}
           </>
         }
       >
@@ -228,6 +339,7 @@ export default function Shipping() {
                 <th style={{ minWidth: 180 }}>ชื่อลูกค้า</th>
                 <th style={{ minWidth: 230 }}>ที่อยู่จัดส่ง</th>
                 <th className="num" style={{ width: 110 }}>ยอดสุทธิ</th>
+                <th className="num" style={{ width: 104 }}>ระยะทาง (กม.)</th>
                 <th style={{ width: 140 }}>สถานะ</th>
                 <th style={{ width: 96 }} />
               </tr>
@@ -243,6 +355,7 @@ export default function Shipping() {
                     <td>{v.custName}</td>
                     <td style={{ fontSize: 12.5 }}>{v.custAddress || "—"}</td>
                     <td className="num">{num(v.total, 2)}</td>
+                    <td className="num">{v.shipKm === null ? "—" : num(v.shipKm, 1)}</td>
                     <td>
                       <Badge kind={st.kind}>{st.name}</Badge>
                     </td>
@@ -307,6 +420,17 @@ export default function Shipping() {
                 <IcPin size={12} /> ต้นทาง: {origin ? origin.name : "ยังไม่ระบุ"}
               </Badge>
               <Badge>ปลายทาง: {doc.custName}</Badge>
+              <Badge kind={doc.shipKm === null ? "gray" : "ok"}>
+                ระยะทาง {doc.shipKm === null ? "—" : num(doc.shipKm, 1) + " กม."}
+              </Badge>
+              <button
+                className="btn btn-g btn-sm"
+                onClick={() => calcOne(doc)}
+                disabled={!!calc || !perm.edit || !doc.shipFrom}
+                title={doc.shipFrom ? "คำนวณระยะทางตามถนนจริง" : "เลือกคลังต้นทางก่อน"}
+              >
+                {calc || "คำนวณระยะทาง"}
+              </button>
             </div>
 
             {dest ? (

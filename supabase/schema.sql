@@ -513,6 +513,18 @@ create table if not exists public.invoices (
 -- แกะจากสตริงที่อยู่ทีหลังไม่ได้ ชื่อจังหวัดมีเว้นวรรคและคำนำหน้าไม่คงที่
 alter table public.invoices add column if not exists cust_province text not null default '';
 
+-- ระยะทางจัดส่งและพิกัดปลายทาง
+-- ----------------------------------------------------------------------------
+-- เก็บผลลัพธ์ไว้ ไม่ได้คำนวณสดทุกครั้งที่เปิดหน้าจอ เพราะ:
+--   1. ต้องยิงบริการภายนอกสองตัว (แปลงที่อยู่เป็นพิกัด แล้วหาเส้นทาง)
+--      ตารางที่มี 50 ใบจะกลายเป็น 100 คำขอทุกครั้งที่เปิดหน้า ซึ่งเกินโควตาที่เขาให้ใช้ฟรี
+--   2. ระยะทางจากคลังเดิมไปที่อยู่เดิมไม่เปลี่ยน คำนวณซ้ำก็ได้เลขเดิม
+-- ship_km_at บอกว่าคำนวณเมื่อไร ไว้ดูว่าเลขเก่าไปหรือยัง
+alter table public.invoices add column if not exists cust_lat    double precision;
+alter table public.invoices add column if not exists cust_lng    double precision;
+alter table public.invoices add column if not exists ship_km     numeric;
+alter table public.invoices add column if not exists ship_km_at  bigint;
+
 -- สถานะจัดส่งเพิ่ม PACKED (จัดสินค้าเสร็จแล้ว) คั่นระหว่างกำลังจัดกับส่งแล้ว
 -- ประกาศเป็น do block เพราะฐานข้อมูลเดิมมี constraint ชุดสามสถานะอยู่แล้ว
 do $ship_status$

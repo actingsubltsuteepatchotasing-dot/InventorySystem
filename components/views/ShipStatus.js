@@ -256,10 +256,11 @@ export default function ShipStatus() {
     if (!rows.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
     downloadCSV(
       ["เลขที่เอกสาร", "วันที่เอกสาร", "รหัสลูกค้า", "ชื่อลูกค้า", "จังหวัดที่ส่ง",
-        "สถานะการจัดส่ง", "ยอดสุทธิ", "ต้นทาง", "แก้สถานะล่าสุด"],
+        "ยอดสุทธิ", "ระยะทาง (กม.)", "สถานะการจัดส่ง", "ต้นทาง", "แก้สถานะล่าสุด"],
       rows.map((v) => [
         v.docNo, v.date, v.custCode, v.custName, v.custProvince,
-        statusOf(v.shipStatus).name, v.total,
+        v.total, v.shipKm === null ? "" : v.shipKm,
+        statusOf(v.shipStatus).name,
         v.shipFrom ? inv.whName(v.shipFrom) : "",
         v.shipTs ? thDateTime(v.shipTs) : "",
       ]),
@@ -407,6 +408,7 @@ export default function ShipStatus() {
                 <th style={{ minWidth: 190 }}>ชื่อลูกค้า</th>
                 <th style={{ minWidth: 140 }}>จังหวัดที่ส่ง</th>
                 <th className="num" style={{ width: 110 }}>ยอดสุทธิ</th>
+                <th className="num" style={{ width: 108 }}>ระยะทาง (กม.)</th>
                 <th style={{ minWidth: 175 }}>สถานะการจัดส่ง</th>
               </tr>
             </thead>
@@ -423,7 +425,11 @@ export default function ShipStatus() {
                     <td>{v.custCode}</td>
                     <td>{v.custName}</td>
                     <td>{v.custProvince || "—"}</td>
-                    <td className="num">{num(v.total, 2)}</td>
+                    {/* ระยะทางตามถนนจริงจากคลังต้นทางไปที่อยู่ลูกค้า
+                        คำนวณและเก็บไว้ที่หน้าการจัดส่งสินค้า หน้านี้แค่แสดง */}
+                    <td className="num" title={v.shipKm === null ? "ยังไม่ได้คำนวณระยะทาง" : ""}>
+                      {v.shipKm === null ? "—" : <b>{num(v.shipKm, 1)}</b>}
+                    </td>
                     <td>
                       <ShipTrack status={v.shipStatus} />
                     </td>
