@@ -68,7 +68,7 @@ export default function Shipping() {
     if (selected && !rows.some((v) => v.id === selected)) setSelected("");
   }, [rows, selected]);
 
-  /** ยิงบาร์โค๊ดหรือกด Enter ในช่องค้นหา = เปิดใบนั้นทันทีถ้าเลขตรงเป๊ะ */
+  /** ยิงบาร์โค๊ดหรือกด Enter = เปิดใบนั้นแล้วเด้งกล่องเลือกสถานะให้เลย */
   function submitScan() {
     const s = term.trim();
     if (!s) return;

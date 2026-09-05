@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { TYPES } from "@/lib/constants";
 import { movement } from "@/lib/db";
-import { num, thDate, todayISO } from "@/lib/format";
+import { localISO, num, thDate, todayISO } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
@@ -29,7 +29,8 @@ const TABS = [
 function threeMonthsAgo() {
   const d = new Date();
   d.setMonth(d.getMonth() - 3);
-  return d.toISOString().slice(0, 10);
+  // localISO ไม่ใช่ toISOString เพราะ UTC จะย้อนวันให้ในช่วงเช้ามืดของไทย
+  return localISO(d);
 }
 
 export default function Reports() {

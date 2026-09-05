@@ -46,7 +46,8 @@ export default function Graphs() {
     for (let i = months - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       list.push({
-        key: d.toISOString().slice(0, 7),
+        // เดือนตามเครื่องผู้ใช้ ไม่ใช่ UTC ไม่งั้นต้นเดือนจะเพี้ยนไปเดือนก่อนหน้า
+        key: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"),
         label:
           d.toLocaleDateString("th-TH", { month: "short" }) +
           (months > 6 ? " " + String((d.getFullYear() + 543) % 100) : ""),

@@ -1816,3 +1816,11 @@ tr.row-active > td:first-child {
   color: var(--fg-faint);
 }
 .scan-opt:disabled { opacity: 0.55; cursor: default; }
+
+/* เวลาที่อัพเดทข้อมูลล่าสุด บนหัวการ์ดกระดานสถานะ */
+.sync-at {
+  font-size: 12px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

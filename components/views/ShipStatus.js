@@ -12,10 +12,10 @@
 //
 // แลกมาด้วยการทำให้ "อ่านง่ายจากระยะไกล": แถบไล่ขั้น จุดสี และหัวใบที่ยังไม่จบกะพริบ
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
 import { SHIP_STATUS } from "@/lib/constants";
-import { num, thDate, thDateTime } from "@/lib/format";
+import { num, thDate, thDateTime, todayISO } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { Badge, Card, Empty, TableWrap } from "../ui";
@@ -23,6 +23,18 @@ import SetupNotice from "../SetupNotice";
 
 const statusOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
 const stepOf = (id) => Math.max(0, SHIP_STATUS.findIndex((s) => s.id === id));
+
+/**
+ * รอบการดึงข้อมูลใหม่เอง (10 นาที)
+ *
+ * หน้านี้มักถูกเปิดค้างไว้เป็นกระดานให้คนทั้งแผนกดู ไม่มีใครคอยกดรีเฟรช
+ * 10 นาทีถี่พอให้ทันงานจัดส่ง แต่ไม่ถี่จนกินโควตาฐานข้อมูลโดยเปล่าประโยชน์
+ */
+const AUTO_MS = 10 * 60 * 1000;
+
+/** เวลาแบบสั้น ใช้บอกว่าอัปเดตล่าสุดเมื่อไร */
+const clock = (ts) =>
+  new Date(ts).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 
 /** ขั้นสุดท้ายคืองานที่จบแล้ว ที่เหลือคือของที่ยังอยู่ระหว่างทาง */
 const LAST_STEP = SHIP_STATUS.length - 1;
@@ -61,8 +73,15 @@ export default function ShipStatus() {
   const [term, setTerm] = useState("");
   const [status, setStatus] = useState("");
   const [province, setProvince] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  /*
+   * ช่วงวันที่เริ่มที่ "วันนี้" เสมอ เพราะกระดานนี้ใช้ดูงานของวันนี้เป็นหลัก
+   * ไม่ใช่ดูย้อนหลังทั้งหมด เปิดมาแล้วเห็นทั้งกองตั้งแต่เปิดร้านจะหาของวันนี้ไม่เจอ
+   */
+  const [from, setFrom] = useState(todayISO);
+  const [to, setTo] = useState(todayISO);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastSync, setLastSync] = useState(() => Date.now());
 
   const invoices = useMemo(
     () => (db.invoices || []).slice().sort((a, b) => b.ts - a.ts),
@@ -94,6 +113,77 @@ export default function ShipStatus() {
     });
   }, [invoices, term, status, province, from, to]);
 
+  /* ------------------------------------------------- ดึงข้อมูลใหม่ */
+
+  /**
+   * ใช้ refresh ไม่ใช่ reload — reload จะล้างหน้าจอเป็นหน้า error เมื่อโหลดไม่สำเร็จ
+   * กระดานที่เปิดค้างไว้ทั้งวันจะพังทันทีที่เน็ตกระตุกครั้งเดียว
+   */
+  const pull = useCallback(
+    async (silent) => {
+      try {
+        await inv.refresh();
+        setLastSync(Date.now());
+        if (!silent) toast("อัพเดทข้อมูลแล้ว", "ok");
+      } catch (e) {
+        // เงียบไว้ตอนดึงเอง ข้อมูลเดิมยังอยู่บนจอและอีก 10 นาทีจะลองใหม่
+        if (!silent) toast("อัพเดทไม่สำเร็จ: " + e.message, "err");
+      }
+    },
+    [inv, toast]
+  );
+
+  async function manualPull() {
+    if (refreshing) return;
+    setRefreshing(true);
+    await pull(false);
+    setRefreshing(false);
+  }
+
+  /*
+   * วันที่ตั้งต้นต้องเลื่อนตามวันจริงด้วย
+   * กระดานที่เปิดค้างข้ามเที่ยงคืนจะได้ไม่ค้างอยู่ที่ข้อมูลของเมื่อวาน
+   * ขยับให้เฉพาะตอนที่ผู้ใช้ยังไม่ได้แตะช่องวันที่เอง
+   */
+  const baseDay = useRef(todayISO());
+
+  const onTick = useRef(null);
+
+  // เขียนทับทุกรอบ render เพื่อให้ตัวจับเวลาเรียกโค้ดที่เห็นค่าล่าสุดเสมอ
+  // ถ้าผูกฟังก์ชันไว้กับ setInterval ตรง ๆ มันจะค้างอยู่กับค่าตอนตั้งจับเวลาครั้งแรก
+  useEffect(() => {
+    onTick.current = () => {
+      const now = todayISO();
+      if (baseDay.current !== now) {
+        if (from === baseDay.current && to === baseDay.current) {
+          setFrom(now);
+          setTo(now);
+        }
+        baseDay.current = now;
+      }
+      pull(true);
+    };
+  });
+
+  useEffect(() => {
+    // แท็บที่ซ่อนอยู่ไม่ต้องดึง ไม่มีใครดู แล้วค่อยดึงตอนกลับมาเปิด
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      onTick.current();
+    }, AUTO_MS);
+
+    const onShow = () => {
+      if (!document.hidden && Date.now() - lastSync >= AUTO_MS) onTick.current();
+    };
+    document.addEventListener("visibilitychange", onShow);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onShow);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSync]);
+
   /** ยิงบาร์โค๊ดหรือกด Enter = กรองเหลือใบนั้นใบเดียว */
   function submitScan() {
     const s = term.trim();
@@ -110,12 +200,13 @@ export default function ShipStatus() {
     setTo("");
   }
 
+  /** ล้างกลับไปที่ค่าตั้งต้น ซึ่งคือ "งานของวันนี้" ไม่ใช่ "ทุกวัน" */
   function clearFilters() {
     setTerm("");
     setStatus("");
     setProvince("");
-    setFrom("");
-    setTo("");
+    setFrom(todayISO());
+    setTo(todayISO());
     if (scanRef.current) scanRef.current.focus();
   }
 
@@ -139,7 +230,11 @@ export default function ShipStatus() {
     return <SetupNotice feature="หน้าจอสถานะการจัดส่ง" tables={["invoices", "invoice_items"]} />;
   }
 
-  const filtering = !!(term || status || province || from || to);
+  // ค่าตั้งต้น (วันนี้) ไม่นับว่ากรองอยู่ ไม่งั้นปุ่มล้างตัวกรองจะขึ้นค้างตลอดเวลา
+  const today = todayISO();
+  const filtering = !!(
+    term || status || province || from !== today || to !== today
+  );
 
   return (
     <div className="stack">
@@ -150,6 +245,12 @@ export default function ShipStatus() {
             <Badge kind={filtering ? "info" : "gray"}>
               {filtering ? rows.length + " จาก " + invoices.length : invoices.length} ใบ
             </Badge>
+            <span className="sync-at" title={"อัพเดทล่าสุด " + thDateTime(lastSync)}>
+              อัพเดท {clock(lastSync)}
+            </span>
+            <button className="btn btn-p btn-sm" onClick={manualPull} disabled={refreshing}>
+              {refreshing ? "กำลังอัพเดท…" : "อัพเดทข้อมูล"}
+            </button>
             <button className="btn btn-o btn-sm" onClick={exportCSV}>
               ส่งออก CSV
             </button>
