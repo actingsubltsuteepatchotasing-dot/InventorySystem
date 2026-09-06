@@ -753,5 +753,53 @@ head("14. ชุดข้อมูลนำเข้า Excel ครบถ้ว
   if (!n) ok("ทุกชุดผูกกับหน้าจอจริงและบันทึกได้ครบ (" + ids.length + " ชุด)");
 }
 
+/* ----------------------------------------------------------------- 15 */
+head("15. การ์ดบนแดชบอร์ดประกาศครบและหน้าจอวาดได้");
+{
+  // การ์ดที่ใช้ชนิดหรือความกว้างที่หน้าจอไม่รู้จัก = ติ๊กเลือกได้แต่เลือกแล้วไม่มีอะไรขึ้น
+  const lib = read("lib/dashWidgets.js");
+  const view = read("components/views/Dashboard.js");
+
+  const ids = [...lib.matchAll(/^        id: "(\w+)",$/gm)].map((m) => m[1]);
+  const sizes = [...lib.matchAll(/^        size: "(\w+)",$/gm)].map((m) => m[1]);
+  const names = [...lib.matchAll(/^        name: "([^"]+)",$/gm)].map((m) => m[1]);
+  const builds = (lib.match(/^        build: \(c\) => /gm) || []).length;
+  const kinds = [...new Set([...lib.matchAll(/kind: "(\w+)"/g)].map((m) => m[1]))];
+
+  const OK_SIZES = ["kpi", "half", "full"];
+  let n = 0;
+
+  if (ids.length !== sizes.length || ids.length !== names.length || ids.length !== builds) {
+    bad(
+      "การ์ดบางใบประกาศไม่ครบ — รหัส " + ids.length + " · ชื่อ " + names.length +
+        " · ความกว้าง " + sizes.length + " · ตัวคำนวณ " + builds
+    );
+    n++;
+  }
+
+  if (new Set(ids).size !== ids.length) {
+    bad("รหัสการ์ดซ้ำกัน");
+    n++;
+  }
+
+  const badSize = sizes.filter((s) => !OK_SIZES.includes(s));
+  if (badSize.length) {
+    bad("ความกว้างที่ระบบไม่รู้จัก: " + [...new Set(badSize)].join(", "));
+    n++;
+  }
+
+  // ทุกชนิดที่ lib คายออกมา หน้าจอต้องมีสาขาไว้วาด
+  kinds.forEach((k) => {
+    if (!new RegExp('d\\.kind === "' + k + '"').test(view)) {
+      bad("การ์ดคืนชนิด " + k + " แต่หน้าจอไม่มีตัววาด");
+      n++;
+    }
+  });
+
+  if (!n) {
+    ok("การ์ด " + ids.length + " ใบ · ชนิดที่วาดได้ " + kinds.length + " ชนิด");
+  }
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);

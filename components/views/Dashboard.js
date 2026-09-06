@@ -1,13 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
+// แดชบอร์ดที่เลือกได้ว่าจะดูอะไร
+//
+// เลือกสองชั้น:
+//   1. ดรอปดาวน์เลือกหน้าจอที่จะดูข้อมูล (ภาพรวมคลัง / ขายสินค้าและบริการ / POS /
+//      ซื้อสินค้าและบริการ / งานจัดส่ง / ทำรายการคลังสินค้า)
+//   2. ติ๊กเลือกว่าจะเอาการ์ดหรือกราฟใบไหนมาแสดง
+// แล้วระบบจัดตำแหน่งให้เอง ไม่ต้องลากวาง
+//
+// ทำไมจัดตำแหน่งให้เองแทนการลากวาง:
+//   คนใช้ต้องการ "เลือกแล้วสวยเลย" ไม่ได้ต้องการมานั่งจัดหน้าจอ
+//   และการลากวางบนมือถือใช้แทบไม่ได้เลย
+//   การ์ดแต่ละใบบอกความกว้างของตัวเองมา (เล็ก / ครึ่ง / เต็ม) แล้วจัดเป็นแถวให้ตามนั้น
+//
+// สิ่งที่จะวาดมาจาก lib/dashWidgets.js เป็น "คำอธิบายสิ่งที่จะวาด" ไม่ใช่ JSX
+//   หน้านี้จึงวาดตามชนิดที่ได้มา (kpi / bar / hbar / line / table)
+//   เพิ่มการ์ดใหม่ในไฟล์นั้นแล้วใช้ได้ทันที ไม่ต้องมาเขียนตัววาดเพิ่มที่นี่
+//   ตัดปัญหา "ประกาศไว้แต่ติ๊กแล้วไม่มีอะไรขึ้น" ไปในตัว
+//
+// สิ่งที่เลือกไว้เก็บในเครื่องนี้ (localStorage) ไม่ขึ้นฐานข้อมูล
+//   เพราะเป็นความชอบส่วนตัวของแต่ละคน ไม่ใช่ข้อมูลของกิจการ
+//   คนบัญชีกับคนคลังเปิดเครื่องตัวเองแล้วควรเห็นของที่ตัวเองเลือกไว้ ไม่ใช่ของคนอื่น
+
+import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
-import { TYPES } from "@/lib/constants";
-import { stockMap, stockTotal, whTotal } from "@/lib/db";
-import { monthsAgoISO, monthsBetween, num, thDate, todayISO } from "@/lib/format";
-import { BarChart, HBarChart, Legend } from "../Charts";
-import { IcAdjust, IcBox, IcChart, IcReport } from "../Icons";
-import { Badge, Card, Empty, Kpi, TableWrap } from "../ui";
+import { stockMap } from "@/lib/db";
+import { DASH_SOURCES, buildWidgets, layoutRows, sourceOf } from "@/lib/dashWidgets";
+import { monthsAgoISO, num, thDate, todayISO } from "@/lib/format";
+import { BarChart, HBarChart, LineChart, Legend } from "../Charts";
+import { IcAdjust, IcBox, IcCart, IcChart, IcMap, IcReport } from "../Icons";
+import { Badge, Card, Empty, Kpi, SearchSelect, TableWrap } from "../ui";
 
 /** ช่วงเวลาสำเร็จรูปให้กดเลือกเร็ว ๆ */
 const QUICK = [
@@ -18,267 +40,367 @@ const QUICK = [
   { id: "m12", name: "12 เดือน", from: () => monthsAgoISO(11) },
 ];
 
+/** ไอคอนของการ์ดตัวเลข — การ์ดบอกมาเป็นชื่อ ไม่ได้ส่ง component มาเอง */
+const ICONS = {
+  box: IcBox,
+  chart: IcChart,
+  adjust: IcAdjust,
+  report: IcReport,
+  cart: IcCart,
+  map: IcMap,
+};
+
+const KEY = "ultraerp.dash.";
+
+const readPick = (sourceId, fallback) => {
+  try {
+    const raw = localStorage.getItem(KEY + sourceId);
+    if (!raw) return fallback;
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : fallback;
+  } catch (e) {
+    return fallback; // เบราว์เซอร์ปิด storage — ใช้ค่าตั้งต้นไปก่อน ยังใช้งานได้ปกติ
+  }
+};
+
+const writePick = (sourceId, list) => {
+  try {
+    localStorage.setItem(KEY + sourceId, JSON.stringify(list));
+  } catch (e) {
+    // เก็บไม่ได้ก็ไม่เป็นไร แค่เปิดใหม่แล้วกลับไปเป็นค่าตั้งต้น
+  }
+};
+
+const readSource = () => {
+  try {
+    const id = localStorage.getItem(KEY + "source");
+    return sourceOf(id) ? id : DASH_SOURCES[0].id;
+  } catch (e) {
+    return DASH_SOURCES[0].id;
+  }
+};
+
+/** ค่าตั้งต้น: เปิดมาครั้งแรกให้ติ๊กไว้ทั้งหมด จะได้เห็นว่ามีอะไรให้ดูบ้าง */
+const allIds = (s) => s.widgets.map((w) => w.id);
+
 export default function Dashboard({ onNavigate }) {
   const inv = useInv();
 
   /*
-   * สิทธิของหน้าจอนี้ — ไม่ติ๊ก "แก้ไข" แล้วปุ่มบันทึกถูกปิด เข้ามาดูได้อย่างเดียว
-   * ไม่ติ๊ก "เปลี่ยนวันที่" แล้วช่องวันที่ล็อกไว้ (ดูหน้ากำหนดสิทธิการใช้งาน)
+   * สิทธิของหน้าจอนี้ — ไม่ติ๊ก "เปลี่ยนวันที่" แล้วช่องวันที่ล็อกไว้
+   * (ดูหน้ากำหนดสิทธิการใช้งาน)
    */
   const perm = inv.perm("dash");
   const { db } = inv;
+
+  const [sourceId, setSourceId] = useState(DASH_SOURCES[0].id);
+  const [picked, setPicked] = useState(() => allIds(DASH_SOURCES[0]));
+  const [setup, setSetup] = useState(false);
 
   // ค่าเริ่มต้น 6 เดือนล่าสุด เท่ากับกราฟที่เคยแสดงไว้เดิม
   const [from, setFrom] = useState(() => monthsAgoISO(5));
   const [to, setTo] = useState(todayISO);
 
-  const bad = !!from && !!to && from > to;
+  // อ่านของที่เลือกไว้หลัง mount เท่านั้น — localStorage ไม่มีตอน render ฝั่งเซิร์ฟเวอร์
+  // ถ้าอ่านตอน render จะได้ HTML สองฝั่งไม่ตรงกัน
+  useEffect(() => {
+    const id = readSource();
+    const s = sourceOf(id) || DASH_SOURCES[0];
+    setSourceId(id);
+    setPicked(readPick(id, allIds(s)));
+  }, []);
 
-  const data = useMemo(() => {
-    if (bad) return null;
+  const source = sourceOf(sourceId) || DASH_SOURCES[0];
+  const badRange = !!from && !!to && from > to;
 
-    // ยอดคงเหลือคิด ณ วันสิ้นสุดของช่วง ไม่ใช่ ณ วันนี้เสมอไป
-    // เลือกช่วงย้อนหลังแล้วจะได้เห็นภาพ ณ ตอนนั้นจริง ๆ
-    const asOf = stockMap(db, to);
-    const totalOf = (pid) => stockTotal(db, asOf, pid);
-
-    const totalQty = db.products.reduce((sum, p) => sum + totalOf(p.id), 0);
-    const totalVal = db.products.reduce((sum, p) => sum + totalOf(p.id) * (p.price || 0), 0);
-    const low = db.products
-      .map((p) => ({ p, qty: totalOf(p.id) }))
-      .filter((x) => x.qty < x.p.min);
-
-    const inRange = (t) => (!from || t.date >= from) && (!to || t.date <= to);
-    const ranged = db.txns.filter(inRange);
-
-    const months = monthsBetween(from, to);
-    const inD = [];
-    const outD = [];
-    months.forEach((mo) => {
-      let i = 0;
-      let o = 0;
-      ranged.forEach((t) => {
-        if (t.date.slice(0, 7) !== mo.key) return;
-        if (t.type === "RECEIVE") i += t.qty;
-        else if (t.type === "ISSUE" || t.type === "SALE") o += t.qty;
-        else if (t.type === "ADJUST") {
-          if (t.qty > 0) i += t.qty;
-          else o += -t.qty;
-        }
-      });
-      inD.push(i);
-      outD.push(o);
-    });
-
-    const recent = [...ranged].sort((a, b) => b.ts - a.ts).slice(0, 10);
-    const byProvince = db.warehouses
-      .map((w) => ({ label: w.province, value: whTotal(db, asOf, w.id), color: "var(--brand-l)" }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8);
-
-    return {
-      totalQty,
-      totalVal,
-      low,
-      rangeTx: ranged.length,
-      months,
-      inD,
-      outD,
-      recent,
-      byProvince,
-    };
-  }, [db, from, to, bad]);
-
-  function applyQuick(q) {
-    setFrom(q.from());
-    setTo(todayISO());
+  function pickSource(id) {
+    const s = sourceOf(id) || DASH_SOURCES[0];
+    setSourceId(id);
+    setPicked(readPick(id, allIds(s)));
+    try {
+      localStorage.setItem(KEY + "source", id);
+    } catch (e) {
+      // เก็บไม่ได้ก็ใช้งานต่อได้ แค่เปิดใหม่แล้วกลับไปหน้าตั้งต้น
+    }
   }
 
-  const FilterBar = (
-    <Card title="ช่วงเวลาที่ดู" actions={<Badge>{data ? num(data.rangeTx, 0) + " รายการในช่วง" : "ช่วงวันที่ไม่ถูกต้อง"}</Badge>}>
-      <div className="row" style={{ alignItems: "flex-end" }}>
-        <div style={{ minWidth: 160 }}>
-          <label className="lbl" htmlFor="d_from">ตั้งแต่วันที่</label>
-          <input
-            className="inp"
-            type="date"
-            id="d_from"
-            value={from}
-            disabled={!perm.date}
-            max={to || undefined}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-        </div>
-        <div style={{ minWidth: 160 }}>
-          <label className="lbl" htmlFor="d_to">ถึงวันที่</label>
-          <input
-            className="inp"
-            type="date"
-            id="d_to"
-            value={to}
-            disabled={!perm.date}
-            min={from || undefined}
-            onChange={(e) => setTo(e.target.value)}
-          />
-        </div>
-        <div className="row" style={{ gap: 6 }}>
-          {QUICK.map((q) => (
-            <button key={q.id} className="btn btn-g btn-sm" onClick={() => applyQuick(q)}>
-              {q.name}
-            </button>
-          ))}
-        </div>
-      </div>
-      {bad ? (
-        <div className="hint" style={{ marginTop: 10, color: "var(--err)" }}>
-          วันที่เริ่มต้นอยู่หลังวันสิ้นสุด — กรุณาแก้ก่อน
-        </div>
-      ) : null}
-    </Card>
-  );
-
-  if (!data) {
-    return <div className="stack">{FilterBar}</div>;
+  function toggle(id) {
+    const next = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id];
+    setPicked(next);
+    writePick(sourceId, next);
   }
+
+  function pickAll(on) {
+    const next = on ? allIds(source) : [];
+    setPicked(next);
+    writePick(sourceId, next);
+  }
+
+  /*
+   * คำนวณเฉพาะการ์ดที่ติ๊กไว้ ไม่ได้คำนวณทุกใบแล้วค่อยซ่อน
+   * เพราะบางใบต้องไล่ทั้งตารางเคลื่อนไหว ถ้าคำนวณทิ้งไว้ทุกใบจะช้าโดยไม่ได้ใช้
+   */
+  const widgets = useMemo(() => {
+    if (badRange) return [];
+    const ctx = { db, inv, from, to, asOf: stockMap(db, to) };
+    return buildWidgets(source, picked, ctx);
+  }, [db, inv, from, to, source, picked, badRange]);
+
+  const rows = useMemo(() => layoutRows(widgets), [widgets]);
 
   return (
     <div className="stack">
-      {FilterBar}
+      <Card
+        title="เลือกสิ่งที่จะแสดงบนแดชบอร์ด"
+        actions={
+          <>
+            <Badge kind={picked.length ? "info" : "gray"}>
+              เลือกไว้ {picked.length} จาก {source.widgets.length}
+            </Badge>
+            <button className="btn btn-g btn-sm" onClick={() => setSetup(!setup)}>
+              {setup ? "ซ่อนตัวเลือก" : "เลือกการ์ดที่จะแสดง"}
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <div className="field span2">
+            <label className="lbl" htmlFor="d_src">หน้าจอที่จะดูข้อมูล</label>
+            <SearchSelect
+              id="d_src"
+              value={sourceId}
+              onChange={pickSource}
+              options={DASH_SOURCES.map((s) => ({ value: s.id, label: s.name, meta: s.hint }))}
+              notFound="ไม่พบหน้าจอที่ตรงกับ"
+            />
+            <span className="hint">{source.hint}</span>
+          </div>
 
-      <div className="grid g4">
-        <Kpi
-          icon={<IcBox size={18} stroke={1.9} />}
-          label="รายการสินค้าทั้งหมด"
-          value={num(db.products.length, 0) + " รายการ"}
-          sub={db.warehouses.length + " คลังสินค้า · " + db.locations.length + " ที่เก็บ"}
-        />
-        <Kpi
-          icon={<IcChart size={18} stroke={1.9} />}
-          label="ยอดคงเหลือรวม"
-          value={num(data.totalQty, 0) + " หน่วย"}
-          sub={"มูลค่า ฿" + num(data.totalVal, 0) + " · ณ " + thDate(to)}
-          kind="info"
-        />
-        <Kpi
-          icon={<IcAdjust size={18} stroke={1.9} />}
-          label="สินค้าต่ำกว่าจุดสั่งซื้อ"
-          value={num(data.low.length, 0) + " รายการ"}
-          sub={(data.low.length ? "ควรดำเนินการจัดหา" : "อยู่ในเกณฑ์ปกติ") + " · ณ " + thDate(to)}
-          kind={data.low.length ? "warn" : ""}
-        />
-        <Kpi
-          icon={<IcReport size={18} stroke={1.9} />}
-          label="รายการเคลื่อนไหวในช่วง"
-          value={num(data.rangeTx, 0) + " รายการ"}
-          sub={thDate(from) + " – " + thDate(to)}
-        />
-      </div>
-
-      <div className="grid g2">
-        <Card
-          title="ปริมาณรับเข้า–จ่ายออก"
-          actions={<Badge>{data.months.length} เดือน</Badge>}
-        >
-          <div className="chart">
-            <BarChart
-              labels={data.months.map((m) => m.label)}
-              series={[
-                { name: "รับเข้า", color: "var(--brand-l)", data: data.inD },
-                { name: "จ่ายออก", color: "#B3261E", data: data.outD },
-              ]}
+          <div className="field">
+            <label className="lbl" htmlFor="d_from">ตั้งแต่วันที่</label>
+            <input
+              className="inp"
+              type="date"
+              id="d_from"
+              value={from}
+              disabled={!perm.date}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
             />
           </div>
-          <Legend
-            items={[
-              { name: "รับเข้า", color: "var(--brand-l)" },
-              { name: "จ่ายออก", color: "#B3261E" },
-            ]}
-          />
-        </Card>
-
-        <Card title="ยอดคงเหลือแยกตามจังหวัด" actions={<Badge>ณ {thDate(to)}</Badge>}>
-          <div className="chart">
-            <HBarChart items={data.byProvince} />
+          <div className="field">
+            <label className="lbl" htmlFor="d_to">ถึงวันที่</label>
+            <input
+              className="inp"
+              type="date"
+              id="d_to"
+              value={to}
+              disabled={!perm.date}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+            />
           </div>
-        </Card>
-      </div>
 
-      <div className="grid g2">
-        <Card
-          title="รายการเคลื่อนไหวล่าสุดในช่วง"
-          actions={
+          <div className="field span2">
+            <label className="lbl">ช่วงเวลาที่ใช้บ่อย</label>
+            <div className="cs-tabs" style={{ marginBottom: 0 }}>
+              {QUICK.map((q) => (
+                <button
+                  key={q.id}
+                  className="cs-tab"
+                  onClick={() => {
+                    setFrom(q.from());
+                    setTo(todayISO());
+                  }}
+                  disabled={!perm.date}
+                >
+                  {q.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {badRange ? (
+          <div className="hint" style={{ color: "var(--err)" }}>
+            วันที่เริ่มต้นอยู่หลังวันสิ้นสุด — กรุณาแก้ก่อน
+          </div>
+        ) : null}
+
+        {/* รายการติ๊กเลือก ซ่อนไว้ตอนปกติ เพราะตั้งครั้งเดียวแล้วไม่ค่อยเปลี่ยน */}
+        {setup ? (
+          <>
+            <div className="row" style={{ gap: 8, margin: "12px 0 4px" }}>
+              <button className="btn btn-g btn-sm" onClick={() => pickAll(true)}>
+                เลือกทั้งหมด
+              </button>
+              <button className="btn btn-g btn-sm" onClick={() => pickAll(false)}>
+                ไม่เลือกเลย
+              </button>
+              <span className="hint" style={{ alignSelf: "center" }}>
+                สิ่งที่เลือกไว้จำไว้ในเครื่องนี้ แยกตามหน้าจอที่เลือก
+              </span>
+            </div>
+
+            <div className="dash-pick">
+              {source.widgets.map((w) => (
+                <label className="dash-opt" key={w.id} htmlFor={"w_" + w.id}>
+                  <input
+                    id={"w_" + w.id}
+                    className="chk"
+                    type="checkbox"
+                    checked={picked.includes(w.id)}
+                    onChange={() => toggle(w.id)}
+                  />
+                  <span>
+                    <b>{w.name}</b>
+                    <i>
+                      {w.size === "kpi"
+                        ? "การ์ดตัวเลข"
+                        : w.size === "half"
+                          ? "ครึ่งความกว้าง"
+                          : "เต็มความกว้าง"}
+                    </i>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </Card>
+
+      {badRange ? null : widgets.length ? (
+        rows.map((row, i) => (
+          <div
+            key={i}
+            className={row.per === 4 ? "grid g4" : row.per === 2 ? "grid g2" : "stack"}
+          >
+            {row.items.map((w) => (
+              <Widget key={w.id} widget={w} onNavigate={onNavigate} />
+            ))}
+          </div>
+        ))
+      ) : (
+        <Card title="ยังไม่ได้เลือกอะไรมาแสดง">
+          <Empty>
+            กดปุ่ม “เลือกการ์ดที่จะแสดง” ด้านบน แล้วติ๊กสิ่งที่อยากเห็นบนแดชบอร์ด
+          </Empty>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** วาดการ์ดหนึ่งใบตามชนิดที่ได้มา */
+function Widget({ widget, onNavigate }) {
+  const d = widget.data;
+
+  if (d.kind === "kpi") {
+    const Icon = ICONS[d.icon] || IcChart;
+    return (
+      <Kpi
+        icon={<Icon size={18} stroke={1.9} />}
+        label={d.label}
+        value={d.value}
+        sub={d.sub}
+        kind={d.tone || ""}
+      />
+    );
+  }
+
+  if (d.kind === "bar") {
+    return (
+      <Card title={widget.name} actions={<Badge>{d.labels.length} เดือน</Badge>}>
+        {d.labels.length ? (
+          <>
+            <div className="chart">
+              <BarChart labels={d.labels} series={d.series} />
+            </div>
+            <Legend items={d.series.map((s) => ({ name: s.name, color: s.color }))} />
+          </>
+        ) : (
+          <Empty>ช่วงเวลาที่เลือกไม่มีเดือนให้แสดง</Empty>
+        )}
+      </Card>
+    );
+  }
+
+  if (d.kind === "line") {
+    return (
+      <Card title={widget.name}>
+        {d.labels.length ? (
+          <div className="chart">
+            <LineChart labels={d.labels} data={d.data} color={d.color} />
+          </div>
+        ) : (
+          <Empty>ยังไม่มีข้อมูลในช่วงนี้</Empty>
+        )}
+      </Card>
+    );
+  }
+
+  if (d.kind === "hbar") {
+    return (
+      <Card title={widget.name} actions={<Badge>{d.items.length} รายการ</Badge>}>
+        {d.items.length ? (
+          <div className="chart">
+            <HBarChart items={d.items} />
+          </div>
+        ) : (
+          <Empty>ยังไม่มีข้อมูลในช่วงนี้</Empty>
+        )}
+      </Card>
+    );
+  }
+
+  if (d.kind === "table") {
+    return (
+      <Card
+        title={widget.name}
+        actions={
+          onNavigate ? (
             <button className="btn btn-o btn-sm" onClick={() => onNavigate("reports")}>
               ดูรายงานทั้งหมด
             </button>
-          }
-        >
-          {data.recent.length ? (
+          ) : null
+        }
+      >
+        {d.rows.length ? (
+          <div className="doc-scroll" style={{ maxHeight: 360 }}>
             <TableWrap>
               <thead>
                 <tr>
-                  <th>วันที่</th>
-                  <th>เลขที่</th>
-                  <th>ประเภท</th>
-                  <th>สินค้า</th>
-                  <th>คลัง · ที่เก็บ</th>
-                  <th className="num">จำนวน</th>
+                  {d.head.map((h, i) => (
+                    <th key={h} className={d.align && d.align[i] ? "num" : ""}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {data.recent.map((t) => (
-                  <tr key={t.id}>
-                    <td>{thDate(t.date)}</td>
-                    <td className="code-cell">{t.docNo}</td>
-                    <td>
-                      <span className={"bdg " + TYPES[t.type].badge}>{TYPES[t.type].name}</span>
-                    </td>
-                    <td>{inv.prodName(t.productId)}</td>
-                    <td style={{ fontSize: 13 }}>
-                      {inv.whLocName(t.whId, t.locId)}
-                      {t.whTo ? <b> → {inv.whLocName(t.whTo, t.locTo)}</b> : null}
-                    </td>
-                    <td className="num">{num(Math.abs(t.qty), 0)}</td>
+                {d.rows.map((r, i) => (
+                  <tr key={i}>
+                    {r.map((cell, j) => (
+                      <td key={j} className={d.align && d.align[j] ? "num" : ""}>
+                        {cell}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </TableWrap>
-          ) : (
-            <Empty>ยังไม่มีรายการ</Empty>
-          )}
-        </Card>
+          </div>
+        ) : (
+          <Empty>{d.empty || "ยังไม่มีข้อมูล"}</Empty>
+        )}
+      </Card>
+    );
+  }
 
-        <Card
-          title="สินค้าต่ำกว่าจุดสั่งซื้อ"
-          actions={<Badge kind={data.low.length ? "warn" : "ok"}>{data.low.length} รายการ</Badge>}
-        >
-          {data.low.length ? (
-            <TableWrap>
-              <thead>
-                <tr>
-                  <th>รหัส</th>
-                  <th>สินค้า</th>
-                  <th className="num">คงเหลือ</th>
-                  <th className="num">จุดสั่งซื้อ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.low.slice(0, 10).map((x) => (
-                  <tr key={x.p.id}>
-                    <td className="code-cell">{x.p.code}</td>
-                    <td>{x.p.name}</td>
-                    <td className="num" style={{ color: "var(--err)", fontWeight: 700 }}>
-                      {num(x.qty, 0)}
-                    </td>
-                    <td className="num">{num(x.p.min, 0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableWrap>
-          ) : (
-            <Empty>ทุกรายการมียอดคงเหลือเพียงพอ</Empty>
-          )}
-        </Card>
-      </div>
-    </div>
+  // ชนิดที่หน้าจอยังไม่รู้จัก — บอกให้เห็น ไม่ปล่อยให้เป็นช่องว่างเงียบ ๆ
+  return (
+    <Card title={widget.name}>
+      <Empty>ยังแสดงชนิด “{String(d.kind)}” ไม่ได้</Empty>
+    </Card>
   );
 }
