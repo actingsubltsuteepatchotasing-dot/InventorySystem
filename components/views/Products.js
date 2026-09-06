@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { num, thDate, todayISO } from "@/lib/format";
 import { usePrint } from "../Print";
+import { useToast } from "../Toast";
 import { IcBox, IcPlus } from "../Icons";
 import { Badge, Card, Empty, PrintPair } from "../ui";
 import ProductForm from "./ProductForm";
@@ -19,6 +20,7 @@ export default function Products() {
   const perm = inv.perm("products");
   const { db } = inv;
   const print = usePrint();
+  const toast = useToast();
 
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");

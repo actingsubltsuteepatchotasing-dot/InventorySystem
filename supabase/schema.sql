@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 18 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 20 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
@@ -1144,6 +1144,61 @@ end;
 $create_return$;
 
 -- ============================================================================
+-- ใบตรวจนับสินค้า
+-- ----------------------------------------------------------------------------
+-- แยกเป็นสองหน้าจอ: เตรียมเอกสารที่โต๊ะ แล้วเดินนับด้วยมือถือ
+-- เอกสารจึงต้องอยู่บนฐานข้อมูล ไม่ใช่ในหน่วยความจำของหน้าจอเดียว
+-- (เตรียมที่คอมพิวเตอร์แล้วไปนับด้วยมือถือ คนละเครื่องกัน)
+--
+-- sys_qty เก็บยอดในระบบ "ณ ตอนเตรียมเอกสาร" ไม่ได้อ่านสดตอนนับ
+-- เพราะการนับคือการเทียบของจริงกับยอด ณ เวลาที่เริ่มนับ
+-- ถ้าอ่านสดแล้วมีคนเบิกของระหว่างที่เดินนับอยู่ ผลต่างจะเพี้ยนโดยไม่มีใครรู้
+create table if not exists public.stock_counts (
+  id         text primary key,
+  doc_no     text not null,
+  date       date not null,
+  wh_id      text not null references public.warehouses (id) on delete restrict,
+  by1        text not null default '',
+  by2        text not null default '',
+  status     text not null default 'OPEN',
+  note       text not null default '',
+  user_name  text not null default '',
+  ts         bigint not null,
+  posted_doc text not null default '',
+  created_at timestamptz not null default now(),
+
+  -- OPEN = กำลังนับ · DONE = ปิดแล้ว (บันทึกผลต่างเป็นเอกสารปรับปรุงไปแล้ว)
+  constraint stock_counts_status check (status in ('OPEN', 'DONE'))
+);
+
+create unique index if not exists stock_counts_doc_no_key on public.stock_counts (doc_no);
+create index if not exists stock_counts_status_idx on public.stock_counts (status);
+
+create table if not exists public.stock_count_items (
+  id         text primary key,
+  count_id   text not null references public.stock_counts (id) on delete cascade,
+  product_id text not null references public.products (id) on delete restrict,
+  wh_id      text not null references public.warehouses (id) on delete restrict,
+  loc_id     text,
+  sys_qty    numeric not null default 0,
+  -- null = ยังไม่ได้นับ ต่างจาก 0 ที่แปลว่านับแล้วไม่เจอของเลย
+  counted    numeric,
+  counted_at bigint,
+  seq        int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists stock_count_items_cnt_idx on public.stock_count_items (count_id);
+
+do $cnt_loc$
+begin
+  alter table public.stock_count_items drop constraint if exists stock_count_items_loc_in_wh;
+  alter table public.stock_count_items add constraint stock_count_items_loc_in_wh
+    foreign key (loc_id, wh_id) references public.locations (id, wh_id) on delete restrict;
+end
+$cnt_loc$;
+
+-- ============================================================================
 -- สิทธิการใช้งานหน้าจอ
 -- ----------------------------------------------------------------------------
 -- หนึ่งแถวคือหนึ่งหน้าจอ ไม่มีแถว = ยังไม่ได้จำกัดสิทธิ ใช้ได้เต็มทุกอย่าง
@@ -1185,6 +1240,8 @@ grant all privileges on table public.purchases         to authenticated;
 grant all privileges on table public.purchase_items    to authenticated;
 grant all privileges on table public.purchase_returns  to authenticated;
 grant all privileges on table public.purchase_return_items to authenticated;
+grant all privileges on table public.stock_counts      to authenticated;
+grant all privileges on table public.stock_count_items to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -1206,7 +1263,8 @@ begin
     'locations', 'product_locations', 'sales', 'sale_items',
     'doc_groups', 'customers', 'company', 'invoices', 'invoice_items',
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
-    'purchase_returns', 'purchase_return_items'
+    'purchase_returns', 'purchase_return_items',
+    'stock_counts', 'stock_count_items'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1221,7 +1279,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 18 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 20 ตารางแล้ว';
 end
 $$;
 
@@ -1280,6 +1338,7 @@ from (values
   ('locations'), ('product_locations'), ('sales'), ('sale_items'),
   ('doc_groups'), ('customers'), ('company'), ('invoices'), ('invoice_items'),
   ('screen_perms'), ('suppliers'), ('purchases'), ('purchase_items'),
-  ('purchase_returns'), ('purchase_return_items')
+  ('purchase_returns'), ('purchase_return_items'),
+  ('stock_counts'), ('stock_count_items')
 ) as x(name)
 order by x.name;

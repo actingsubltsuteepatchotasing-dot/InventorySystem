@@ -48,6 +48,8 @@ const PARTS = [
   { key: "purchaseItems", name: "รายการในใบซื้อ" },
   { key: "purchaseReturns", name: "ใบส่งคืนสินค้า" },
   { key: "purchaseReturnItems", name: "รายการในใบส่งคืน" },
+  { key: "stockCounts", name: "ใบตรวจนับสินค้า" },
+  { key: "stockCountItems", name: "รายการในใบตรวจนับ" },
   { key: "docGroups", name: "กลุ่มเอกสาร" },
   { key: "perms", name: "สิทธิการใช้งานหน้าจอ" },
 ];

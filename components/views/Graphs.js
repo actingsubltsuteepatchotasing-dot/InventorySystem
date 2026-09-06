@@ -5,11 +5,18 @@
 import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { movement, movementInBin } from "@/lib/db";
-import { num } from "@/lib/format";
+import { localISO, monthsBetween, num, todayISO } from "@/lib/format";
 import { BarChart, HBarChart, Legend, LineChart } from "../Charts";
 import { Badge, Card, Empty, ProductSelect, WhLocFields } from "../ui";
 
-const RANGES = [6, 12, 18, 24];
+/** ปุ่มลัดช่วงเวลา — ตั้งช่วงวันที่ให้ ไม่ได้เป็นค่ากรองแยกอีกตัว */
+const QUICK = [3, 6, 12, 18, 24];
+
+/** วันแรกของเดือนที่ย้อนไป n เดือน (ใช้กับปุ่มลัด) */
+function monthsAgo(n) {
+  const d = new Date();
+  return localISO(new Date(d.getFullYear(), d.getMonth() - (n - 1), 1));
+}
 
 /**
  * แท็บกราฟ ล้อชื่อเดียวกับหน้ารายงาน จะได้นึกออกว่ากราฟไหนคู่กับรายงานไหน
@@ -45,7 +52,13 @@ export default function Graphs() {
   const { db } = inv;
 
   const [tab, setTab] = useState("stock");
-  const [months, setMonths] = useState(12);
+  /*
+   * ช่วงเวลาเป็นช่วงวันที่จริง ไม่ใช่ "ย้อนหลัง n เดือน" อย่างเดียวเหมือนเดิม
+   * เพราะเวลาปิดงบหรือดูย้อนหลังเฉพาะไตรมาส คนต้องระบุวันเริ่มกับวันจบเอง
+   * ปุ่มลัดยังอยู่ แค่เปลี่ยนเป็นตัวตั้งช่วงวันที่ให้แทนที่จะเป็นค่ากรองแยกอีกตัว
+   */
+  const [from, setFrom] = useState(() => monthsAgo(12));
+  const [to, setTo] = useState(todayISO);
   const [productId, setProductId] = useState("");
   const [whId, setWhId] = useState("");
   const [locId, setLocId] = useState("");
@@ -55,17 +68,27 @@ export default function Graphs() {
   const docKind = current.doc || null;
 
   const data = useMemo(() => {
-    const now = new Date();
-    const list = [];
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      list.push({
-        // เดือนตามเครื่องผู้ใช้ ไม่ใช่ UTC ไม่งั้นต้นเดือนจะเพี้ยนไปเดือนก่อนหน้า
-        key: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"),
-        label:
-          d.toLocaleDateString("th-TH", { month: "short" }) +
-          (months > 6 ? " " + String((d.getFullYear() + 543) % 100) : ""),
-      });
+    // แกนเดือนมาจากช่วงวันที่ที่เลือก จำกัดไว้ 36 เดือนกันกราฟถี่จนอ่านไม่ออก
+    const list = monthsBetween(from, to, 36);
+
+    // ช่วงวันที่ที่กลับหัว (เริ่มหลังจบ) ทำให้ไม่มีเดือนสักเดือน ต้องกันไว้ก่อน
+    // ไม่งั้นบรรทัดที่อ่าน list[0] ข้างล่างจะพัง ทั้งที่แค่กรอกวันสลับกัน
+    if (!list.length) {
+      return {
+        labels: [],
+        inD: [],
+        outD: [],
+        balD: [],
+        catItems: [],
+        topProd: [],
+        count: 0,
+        kindQty: [],
+        kindUp: [],
+        kindDown: [],
+        kindTop: [],
+        kindByWh: [],
+        kindValue: [],
+      };
     }
 
     const match = (t) =>
@@ -190,7 +213,7 @@ export default function Graphs() {
       kindByWh,
       kindValue,
     };
-  }, [db, months, productId, whId, locId, kind, inv]);
+  }, [db, from, to, productId, whId, locId, kind, inv]);
 
   const sum = (a) => a.reduce((x, y) => x + y, 0);
 
@@ -201,17 +224,7 @@ export default function Graphs() {
   const docData = useMemo(() => {
     if (!docKind) return null;
     const src = DOC_SRC[docKind];
-    const now = new Date();
-    const keys = [];
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      keys.push({
-        key: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"),
-        label:
-          d.toLocaleDateString("th-TH", { month: "short" }) +
-          (months > 6 ? " " + String((d.getFullYear() + 543) % 100) : ""),
-      });
-    }
+    const keys = monthsBetween(from, to, 36);
 
     const money = new Map(keys.map((k) => [k.key, 0]));
     const count = new Map(keys.map((k) => [k.key, 0]));
@@ -241,7 +254,7 @@ export default function Graphs() {
         .sort((a, b) => b.value - a.value)
         .slice(0, 10),
     };
-  }, [db, months, docKind]);
+  }, [db, from, to, docKind]);
 
   return (
     <>
@@ -262,20 +275,41 @@ export default function Graphs() {
       <div className="stack">
         <Card title="ตัวกรองกราฟ">
           <div className="row" style={{ alignItems: "flex-end" }}>
-            <div style={{ minWidth: 160 }}>
-              <label className="lbl" htmlFor="g_m">ช่วงเวลา</label>
-              <select
-                className="sel"
-                id="g_m"
-                value={months}
-                onChange={(e) => setMonths(Number(e.target.value))}
-              >
-                {RANGES.map((n) => (
-                  <option key={n} value={n}>
-                    {n} เดือนล่าสุด
-                  </option>
-                ))}
-              </select>
+            <div style={{ minWidth: 150 }}>
+              <label className="lbl" htmlFor="g_from">ตั้งแต่วันที่</label>
+              <input
+                className="inp"
+                type="date"
+                id="g_from"
+                value={from}
+                max={to || undefined}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </div>
+            <div style={{ minWidth: 150 }}>
+              <label className="lbl" htmlFor="g_to">ถึงวันที่</label>
+              <input
+                className="inp"
+                type="date"
+                id="g_to"
+                value={to}
+                min={from || undefined}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </div>
+            <div className="row" style={{ gap: 6 }}>
+              {QUICK.map((n) => (
+                <button
+                  key={n}
+                  className={"btn btn-sm " + (from === monthsAgo(n) && to === todayISO() ? "btn-p" : "btn-g")}
+                  onClick={() => {
+                    setFrom(monthsAgo(n));
+                    setTo(todayISO());
+                  }}
+                >
+                  {n} เดือน
+                </button>
+              ))}
             </div>
             <div style={{ minWidth: 220 }}>
               <label className="lbl" htmlFor="g_p">สินค้า</label>

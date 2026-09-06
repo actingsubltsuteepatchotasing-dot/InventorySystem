@@ -35,7 +35,8 @@ import Suppliers from "./views/Suppliers";
 import PurchaseInvoice from "./views/PurchaseInvoice";
 import PurchaseReturn from "./views/PurchaseReturn";
 import ReportBuilder from "./views/ReportBuilder";
-import StockCount from "./views/StockCount";
+import CountPrep from "./views/CountPrep";
+import CountScan from "./views/CountScan";
 import Backup from "./views/Backup";
 
 const NAV = [
@@ -50,7 +51,8 @@ const NAV = [
       { id: "issue", Icon: IcOut, title: "เบิกสินค้า", sub: "บันทึกการเบิก-จ่ายสินค้า" },
       { id: "transfer", Icon: IcMove, title: "โอนสินค้า", sub: "โอนย้ายระหว่างคลัง" },
       { id: "adjust", Icon: IcAdjust, title: "ปรับปรุงสินค้า", sub: "ปรับยอดตามผลการตรวจนับ" },
-      { id: "stockcount", Icon: IcGrid, title: "ตรวจนับสินค้า", sub: "ยิงบาร์โค๊ดนับของ เทียบยอดในระบบ" },
+      { id: "countprep", Icon: IcGrid, title: "เตรียมใบตรวจนับ", sub: "สร้างใบและพิมพ์ออกไปนับ" },
+      { id: "countscan", Icon: IcBox, title: "นับสินค้า (มือถือ)", sub: "สแกนบาร์โค๊ดแล้วกรอกจำนวน" },
     ],
   },
   {
@@ -374,7 +376,8 @@ export default function Shell() {
           {activeView === "purchase" && <PurchaseInvoice />}
           {activeView === "purret" && <PurchaseReturn />}
           {activeView === "suppliers" && <Suppliers />}
-          {activeView === "stockcount" && <StockCount />}
+          {activeView === "countprep" && <CountPrep />}
+          {activeView === "countscan" && <CountScan />}
           {activeView === "builder" && <ReportBuilder />}
           {activeView === "backup" && <Backup />}
           {activeView === "perms" && <Permissions />}
