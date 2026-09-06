@@ -39,6 +39,7 @@ import BillImport from "./views/BillImport";
 import Password from "./views/Password";
 import Users from "./views/Users";
 import SqlServer from "./views/SqlServer";
+import DataImport from "./views/DataImport";
 import CountPrep from "./views/CountPrep";
 import CountScan from "./views/CountScan";
 import ShipScan from "./views/ShipScan";
@@ -101,6 +102,7 @@ const NAV = [
       { id: "company", Icon: IcBox, title: "ข้อมูลกิจการ", sub: "ผู้ออกใบกำกับภาษี" },
       { id: "users", Icon: IcPin, title: "เพิ่มผู้ใช้งาน", sub: "สร้างบัญชีเข้าระบบด้วยอีเมล" },
       { id: "sqlserver", Icon: IcData, title: "เชื่อมต่อฐานข้อมูลภายนอก", sub: "SQL Server / MySQL / Access" },
+      { id: "dataimport", Icon: IcDownload, title: "นำเข้าข้อมูลจาก Excel", sub: "เลือกหน้าจอแล้วโหลดไฟล์เข้ามา" },
       { id: "password", Icon: IcPin, title: "เปลี่ยนรหัสผ่าน", sub: "ตั้งรหัสผ่านใหม่ของบัญชีตัวเอง" },
       { id: "backup", Icon: IcData, title: "สำรองข้อมูล", sub: "สำรองทั้งหมดและกู้คืนกลับมา" },
       { id: "perms", Icon: IcData, title: "กำหนดสิทธิการใช้งาน", sub: "เลือกว่าหน้าจอไหนแสดงและแก้ไขได้" },
@@ -394,6 +396,7 @@ export default function Shell() {
           {activeView === "shipscan" && <ShipScan />}
           {activeView === "users" && <Users />}
           {activeView === "sqlserver" && <SqlServer />}
+          {activeView === "dataimport" && <DataImport />}
           {activeView === "password" && <Password />}
           {activeView === "billimport" && <BillImport />}
           {activeView === "countprep" && <CountPrep />}

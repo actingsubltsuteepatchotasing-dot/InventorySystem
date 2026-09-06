@@ -711,5 +711,47 @@ head("13. หน้าจอที่บันทึกข้อมูล ปิ
   if (!n) ok("ปิดปุ่มตามสิทธิครบ (" + screens + " หน้า)");
 }
 
+/* ----------------------------------------------------------------- 14 */
+head("14. ชุดข้อมูลนำเข้า Excel ครบถ้วนและบันทึกได้จริง");
+{
+  // ชุดที่ไม่มีโค้ดบันทึก = เลือกได้ กรอกได้ กดอัพโหลดแล้วขึ้น error ตอนท้าย
+  // ซึ่งเสียเวลาคนที่ทำไฟล์มาทั้งไฟล์แล้ว
+  const sets = read("lib/importSets.js");
+  const view = read("components/views/DataImport.js");
+  const constants = read("lib/constants.js");
+
+  const screens = [...constants.matchAll(/\{ id: "(\w+)",\s+group:/g)].map((m) => m[1]);
+  const ids = [...sets.matchAll(/^    id: "(\w+)",$/gm)].map((m) => m[1]);
+  const targets = [...sets.matchAll(/^    screen: "(\w+)",$/gm)].map((m) => m[1]);
+  const keys = [...sets.matchAll(/^    key: "(\w+)",$/gm)].map((m) => m[1]);
+
+  let n = 0;
+  if (ids.length !== targets.length || ids.length !== keys.length) {
+    bad("ชุดข้อมูลบางชุดไม่ได้บอกหน้าจอปลายทางหรือตัวกันซ้ำ");
+    n++;
+  }
+
+  targets.forEach((t, i) => {
+    if (!screens.includes(t)) {
+      bad("ชุด " + ids[i] + " ผูกกับหน้าจอ " + t + " ที่ไม่มีในระบบ");
+      n++;
+    }
+  });
+
+  ids.forEach((id) => {
+    if (!new RegExp('set\\.id === "' + id + '"').test(view)) {
+      bad("ชุด " + id + " ไม่มีโค้ดบันทึกในหน้านำเข้า");
+      n++;
+    }
+  });
+
+  if (new Set(ids).size !== ids.length) {
+    bad("รหัสชุดข้อมูลซ้ำกัน");
+    n++;
+  }
+
+  if (!n) ok("ทุกชุดผูกกับหน้าจอจริงและบันทึกได้ครบ (" + ids.length + " ชุด)");
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);
