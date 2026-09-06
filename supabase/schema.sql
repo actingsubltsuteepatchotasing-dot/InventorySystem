@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 21 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 22 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
@@ -1240,6 +1240,42 @@ end
 $cnt_loc$;
 
 -- ============================================================================
+-- การเชื่อมต่อ SQL Server ที่บันทึกไว้
+-- ----------------------------------------------------------------------------
+-- เก็บ "ค่าที่ใช้ต่อ" ไม่ใช่ตัวการเชื่อมต่อ — เว็บในเบราว์เซอร์ต่อ SQL Server ตรง ๆ ไม่ได้
+-- เพราะ SQL Server พูดโปรโตคอล TDS บนพอร์ต 1433 ซึ่งเป็น TCP ดิบ
+-- เบราว์เซอร์เปิด TCP ดิบไม่ได้ ทำได้แค่ HTTP/WebSocket เท่านั้น
+-- ตัวที่ต่อจริงจึงต้องเป็นโปรแกรมฝั่งเครื่องที่อยู่ในวงเดียวกับเซิร์ฟเวอร์
+-- (ดูหัวข้อ "ตัวเชื่อม" ในหน้าจอ) หน้านี้ทำหน้าที่เก็บค่าและส่งให้ตัวนั้น
+--
+-- รหัสผ่านเป็น null ได้ และเป็นค่าเริ่มต้นด้วย
+--   ค่าเริ่มต้นคือเก็บรหัสผ่านไว้ในเครื่องที่กรอกเท่านั้น ไม่ขึ้นฐานข้อมูล
+--   เพราะทุกคนที่ล็อกอินระบบนี้ได้ อ่านตารางนี้ได้หมด (สิทธิเป็นของทั้งระบบ ไม่แยกรายคน)
+--   และรหัสผ่านที่อยู่ในตารางจะติดไปกับไฟล์สำรองข้อมูลด้วย
+--   ใครที่ต้องการให้ทุกเครื่องใช้ร่วมกันจริง ๆ ต้องติ๊กเลือกเองบนหน้าจอ
+create table if not exists public.sql_connections (
+  id          text primary key,
+  name        text not null,
+  server      text not null,
+  port        integer not null default 1433,
+  db_name     text not null default '',
+  login       text not null default '',
+  password    text,
+  encrypt     boolean not null default true,
+  trust_cert  boolean not null default false,
+  bridge_url  text not null default '',
+  note        text not null default '',
+  is_default  boolean not null default false,
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint sql_connections_port check (port between 1 and 65535)
+);
+
+create unique index if not exists sql_connections_name_key on public.sql_connections (lower(name));
+
+-- ============================================================================
 -- สิทธิการใช้งานหน้าจอ
 -- ----------------------------------------------------------------------------
 -- หนึ่งแถวคือหนึ่งหน้าจอ ไม่มีแถว = ยังไม่ได้จำกัดสิทธิ ใช้ได้เต็มทุกอย่าง
@@ -1284,6 +1320,7 @@ grant all privileges on table public.purchase_return_items to authenticated;
 grant all privileges on table public.stock_counts      to authenticated;
 grant all privileges on table public.stock_count_items to authenticated;
 grant all privileges on table public.ship_events        to authenticated;
+grant all privileges on table public.sql_connections    to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -1306,7 +1343,7 @@ begin
     'doc_groups', 'customers', 'company', 'invoices', 'invoice_items',
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
-    'stock_counts', 'stock_count_items', 'ship_events'
+    'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1321,7 +1358,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 21 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 22 ตารางแล้ว';
 end
 $$;
 
@@ -1381,6 +1418,6 @@ from (values
   ('doc_groups'), ('customers'), ('company'), ('invoices'), ('invoice_items'),
   ('screen_perms'), ('suppliers'), ('purchases'), ('purchase_items'),
   ('purchase_returns'), ('purchase_return_items'),
-  ('stock_counts'), ('stock_count_items'), ('ship_events')
+  ('stock_counts'), ('stock_count_items'), ('ship_events'), ('sql_connections')
 ) as x(name)
 order by x.name;

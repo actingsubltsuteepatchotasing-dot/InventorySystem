@@ -674,7 +674,7 @@ head("13. หน้าจอที่บันทึกข้อมูล ปิ
     "setInvoiceShip", "savePerms", "saveSupplier", "removeSupplier", "addPurchase",
     "addPurchaseReturn", "addCount", "setCounted", "closeCount", "removeCount",
     "saveLocation", "removeLocation", "savePlacement", "removePlacement", "addSale",
-    "importAll", "resetSeed", "rebuildPlacements",
+    "importAll", "resetSeed", "rebuildPlacements", "saveSqlConn", "removeSqlConn",
   ];
 
   const dir = "components/views";
