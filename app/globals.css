@@ -2286,3 +2286,6 @@ label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }
   .rep-filter .span2 { grid-column: span 1; }
 }
 .rep-clear { display: flex; align-items: flex-end; }
+
+/* แถวที่ระบบถือว่าเป็นหัวตารางของไฟล์ที่นำเข้า — ต้องเห็นทันทีว่าเดาถูกไหม */
+.row-head > td { background: var(--brand-50); font-weight: 700; }
