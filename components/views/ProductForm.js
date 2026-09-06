@@ -10,7 +10,8 @@ import { num, uid } from "@/lib/format";
 import Modal from "../Modal";
 import { useToast } from "../Toast";
 import { IcTrash } from "../Icons";
-import { Barcode, LocationSelect, QtyInput, WarehouseSelect } from "../ui";
+import { optionsFor, TERM_DIMS } from "@/lib/productTerms";
+import { Barcode, LocationSelect, QtyInput, SearchSelect, WarehouseSelect } from "../ui";
 
 export default function ProductForm({ productId, onClose }) {
   const inv = useInv();
@@ -57,16 +58,21 @@ export default function ProductForm({ productId, onClose }) {
   const cats = useMemo(() => Array.from(new Set(db.products.map((p) => p.cat))), [db.products]);
 
   /*
-   * ค่าที่เคยใช้ของสามมิติ ใช้ทำรายการให้เลือกซ้ำได้โดยไม่ต้องมีหน้าจัดการแยกอีกหน้า
-   * รายชื่อพวกนี้เปลี่ยนบ่อยตามสินค้าที่เข้ามา การมีตารางอ้างอิงจะกลายเป็นภาระ
+   * รายการให้เลือกของสามมิติ (กลุ่ม · ยี่ห้อ · ประเภท)
+   *
+   * มาจากทะเบียนที่ตั้งไว้ที่หน้า "กลุ่ม ยี่ห้อ ประเภทสินค้า" เป็นหลัก
+   * บวกกับค่าที่สินค้าตัวอื่นใช้อยู่แล้วแต่ยังไม่ได้จดทะเบียน (ดู optionsFor)
+   * เพื่อไม่ให้ค่าที่พิมพ์ไว้ก่อนมีหน้าทะเบียนหายไปจากรายการ
    */
-  const usedIn = (f) =>
-    Array.from(new Set(db.products.map((p) => p[f]).filter(Boolean))).sort((a, b) =>
-      a.localeCompare(b, "th")
-    );
-  const grps = useMemo(() => usedIn("grp"), [db.products]); // eslint-disable-line react-hooks/exhaustive-deps
-  const brands = useMemo(() => usedIn("brand"), [db.products]); // eslint-disable-line react-hooks/exhaustive-deps
-  const kinds = useMemo(() => usedIn("kind"), [db.products]); // eslint-disable-line react-hooks/exhaustive-deps
+  const termOptions = useMemo(
+    () =>
+      TERM_DIMS.reduce((acc, d) => {
+        acc[d.id] = optionsFor(db, d.id, form[d.id]);
+        return acc;
+      }, {}),
+    // ต้องขึ้นกับค่าปัจจุบันของสินค้าตัวนี้ด้วย ไม่งั้นค่าที่ไม่มีในทะเบียนจะหลุดจากรายการ
+    [db, form.grp, form.brand, form.kind] // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   async function handleFile(file) {
@@ -223,59 +229,26 @@ export default function ProductForm({ productId, onClose }) {
         </div>
 
         {/* สามมิตินี้ใช้ตั้งเป้าขายแยกรายกลุ่ม รายยี่ห้อ และรายประเภทได้
-            เลือกจากที่เคยใช้หรือพิมพ์ใหม่ก็ได้ในช่องเดียวกัน */}
-        <div className="field">
-          <label className="lbl" htmlFor="e_grp">กลุ่มสินค้า</label>
-          <input
-            className="inp"
-            id="e_grp"
-            list="grpList"
-            value={form.grp || ""}
-            onChange={(e) => set("grp", e.target.value)}
-            placeholder="เช่น วัตถุดิบ"
-          />
-          <datalist id="grpList">
-            {grps.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-          <span className="hint">ใช้ตั้งเป้าขายแยกรายกลุ่มได้</span>
-        </div>
-
-        <div className="field">
-          <label className="lbl" htmlFor="e_brand">ยี่ห้อสินค้า</label>
-          <input
-            className="inp"
-            id="e_brand"
-            list="brandList"
-            value={form.brand || ""}
-            onChange={(e) => set("brand", e.target.value)}
-            placeholder="เช่น ตราช้าง"
-          />
-          <datalist id="brandList">
-            {brands.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-          <span className="hint">ใช้กรองที่ Quick View และตั้งเป้าขายรายยี่ห้อ</span>
-        </div>
-
-        <div className="field">
-          <label className="lbl" htmlFor="e_kind">ประเภทสินค้า</label>
-          <input
-            className="inp"
-            id="e_kind"
-            list="kindList"
-            value={form.kind || ""}
-            onChange={(e) => set("kind", e.target.value)}
-            placeholder="เช่น สินค้าสำเร็จรูป"
-          />
-          <datalist id="kindList">
-            {kinds.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-        </div>
+            กดเลือกจากทะเบียน หรือพิมพ์บางส่วนของรหัส/ชื่อเพื่อค้นหาก็ได้
+            เปลี่ยนจากช่องพิมพ์อิสระมาเป็นช่องเลือก เพราะพิมพ์เองทำให้ได้ชื่อที่
+            สะกดไม่ตรงกันทีละนิด แล้วเป้าขายจะจับคู่ไม่ติดโดยไม่มีใครรู้ */}
+        {TERM_DIMS.map((d) => (
+          <div className="field" key={d.id}>
+            <label className="lbl" htmlFor={"e_" + d.id}>{d.name}</label>
+            <SearchSelect
+              id={"e_" + d.id}
+              value={form[d.id] || ""}
+              onChange={(v) => set(d.id, v)}
+              options={termOptions[d.id]}
+              emptyLabel={"— ไม่ระบุ" + d.name + " —"}
+              notFound={"ไม่พบ" + d.name + "ที่ตรงกับ"}
+              disabled={!perm.edit}
+            />
+            <span className="hint">
+              {d.hint} · ตั้งรหัสและชื่อได้ที่เมนู <b>กลุ่ม ยี่ห้อ ประเภทสินค้า</b>
+            </span>
+          </div>
+        ))}
 
         <div className="field span2">
           <label className="lbl" htmlFor="e_name">ชื่อสินค้า</label>

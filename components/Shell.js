@@ -41,6 +41,7 @@ import Users from "./views/Users";
 import SqlServer from "./views/SqlServer";
 import DataImport from "./views/DataImport";
 import Salespersons from "./views/Salespersons";
+import ProductTerms from "./views/ProductTerms";
 import PrintForms from "./views/PrintForms";
 import Targets from "./views/Targets";
 import QuickView from "./views/QuickView";
@@ -113,6 +114,7 @@ const NAV = [
       { id: "sqlserver", Icon: IcData, title: "เชื่อมต่อฐานข้อมูลภายนอก", sub: "SQL Server / MySQL / Access" },
       { id: "dataimport", Icon: IcDownload, title: "นำเข้าข้อมูลจาก Excel", sub: "เลือกหน้าจอแล้วโหลดไฟล์เข้ามา" },
       { id: "salespersons", Icon: IcPin, title: "กำหนดพนักงานขาย", sub: "รหัสและชื่อพนักงานขาย" },
+      { id: "terms", Icon: IcBox, title: "กลุ่ม ยี่ห้อ ประเภทสินค้า", sub: "ทะเบียนรหัสและชื่อของสามมิติ" },
       { id: "password", Icon: IcPin, title: "เปลี่ยนรหัสผ่าน", sub: "ตั้งรหัสผ่านใหม่ของบัญชีตัวเอง" },
       { id: "backup", Icon: IcData, title: "สำรองข้อมูล", sub: "สำรองทั้งหมดและกู้คืนกลับมา" },
       { id: "perms", Icon: IcData, title: "กำหนดสิทธิการใช้งาน", sub: "เลือกว่าหน้าจอไหนแสดงและแก้ไขได้" },
@@ -430,6 +432,7 @@ export default function Shell() {
           {activeView === "sqlserver" && <SqlServer />}
           {activeView === "dataimport" && <DataImport startSet={importSet} />}
           {activeView === "salespersons" && <Salespersons />}
+          {activeView === "terms" && <ProductTerms />}
           {activeView === "printforms" && <PrintForms />}
           {activeView === "targets" && <Targets onNavigate={navigate} />}
           {activeView === "password" && <Password />}

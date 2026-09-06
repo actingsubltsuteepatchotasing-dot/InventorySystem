@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 25 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 26 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
@@ -1308,6 +1308,49 @@ end
 $doc_form$;
 
 -- ============================================================================
+-- ทะเบียนกลุ่ม / ยี่ห้อ / ประเภทสินค้า
+-- ----------------------------------------------------------------------------
+-- สามอย่างนี้โครงเหมือนกันเป๊ะ (รหัส + ชื่อ) ต่างกันแค่ความหมาย
+-- จึงเก็บตารางเดียวแล้วแยกด้วยคอลัมน์ dim ไม่ได้ทำสามตาราง
+--   แยกสามตาราง = ตัวแปลง หน้าจอ ตัวนำเข้า และการสำรองข้อมูลต้องเขียนซ้ำสามชุด
+--   ทุกครั้งที่แก้กติกาต้องไล่แก้สามที่ แล้วจะมีที่หนึ่งที่ลืมเสมอ
+--   และถ้าวันหน้าเพิ่มมิติที่สี่ (เช่น รุ่นสินค้า) เพิ่มค่า dim ค่าเดียวก็จบ
+--
+-- ตัวสินค้ายังเก็บ "ชื่อ" ไว้เหมือนเดิม ไม่ได้เปลี่ยนไปเก็บรหัส
+--   เพราะระบบเก็บเป็นชื่อมาก่อนหน้านี้ และเป้าขายจับคู่ด้วยชื่อเหมือนกัน
+--   เปลี่ยนไปเก็บรหัสเมื่อไร สินค้าและเป้าขายที่มีอยู่เดิมจะจับคู่กันไม่ติดทั้งหมดทันที
+--   ตารางนี้จึงเป็น "ทะเบียนให้เลือก" ไม่ใช่กุญแจอ้างอิง — จงใจไม่ผูก foreign key
+--
+-- ความยาวจำกัดเท่าพนักงานขาย: รหัสไม่เกิน 50 ชื่อไม่เกิน 200 ตัวอักษร
+create table if not exists public.product_terms (
+  id         text primary key,
+  dim        text not null,
+  code       text not null,
+  name       text not null,
+  note       text not null default '',
+  active     boolean not null default true,
+  user_name  text not null default '',
+  ts         bigint not null,
+  created_at timestamptz not null default now(),
+
+  constraint product_terms_dim check (dim in ('GRP', 'BRAND', 'KIND')),
+  constraint product_terms_code_len check (char_length(code) between 1 and 50),
+  constraint product_terms_name_len check (char_length(name) between 1 and 200)
+);
+
+-- รหัสห้ามซ้ำภายในมิติเดียวกัน แต่ข้ามมิติซ้ำได้
+-- (รหัส A01 เป็นได้ทั้งกลุ่มสินค้าและยี่ห้อ โดยไม่เกี่ยวข้องกัน)
+create unique index if not exists product_terms_dim_code_key
+  on public.product_terms (dim, lower(code));
+
+-- ชื่อก็ห้ามซ้ำในมิติเดียวกัน เพราะตัวสินค้าเก็บชื่อไว้
+-- สองรหัสชื่อเดียวกันจะแยกไม่ออกว่าสินค้าหมายถึงรายการไหน และเป้าขายจะนับรวมกัน
+create unique index if not exists product_terms_dim_name_key
+  on public.product_terms (dim, lower(name));
+
+create index if not exists product_terms_dim_idx on public.product_terms (dim);
+
+-- ============================================================================
 -- พนักงานขาย
 -- ----------------------------------------------------------------------------
 -- ใช้ผูกกับใบขายและกับลูกค้า เพื่อดูยอดขายรายคนและตั้งเป้าขายรายคน
@@ -1496,7 +1539,7 @@ begin
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
-    'salespersons', 'sales_targets', 'print_forms'
+    'salespersons', 'sales_targets', 'print_forms', 'product_terms'
   ]
   loop
     seq := 'public.' || t || '_row_order_seq';
@@ -1562,6 +1605,7 @@ grant all privileges on table public.sql_connections    to authenticated;
 grant all privileges on table public.salespersons       to authenticated;
 grant all privileges on table public.sales_targets      to authenticated;
 grant all privileges on table public.print_forms        to authenticated;
+grant all privileges on table public.product_terms      to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -1585,7 +1629,7 @@ begin
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
-    'salespersons', 'sales_targets', 'print_forms'
+    'salespersons', 'sales_targets', 'print_forms', 'product_terms'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1600,7 +1644,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 25 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 26 ตารางแล้ว';
 end
 $$;
 
@@ -1661,6 +1705,6 @@ from (values
   ('screen_perms'), ('suppliers'), ('purchases'), ('purchase_items'),
   ('purchase_returns'), ('purchase_return_items'),
   ('stock_counts'), ('stock_count_items'), ('ship_events'), ('sql_connections'),
-  ('salespersons'), ('sales_targets'), ('print_forms')
+  ('salespersons'), ('sales_targets'), ('print_forms'), ('product_terms')
 ) as x(name)
 order by x.name;

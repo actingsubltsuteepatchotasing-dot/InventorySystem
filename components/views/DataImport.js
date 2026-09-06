@@ -85,6 +85,22 @@ export function parseNum(raw) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * แปลงคำที่คนกรอกในไฟล์ให้เป็นรหัสมิติที่ฐานข้อมูลรับ
+ *
+ * รับทั้งชื่อไทยและรหัสอังกฤษ เพราะไฟล์ที่คนทำมาเขียนได้ทั้งสองแบบ
+ * แปลงไม่ได้ให้คืนค่าว่างแล้วให้ผู้เรียกขึ้นข้อความบอกว่าใช้คำไหนได้บ้าง
+ * ไม่เดาให้เป็นมิติแรก เพราะจะได้ทะเบียนที่ผิดมิติโดยไม่มีใครรู้
+ */
+function dimFromText(raw) {
+  const t = String(raw || "").trim().toLowerCase();
+  if (!t) return "";
+  if (t.includes("กลุ่ม") || t === "grp" || t === "group") return "GRP";
+  if (t.includes("ยี่ห้อ") || t === "brand") return "BRAND";
+  if (t.includes("ประเภท") || t === "kind" || t === "type") return "KIND";
+  return "";
+}
+
 export default function DataImport({ startSet }) {
   const inv = useInv();
   const perm = inv.perm("dataimport");
@@ -115,6 +131,9 @@ export default function DataImport({ startSet }) {
     const pick = {
       products: (d) => (d.products || []).map((x) => x.code),
       salespersons: (d) => (d.salespersons || []).map((x) => x.code),
+      // รหัสซ้ำข้ามมิติได้ กุญแจจึงเป็น "มิติ + รหัส" ไม่ใช่รหัสอย่างเดียว
+      terms: (d) =>
+        (d.productTerms || []).map((t) => keyOf(set, { dim: t.dim, code: t.code })),
       // เป้าใช้ "งวด+มิติ" เป็นตัวกันซ้ำ เพราะเป้าไม่มีรหัสของตัวเอง
       // ตั้งเป้าซ้ำงวดและมิติเดิมคือความผิดพลาด ไม่ใช่การตั้งเป้าเพิ่ม
       targets: (d) =>
@@ -319,6 +338,25 @@ export default function DataImport({ startSet }) {
         branch: v.branch,
       };
       return set.id === "customers" ? inv.saveCustomer(party) : inv.saveSupplier(party);
+    }
+
+    if (set.id === "terms") {
+      const dim = dimFromText(v.dim);
+      if (!dim) {
+        throw new Error(
+          "มิติ “" + (v.dim || "") + "” ไม่ถูกต้อง — ใช้ได้เฉพาะ กลุ่มสินค้า / ยี่ห้อสินค้า / ประเภทสินค้า"
+        );
+      }
+      return inv.saveProductTerm({
+        id: uid(),
+        dim,
+        code: v.code,
+        name: v.name,
+        note: v.note,
+        active: true,
+        user: who,
+        ts: Date.now(),
+      });
     }
 
     if (set.id === "salespersons") {

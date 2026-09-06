@@ -55,6 +55,7 @@ const PARTS = [
   { key: "perms", name: "สิทธิการใช้งานหน้าจอ" },
   { key: "sqlConnections", name: "การเชื่อมต่อฐานข้อมูลภายนอก" },
   { key: "salespersons", name: "พนักงานขาย" },
+  { key: "productTerms", name: "กลุ่ม/ยี่ห้อ/ประเภทสินค้า" },
   { key: "salesTargets", name: "เป้าขาย" },
   { key: "printForms", name: "ฟอร์มพิมพ์" },
 ];
