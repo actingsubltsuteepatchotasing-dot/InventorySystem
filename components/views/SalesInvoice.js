@@ -26,7 +26,7 @@ import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import { Badge, Card, Empty, LocationSelect, ProductSelect, QtyInput, SearchSelect, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, DocBrowser, Empty, LocationSelect, ProductSelect, QtyInput, SearchSelect, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 import { TaxInvoiceBody } from "./printBodies";
 
@@ -256,8 +256,9 @@ export default function SalesInvoice() {
     });
   }
 
+  // ไม่ตัดเหลือแค่ใบล่าสุดแล้ว DocBrowser ให้ค้นและเลื่อนดูได้ทุกใบ
   const recent = useMemo(
-    () => (db.invoices || []).slice().sort((a, b) => b.ts - a.ts).slice(0, 12),
+    () => (db.invoices || []).slice().sort((a, b) => b.ts - a.ts),
     [db.invoices]
   );
 
@@ -567,8 +568,13 @@ export default function SalesInvoice() {
         title="ใบขายล่าสุด"
         actions={<Badge>{(db.invoices || []).length} ใบ</Badge>}
       >
-        {recent.length ? (
-          <TableWrap>
+        <DocBrowser
+          rows={recent}
+          empty="ยังไม่มีใบขาย — กรอกตารางด้านบนแล้วกด “บันทึกและพิมพ์”"
+          placeholder="ค้นหาเลขที่เอกสาร รหัสลูกค้า หรือชื่อลูกค้า…"
+        >
+          {(list) => (
+            <TableWrap>
             <thead>
               <tr>
                 <th style={{ minWidth: 150 }}>เลขที่เอกสาร</th>
@@ -581,7 +587,7 @@ export default function SalesInvoice() {
               </tr>
             </thead>
             <tbody>
-              {recent.map((v) => {
+              {list.map((v) => {
                 const st = shipOf(v.shipStatus);
                 return (
                   <tr key={v.id}>
@@ -607,10 +613,9 @@ export default function SalesInvoice() {
                 );
               })}
             </tbody>
-          </TableWrap>
-        ) : (
-          <Empty>ยังไม่มีใบขาย — กรอกตารางด้านบนแล้วกด “บันทึกและพิมพ์”</Empty>
-        )}
+            </TableWrap>
+          )}
+        </DocBrowser>
       </Card>
     </div>
   );

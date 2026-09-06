@@ -11,7 +11,7 @@ import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import { Badge, Card, Empty, LocationSelect, PrintPair, ProductSelect, QtyInput, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, DocBrowser, Empty, LocationSelect, PrintPair, ProductSelect, QtyInput, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 import { CountSheetBody } from "./printBodies";
 
@@ -175,7 +175,8 @@ export default function AdjustScreen() {
   }
 
   const recent = useMemo(
-    () => db.txns.filter((t) => t.type === "ADJUST").sort((a, b) => b.ts - a.ts).slice(0, 15),
+    // ไม่ตัดเหลือแค่ 15 รายการล่าสุดแล้ว DocBrowser ให้ค้นและเลื่อนดูได้ทุกรายการ
+    () => db.txns.filter((t) => t.type === "ADJUST").sort((a, b) => b.ts - a.ts),
     [db.txns]
   );
 
@@ -430,8 +431,13 @@ export default function AdjustScreen() {
           </>
         }
       >
-        {recent.length ? (
-          <TableWrap>
+        <DocBrowser
+          rows={recent}
+          empty="ยังไม่มีรายการปรับปรุง"
+          placeholder="ค้นหาเลขที่เอกสาร ชื่อสินค้า คลัง หรือสาเหตุ…"
+        >
+          {(list) => (
+            <TableWrap>
             <thead>
               <tr>
                 <th>วันที่</th>
@@ -443,7 +449,7 @@ export default function AdjustScreen() {
               </tr>
             </thead>
             <tbody>
-              {recent.map((t) => (
+              {list.map((t) => (
                 <tr key={t.id}>
                   <td>{thDate(t.date)}</td>
                   <td className="code-cell">{t.docNo}</td>
@@ -458,10 +464,9 @@ export default function AdjustScreen() {
                 </tr>
               ))}
             </tbody>
-          </TableWrap>
-        ) : (
-          <Empty>ยังไม่มีรายการปรับปรุง</Empty>
-        )}
+            </TableWrap>
+          )}
+        </DocBrowser>
       </Card>
     </div>
   );

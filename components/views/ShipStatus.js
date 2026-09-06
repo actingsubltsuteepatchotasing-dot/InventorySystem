@@ -392,6 +392,8 @@ export default function ShipStatus() {
         </div>
 
         {rows.length ? (
+          /* เลื่อนในกรอบของตัวเอง หัวตารางค้างอยู่ กระดานที่มีเป็นร้อยใบจึงยังกวาดตาดูได้ */
+          <div className="doc-scroll" style={{ maxHeight: 520 }}>
           <TableWrap>
             <thead>
               <tr>
@@ -431,6 +433,7 @@ export default function ShipStatus() {
               ))}
             </tbody>
           </TableWrap>
+          </div>
         ) : (
           <Empty>
             {invoices.length

@@ -570,6 +570,118 @@ export function N({ v, d = 0, bold, color }) {
 }
 
 /**
+ * แถบค้นหาเอกสาร + พื้นที่เลื่อนดูรายการ
+ *
+ * ทุกหน้าที่โชว์ "เอกสารที่ทำไปแล้ว" ใช้ตัวนี้ร่วมกัน จะได้ค้นและกรองเหมือนกันหมด
+ * ไม่ใช่บางหน้าค้นได้ บางหน้าโชว์แค่ 12 ใบล่าสุดแล้วจบ ซึ่งหาของเก่าไม่เจอเลย
+ *
+ * เดิมหน้าพวกนี้ตัดเหลือ 12-15 ใบล่าสุดเพื่อไม่ให้ตารางยาวจนหน้าจอเลื่อนไม่ไหว
+ * ตัวนี้แก้ปัญหานั้นด้วยการให้ตารางเลื่อนในกรอบของตัวเองแทน
+ * จึงแสดงได้ทุกใบโดยไม่ดันหน้าจอ และหัวตารางค้างอยู่ให้เห็นตลอด
+ *
+ * children เป็นฟังก์ชันที่รับรายการที่กรองแล้ว เพื่อให้แต่ละหน้ายังวาดตารางของตัวเอง
+ * (คอลัมน์ของใบขายกับใบส่งคืนคนละชุดกัน จะยัดให้เป็นตารางเดียวกันไม่ได้)
+ */
+export function DocBrowser({
+  rows,
+  children,
+  empty = "ยังไม่มีเอกสาร",
+  placeholder = "ค้นหาเลขที่เอกสาร รหัส หรือชื่อ…",
+  dateOf = (r) => r.date,
+  height = 420,
+}) {
+  const [term, setTerm] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
+  const list = useMemo(() => {
+    const words = term.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+    return rows.filter((r) => {
+      // วันที่เป็นรูปแบบ YYYY-MM-DD จึงเทียบเป็นสตริงได้ตรง ๆ ไม่ต้องแปลงเป็น Date
+      const d = dateOf(r) || "";
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      if (!words.length) return true;
+
+      // ค้นจากทุกค่าที่เป็นข้อความหรือตัวเลขในแถวนั้น
+      // ไม่ต้องมาไล่ระบุทีละฟิลด์ให้ลืมบางอันเวลาเพิ่มคอลัมน์ใหม่
+      const hay = Object.values(r)
+        .filter((v) => typeof v === "string" || typeof v === "number")
+        .join(" ")
+        .toLowerCase();
+      const tight = hay.replace(/[\s\-\/.,]/g, "");
+
+      return words.every((w) => hay.includes(w) || tight.includes(w.replace(/[\s\-\/.,]/g, "")));
+    });
+  }, [rows, term, from, to, dateOf]);
+
+  const filtering = !!(term || from || to);
+
+  return (
+    <>
+      <div className="doc-find">
+        <input
+          className="inp"
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          placeholder={placeholder}
+          aria-label="ค้นหาเอกสาร"
+        />
+        <label className="doc-find-date">
+          <span>ตั้งแต่</span>
+          <input
+            className="inp"
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+            aria-label="ค้นหาตั้งแต่วันที่"
+          />
+        </label>
+        <label className="doc-find-date">
+          <span>ถึง</span>
+          <input
+            className="inp"
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+            aria-label="ค้นหาถึงวันที่"
+          />
+        </label>
+
+        <Badge kind={filtering ? "info" : "gray"}>
+          {filtering ? list.length + " จาก " + rows.length : rows.length} รายการ
+        </Badge>
+
+        {filtering ? (
+          <button
+            className="btn btn-g btn-sm"
+            onClick={() => {
+              setTerm("");
+              setFrom("");
+              setTo("");
+            }}
+          >
+            ล้าง
+          </button>
+        ) : null}
+      </div>
+
+      {list.length ? (
+        // เลื่อนในกรอบของตัวเอง หัวตารางค้างอยู่ให้เห็นว่าคอลัมน์ไหนเป็นอะไร
+        <div className="doc-scroll" style={{ maxHeight: height }}>
+          {children(list)}
+        </div>
+      ) : (
+        <Empty>{filtering ? "ไม่พบเอกสารที่ตรงกับที่ค้นหา" : empty}</Empty>
+      )}
+    </>
+  );
+}
+
+/**
  * ปุ่มส่งออก Excel + CSV คู่กัน
  *
  * ผู้เรียกส่ง onExport มาเป็นฟังก์ชันที่รับ "ตัวบันทึกไฟล์" แล้วเรียกมันด้วย

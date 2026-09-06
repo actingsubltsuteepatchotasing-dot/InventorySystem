@@ -19,7 +19,7 @@ import { invoiceTotals, lineAmount, nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
-import { Badge, Card, Empty, QtyInput, SearchSelect, TableWrap } from "../ui";
+import { Badge, Card, DocBrowser, Empty, QtyInput, SearchSelect, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 import { ReturnBody } from "./printBodies";
 
@@ -187,7 +187,7 @@ export default function PurchaseReturn() {
   }
 
   const recent = useMemo(
-    () => (db.purchaseReturns || []).slice().sort((a, b) => b.ts - a.ts).slice(0, 12),
+    () => (db.purchaseReturns || []).slice().sort((a, b) => b.ts - a.ts),
     [db.purchaseReturns]
   );
 
@@ -413,8 +413,13 @@ export default function PurchaseReturn() {
         title="ใบส่งคืนล่าสุด"
         actions={<Badge>{(db.purchaseReturns || []).length} ใบ</Badge>}
       >
-        {recent.length ? (
-          <TableWrap>
+        <DocBrowser
+          rows={recent}
+          empty="ยังไม่มีใบส่งคืน"
+          placeholder="ค้นหาเลขที่เอกสาร เลขที่ใบซื้อ หรือชื่อเจ้าหนี้…"
+        >
+          {(list) => (
+            <TableWrap>
             <thead>
               <tr>
                 <th style={{ minWidth: 150 }}>เลขที่เอกสาร</th>
@@ -427,7 +432,7 @@ export default function PurchaseReturn() {
               </tr>
             </thead>
             <tbody>
-              {recent.map((v) => (
+              {list.map((v) => (
                 <tr key={v.id}>
                   <td className="code-cell">{v.docNo}</td>
                   <td>{thDate(v.date)}</td>
@@ -448,10 +453,9 @@ export default function PurchaseReturn() {
                 </tr>
               ))}
             </tbody>
-          </TableWrap>
-        ) : (
-          <Empty>ยังไม่มีใบส่งคืน</Empty>
-        )}
+            </TableWrap>
+          )}
+        </DocBrowser>
       </Card>
     </div>
   );

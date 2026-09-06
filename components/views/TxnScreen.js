@@ -12,7 +12,7 @@ import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import { Badge, Card, Empty, ExportPair, LocationSelect, PrintPair, ProductSelect, QtyInput, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, DocBrowser, Empty, ExportPair, LocationSelect, PrintPair, ProductSelect, QtyInput, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 export default function TxnScreen({ type }) {
@@ -208,7 +208,8 @@ export default function TxnScreen({ type }) {
   }
 
   const recent = useMemo(
-    () => db.txns.filter((t) => t.type === type).sort((a, b) => b.ts - a.ts).slice(0, 15),
+    // ไม่ตัดเหลือแค่ 15 รายการล่าสุดแล้ว DocBrowser ให้ค้นและเลื่อนดูได้ทุกรายการ
+    () => db.txns.filter((t) => t.type === type).sort((a, b) => b.ts - a.ts),
     [db.txns, type]
   );
 
@@ -503,8 +504,13 @@ export default function TxnScreen({ type }) {
           </>
         }
       >
-        {recent.length ? (
-          <TableWrap>
+        <DocBrowser
+          rows={recent}
+          empty={"ยังไม่มีรายการ" + T.name}
+          placeholder="ค้นหาเลขที่เอกสาร ชื่อสินค้า คลัง หรือผู้ทำรายการ…"
+        >
+          {(list) => (
+            <TableWrap>
             <thead>
               <tr>
                 <th>วันที่</th>
@@ -516,7 +522,7 @@ export default function TxnScreen({ type }) {
               </tr>
             </thead>
             <tbody>
-              {recent.map((t) => (
+              {list.map((t) => (
                 <tr key={t.id}>
                   <td>{thDate(t.date)}</td>
                   <td className="code-cell">{t.docNo}</td>
@@ -530,10 +536,9 @@ export default function TxnScreen({ type }) {
                 </tr>
               ))}
             </tbody>
-          </TableWrap>
-        ) : (
-          <Empty>ยังไม่มีรายการ{T.name}</Empty>
-        )}
+            </TableWrap>
+          )}
+        </DocBrowser>
       </Card>
     </div>
   );

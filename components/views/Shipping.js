@@ -42,6 +42,10 @@ export default function Shipping() {
   const scanRef = useRef(null);
   const [term, setTerm] = useState("");
   const [filter, setFilter] = useState("");
+
+  /** ช่วงวันที่เอกสาร — เว้นว่างทั้งคู่คือดูทุกวัน */
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -60,13 +64,16 @@ export default function Shipping() {
     const s = term.trim().toLowerCase();
     return invoices.filter((v) => {
       if (filter && v.shipStatus !== filter) return false;
+      // วันที่เป็นรูปแบบ YYYY-MM-DD จึงเทียบเป็นสตริงได้ตรง ๆ
+      if (from && v.date < from) return false;
+      if (to && v.date > to) return false;
       if (!s) return true;
       return [v.docNo, v.custCode, v.custName, v.custAddress]
         .join(" ")
         .toLowerCase()
         .includes(s);
     });
-  }, [invoices, term, filter]);
+  }, [invoices, term, filter, from, to]);
 
   const doc = invoices.find((v) => v.id === selected) || null;
 
@@ -327,9 +334,33 @@ export default function Shipping() {
               </option>
             ))}
           </select>
+          <label className="doc-find-date">
+            <span>ตั้งแต่</span>
+            <input
+              className="inp"
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+              aria-label="ค้นหาตั้งแต่วันที่"
+            />
+          </label>
+          <label className="doc-find-date">
+            <span>ถึง</span>
+            <input
+              className="inp"
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+              aria-label="ค้นหาถึงวันที่"
+            />
+          </label>
         </div>
 
         {rows.length ? (
+          /* เลื่อนในกรอบของตัวเอง ใบเยอะแค่ไหนก็ไม่ดันหน้าจอจนแผงล่างหาย */
+          <div className="doc-scroll" style={{ maxHeight: 460 }}>
           <TableWrap>
             <thead>
               <tr>
@@ -369,6 +400,7 @@ export default function Shipping() {
               })}
             </tbody>
           </TableWrap>
+          </div>
         ) : (
           <Empty>
             {invoices.length

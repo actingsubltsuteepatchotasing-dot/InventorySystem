@@ -28,7 +28,7 @@ import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import { Badge, Card, Empty, LocationSelect, ProductSelect, QtyInput, SearchSelect, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, DocBrowser, Empty, LocationSelect, ProductSelect, QtyInput, SearchSelect, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 import { PurchaseBody } from "./printBodies";
 
@@ -207,7 +207,7 @@ export default function PurchaseInvoice() {
   }
 
   const recent = useMemo(
-    () => (db.purchases || []).slice().sort((a, b) => b.ts - a.ts).slice(0, 12),
+    () => (db.purchases || []).slice().sort((a, b) => b.ts - a.ts),
     [db.purchases]
   );
 
@@ -512,8 +512,13 @@ export default function PurchaseInvoice() {
       </Card>
 
       <Card title="ใบซื้อล่าสุด" actions={<Badge>{(db.purchases || []).length} ใบ</Badge>}>
-        {recent.length ? (
-          <TableWrap>
+        <DocBrowser
+          rows={recent}
+          empty="ยังไม่มีใบซื้อ — กรอกตารางด้านบนแล้วกด “บันทึกและพิมพ์”"
+          placeholder="ค้นหาเลขที่เอกสาร เลขที่ใบของเจ้าหนี้ หรือชื่อเจ้าหนี้…"
+        >
+          {(list) => (
+            <TableWrap>
             <thead>
               <tr>
                 <th style={{ minWidth: 150 }}>เลขที่เอกสาร</th>
@@ -526,7 +531,7 @@ export default function PurchaseInvoice() {
               </tr>
             </thead>
             <tbody>
-              {recent.map((v) => (
+              {list.map((v) => (
                 <tr key={v.id}>
                   <td className="code-cell">{v.docNo}</td>
                   <td>{thDate(v.date)}</td>
@@ -547,10 +552,9 @@ export default function PurchaseInvoice() {
                 </tr>
               ))}
             </tbody>
-          </TableWrap>
-        ) : (
-          <Empty>ยังไม่มีใบซื้อ — กรอกตารางด้านบนแล้วกด “บันทึกและพิมพ์”</Empty>
-        )}
+            </TableWrap>
+          )}
+        </DocBrowser>
       </Card>
     </div>
   );

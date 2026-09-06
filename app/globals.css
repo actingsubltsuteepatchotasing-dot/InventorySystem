@@ -1892,3 +1892,36 @@ tr.row-active > td:first-child {
 /* ปุ่มที่เป็น label ครอบ input file — ต้องทำให้ดูเหมือนปุ่มปกติ */
 label.btn { cursor: pointer; }
 label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }
+
+/* ---------- แถบค้นหาเอกสาร + พื้นที่เลื่อนดูรายการ ---------- */
+.doc-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.doc-find > .inp:first-child { flex: 1 1 260px; min-width: 200px; }
+.doc-find-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.doc-find-date .inp { width: 152px; }
+
+/* ตารางเลื่อนในกรอบของตัวเอง ไม่ดันหน้าจอให้ยาว */
+.doc-scroll {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+}
+.doc-scroll .tbl-wrap { border: 0; border-radius: 0; overflow: visible; }
+/* หัวตารางค้างไว้ตอนเลื่อน จะได้รู้ตลอดว่าคอลัมน์ไหนเป็นอะไร */
+.doc-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
