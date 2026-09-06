@@ -14,6 +14,7 @@ import { LabelSheetBody } from "./printBodies";
 
 export default function ProductDetail({ productId, onClose, onEdit }) {
   const inv = useInv();
+  const perm = inv.perm("products");
   const { db } = inv;
   const print = usePrint();
   const p = inv.prod(productId);
@@ -61,7 +62,7 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
           >
             พิมพ์บาร์โค๊ด
           </button>
-          <button className="btn btn-p" onClick={onEdit}>
+          <button className="btn btn-p" onClick={onEdit} disabled={!perm.edit}>
             แก้ไขข้อมูล
           </button>
         </>

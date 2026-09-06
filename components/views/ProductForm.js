@@ -17,6 +17,13 @@ export default function ProductForm({ productId, onClose }) {
   const { db } = inv;
   const toast = useToast();
 
+  /*
+   * เช็คสิทธิที่ตัวฟอร์มเอง ไม่ใช่พึ่งว่าหน้าที่เปิดมันปิดปุ่มให้แล้ว
+   * ฟอร์มนี้ถูกเปิดได้จากสามทาง (ปุ่มเพิ่ม ปุ่มแก้ไขในการ์ด และจากหน้ารายละเอียด)
+   * ถ้าไปเช็คที่จุดเรียกทีละจุด วันหนึ่งเพิ่มทางที่สี่แล้วลืมเช็ค สิทธิจะรั่วโดยไม่มีใครรู้
+   */
+  const perm = inv.perm("products");
+
   const existing = productId ? inv.prod(productId) : null;
   const isNew = !existing;
 
@@ -157,7 +164,7 @@ export default function ProductForm({ productId, onClose }) {
             <button
               className="btn btn-d"
               onClick={remove}
-              disabled={busy || stockLeft > 0}
+              disabled={busy || stockLeft > 0 || !perm.edit}
               title={
                 stockLeft > 0
                   ? "ลบไม่ได้ — ยังมีสินค้าคงเหลือ " + num(stockLeft, 0) + " หน่วย"
@@ -168,7 +175,7 @@ export default function ProductForm({ productId, onClose }) {
               ลบสินค้า
             </button>
           ) : null}
-          <button className="btn btn-p" onClick={save} disabled={busy}>
+          <button className="btn btn-p" onClick={save} disabled={busy || !perm.edit}>
             {busy ? "กำลังบันทึก…" : "บันทึกข้อมูล"}
           </button>
         </>

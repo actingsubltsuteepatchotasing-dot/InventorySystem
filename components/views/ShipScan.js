@@ -166,6 +166,16 @@ export default function ShipScan() {
     [busy, invoices, inv, st, target, user]
   );
 
+  /*
+   * เก็บ scan ตัวล่าสุดไว้ใน ref ให้ลูปกล้องเรียกผ่าน ref แทนการผูกเป็น dependency
+   *
+   * ถ้าให้ effect ของกล้องขึ้นกับ scan ตรง ๆ กล้องจะถูกปิดแล้วเปิดใหม่ทุกครั้งที่ยิงหนึ่งใบ
+   * เพราะ scan เปลี่ยนตัวเมื่อ busy เปลี่ยน ซึ่งเกิดขึ้นทุกครั้งที่บันทึก
+   * ผลคือภาพดับแล้วติดใหม่ทุกใบ และบางเครื่องขอกล้องใหม่ไม่ทันจนขึ้นว่าเปิดกล้องไม่ได้
+   */
+  const scanRef = useRef(scan);
+  scanRef.current = scan;
+
   // ลูปอ่านภาพจากกล้อง — แยก effect ออกจากปุ่ม เพราะต้องปิดกล้องให้เรียบร้อยเสมอ
   useEffect(() => {
     if (!cam) return;
@@ -198,7 +208,7 @@ export default function ShipScan() {
               const dup = value === lastScan.current.value && now - lastScan.current.at < 2000;
               if (value && !dup) {
                 lastScan.current = { value, at: now };
-                await scan(value);
+                await scanRef.current(value);
               }
             }
           } catch (e) {
@@ -221,7 +231,9 @@ export default function ShipScan() {
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
     return stopRef.current;
-  }, [cam, scan]);
+    // ตั้งใจให้ขึ้นกับ cam อย่างเดียว — ตัวสแกนเรียกผ่าน ref ที่อัปเดตทุกรอบอยู่แล้ว
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cam]);
 
   // เครื่องยิงบาร์โค๊ดแบบต่อสายพิมพ์ลงช่องที่มีโฟกัสอยู่
   // ถ้าโฟกัสหลุดไปที่อื่น ตัวอักษรจะหายไปทั้งชุดโดยคนยิงไม่รู้ตัว

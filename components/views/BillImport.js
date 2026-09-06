@@ -280,7 +280,10 @@ export default function BillImport() {
           why = "ไม่มีจังหวัดปลายทาง";
         } else if (dup) {
           status = onDup === "skip" ? "skip" : "update";
-          why = onDup === "skip" ? "มีใบนี้อยู่แล้ว" : "มีอยู่แล้ว — จะอัปเดตที่อยู่และจังหวัด";
+          why =
+            onDup === "skip"
+              ? "มีใบนี้อยู่แล้ว"
+              : "มีอยู่แล้ว — จะตั้งสถานะจัดส่งใหม่ (ไม่แก้ที่อยู่หรือยอดเงินของใบเดิม)";
         }
 
         if (docNo) seen.add(docNo.toLowerCase());
@@ -628,7 +631,11 @@ export default function BillImport() {
                   onChange={setOnDup}
                   options={[
                     { value: "skip", code: "ข้าม", label: "ไม่แตะใบเดิม" },
-                    { value: "status", code: "อัปเดต", label: "ตั้งสถานะจัดส่งใหม่ตามที่เลือกด้านล่าง" },
+                    {
+                      value: "status",
+                      code: "อัปเดต",
+                      label: "ตั้งสถานะจัดส่งใหม่ตามที่เลือกด้านล่าง (ไม่แก้ที่อยู่หรือยอดเงินของใบเดิม)",
+                    },
                   ]}
                 />
               </div>
@@ -808,7 +815,9 @@ export default function BillImport() {
             </li>
             <li>
               เพิ่มใบใหม่ <b>{num(counts.new, 0)}</b> ใบ
-              {counts.update ? " · อัปเดตใบเดิม " + num(counts.update, 0) + " ใบ" : ""}
+              {counts.update
+                ? " · ตั้งสถานะจัดส่งใหม่ให้ใบเดิมอีก " + num(counts.update, 0) + " ใบ"
+                : ""}
             </li>
             {counts.skip || counts.bad ? (
               <li>

@@ -353,6 +353,14 @@ head("5. เมนู สิทธิ และการสำรองข้อ
   const screenIds = [...constants.matchAll(/\{ id: "([a-zA-Z]+)",\s+group:/g)].map((m) => m[1]);
   const permsScreen = (constants.match(/PERMS_SCREEN\s*=\s*"([^"]+)"/) || [])[1];
 
+  // เมนูที่ไม่มีบรรทัดวาดหน้าจอ = กดแล้วได้หน้าว่างโดยไม่มี error ให้เห็น
+  const rendered = [...shell.matchAll(/activeView === "(\w+)"/g)].map((m) => m[1]);
+  const noView = navIds.filter((id) => !rendered.includes(id));
+  const noNav = rendered.filter((id) => !navIds.includes(id));
+  if (noView.length) bad("เมนูที่ไม่มีบรรทัดวาดหน้าจอ: " + noView.join(", "));
+  else if (noNav.length) bad("วาดหน้าจอที่ไม่มีในเมนูแล้ว: " + noNav.join(", "));
+  else ok("ทุกหน้าจอในเมนูมีบรรทัดวาดครบ (" + rendered.length + " หน้า)");
+
   const missing = navIds.filter((id) => id !== permsScreen && !screenIds.includes(id));
   if (missing.length) bad("เมนูที่ไม่มีในตารางสิทธิ: " + missing.join(", "));
   else ok("ทุกหน้าจอในเมนูมีให้ตั้งสิทธิได้ (" + navIds.length + " หน้า)");
@@ -514,6 +522,183 @@ head("9. แท็บรายงานใช้ตัวกรองตรง�
   });
 
   if (!n) ok("ทุกแท็บใช้ตัวกรองตรงกับที่ประกาศไว้ (" + tabs.length + " แท็บ)");
+}
+
+/* ----------------------------------------------------------------- 10 */
+head("10. รายการค่าที่ฐานข้อมูลยอมรับ ตรงกับที่โค้ดประกาศไว้");
+{
+  // เพิ่มสถานะใหม่ในโค้ดแล้วลืมแก้ check constraint = บันทึกไม่ได้ตอนใช้งานจริง
+  // และ error ที่ได้เป็นข้อความของ Postgres ซึ่งอ่านแล้วไม่รู้ว่าต้องไปแก้ตรงไหน
+  const sql = read("supabase/schema.sql");
+  const constants = read("lib/constants.js");
+
+  /** ค่าใน check (col in ('A', 'B', ...)) ของ constraint ชื่อหนึ่ง */
+  const allowedOf = (constraintName) => {
+    const m = sql.match(
+      new RegExp("constraint\\s+" + constraintName + "[\\s\\S]{0,200}?in \\(([^)]*)\\)")
+    );
+    return m ? m[1].match(/'([^']+)'/g).map((x) => x.replace(/'/g, "")) : null;
+  };
+
+  /** ค่าของ id ในอาร์เรย์ค่าคงที่ชื่อหนึ่ง */
+  const idsOf = (name) => {
+    const at = constants.indexOf("export const " + name + " = [");
+    if (at < 0) return null;
+    const body = constants.slice(at, constants.indexOf("\n];", at));
+    return [...body.matchAll(/id: "(\w+)"/g)].map((m) => m[1]);
+  };
+
+  const compare = (label, allowed, want) => {
+    if (!allowed) return bad(label + " — หา check constraint ในฐานข้อมูลไม่เจอ");
+    if (!want) return bad(label + " — หาค่าคงที่ในโค้ดไม่เจอ");
+
+    const missing = want.filter((v) => !allowed.includes(v));
+    const extra = allowed.filter((v) => !want.includes(v));
+    if (missing.length) bad(label + " — ฐานข้อมูลยังไม่ยอมรับ: " + missing.join(", "));
+    else if (extra.length) bad(label + " — ฐานข้อมูลยอมรับค่าที่โค้ดไม่มีแล้ว: " + extra.join(", "));
+    else ok(label + " ตรงกัน (" + want.join(", ") + ")");
+  };
+
+  compare("สถานะการจัดส่งของใบขาย", allowedOf("invoices_ship_status"), idsOf("SHIP_STATUS"));
+  compare("สถานะในบันทึกการเดินสถานะ", allowedOf("ship_events_status"), idsOf("SHIP_STATUS"));
+  compare("วิธีชำระเงินที่ POS", allowedOf("sales_pay_method_check"), idsOf("PAY_METHODS"));
+
+  // ชนิดรายการเคลื่อนไหวประกาศเป็นอ็อบเจกต์ ไม่ใช่อาร์เรย์ จึงดึงคีย์แทน
+  const typesAt = constants.indexOf("export const TYPES = {");
+  const types = [
+    ...constants.slice(typesAt, constants.indexOf("\n};", typesAt)).matchAll(/^\s{2}(\w+):/gm),
+  ].map((m) => m[1]);
+  const txnAllowed = (sql.match(/txns_type_check[\s\S]{0,200}?in \(([^)]*)\)/) || [])[1];
+  compare(
+    "ชนิดรายการเคลื่อนไหว",
+    txnAllowed ? txnAllowed.match(/'([^']+)'/g).map((x) => x.replace(/'/g, "")) : null,
+    types
+  );
+
+  // สถานะตั้งต้นของใบใหม่ ต้องเป็นค่าเดียวกันทั้งในโค้ด ในนิยามตาราง และในฟังก์ชันสร้างใบ
+  const start = (constants.match(/SHIP_START = "(\w+)"/) || [])[1];
+  const tableDefault = (sql.match(/ship_status\s+text not null default '(\w+)'/) || [])[1];
+  const alterDefault = (sql.match(/alter column ship_status set default '(\w+)'/) || [])[1];
+  const rpcDefault = (sql.match(/coalesce\(p_inv ->> 'ship_status', '(\w+)'\)/) || [])[1];
+
+  if (start && tableDefault === start && alterDefault === start && rpcDefault === start) {
+    ok("สถานะตั้งต้นของใบใหม่ตรงกันทุกที่ (" + start + ")");
+  } else {
+    bad(
+      "สถานะตั้งต้นไม่ตรงกัน — โค้ด: " + start + " · นิยามตาราง: " + tableDefault +
+        " · ค่าตั้งต้นที่ตั้งทีหลัง: " + alterDefault + " · ฟังก์ชันสร้างใบ: " + rpcDefault
+    );
+  }
+}
+
+/* ----------------------------------------------------------------- 11 */
+head("11. ทุกคอลัมน์ในฐานข้อมูลมีตัวแปลงอ่านและเขียน");
+{
+  // ข้อ 6 ดูแค่ระดับ "ตาราง" ว่า api.js รู้จักไหม
+  // เพิ่มคอลัมน์ใหม่แล้วลืมแก้ตัวแปลง = ค่านั้นหายไปเงียบ ๆ ทั้งขาอ่านและขาบันทึก
+  const sql = read("supabase/schema.sql");
+  const api = read("lib/api.js");
+  const AUTO = new Set(["created_at"]); // ฐานข้อมูลเติมให้เอง
+
+  const tables = {};
+  for (const m of sql.matchAll(/create table if not exists public\.(\w+) \(([\s\S]*?)\n\);/g)) {
+    const cols = [];
+    m[2].split("\n").forEach((line) => {
+      const t = line.trim();
+      if (!t || t.startsWith("--") || t.startsWith("(")) return;
+      if (/^(constraint|primary key|unique|foreign key|check|or|and)\b/i.test(t)) return;
+      const name = t.split(/\s+/)[0];
+      if (/^[a-z_][a-z0-9_]*$/.test(name)) cols.push(name);
+    });
+    tables[m[1]] = cols;
+  }
+  for (const m of sql.matchAll(/alter table public\.(\w+) add column if not exists (\w+)/g)) {
+    if (tables[m[1]] && !tables[m[1]].includes(m[2])) tables[m[1]].push(m[2]);
+  }
+
+  let n = 0;
+  let cols = 0;
+  Object.keys(tables).forEach((t) => {
+    tables[t].forEach((col) => {
+      if (AUTO.has(col)) return;
+      cols++;
+      const readOk = new RegExp("\\br\\." + col + "\\b").test(api);
+      const writeOk =
+        new RegExp("(^|[\\s{,])" + col + ":").test(api) || new RegExp('"' + col + '"').test(api);
+      if (!readOk) {
+        bad(t + "." + col + " — ไม่มีตัวแปลงอ่านค่าออกมา");
+        n++;
+      } else if (!writeOk) {
+        bad(t + "." + col + " — อ่านได้แต่ไม่มีตัวแปลงเขียนกลับ");
+        n++;
+      }
+    });
+  });
+  if (!n) ok("มีตัวแปลงครบ " + cols + " คอลัมน์ ใน " + Object.keys(tables).length + " ตาราง");
+}
+
+/* ----------------------------------------------------------------- 12 */
+head("12. ค่าที่ store แจกให้หน้าจอ อยู่ใน deps ครบ");
+{
+  // ฟังก์ชันที่ไม่อยู่ใน deps จะถูกหน้าจอถือค้างไว้เป็นรุ่นเก่า
+  // แล้วเขียนทับข้อมูลด้วยค่าที่หมดอายุ ซึ่งเป็นบั๊กที่หาต้นตอยากที่สุดแบบหนึ่ง
+  const s = read("lib/store.js");
+  const at = s.indexOf("const value = useMemo(");
+  const block = s.slice(at, s.indexOf("\n  );", at));
+  const depsAt = block.lastIndexOf("[");
+  const body = block.slice(0, depsAt);
+  const deps = block
+    .slice(depsAt)
+    .replace(/[[\]\n]/g, " ")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const cbs = [...s.matchAll(/const (\w+) = useCallback\(/g)].map((m) => m[1]);
+  const used = cbs.filter((c) => new RegExp("(^|[\\s{,:])" + c + "([\\s,}]|$)").test(body));
+  const missing = used.filter((c) => !deps.includes(c));
+  const stale = deps.filter((d) => cbs.includes(d) && !used.includes(d));
+
+  if (missing.length) bad("แจกให้หน้าจอแต่ไม่อยู่ใน deps: " + missing.join(", "));
+  else if (stale.length) bad("อยู่ใน deps แต่ไม่ได้แจกออกไปแล้ว: " + stale.join(", "));
+  else ok("ครบและไม่มีของค้าง (" + used.length + " ตัว)");
+}
+
+/* ----------------------------------------------------------------- 13 */
+head("13. หน้าจอที่บันทึกข้อมูล ปิดปุ่มตามสิทธิ");
+{
+  // ตั้งสิทธิไว้แล้วปุ่มยังกดได้ อันตรายกว่าไม่มีระบบสิทธิเลย เพราะคนตั้งค่าเชื่อว่าปิดแล้ว
+  const WRITES = [
+    "addTxns", "saveProduct", "removeProduct", "saveWarehouse", "removeWarehouse",
+    "saveDocGroup", "saveCustomer", "removeCustomer", "saveCompany", "addInvoice",
+    "setInvoiceShip", "savePerms", "saveSupplier", "removeSupplier", "addPurchase",
+    "addPurchaseReturn", "addCount", "setCounted", "closeCount", "removeCount",
+    "saveLocation", "removeLocation", "savePlacement", "removePlacement", "addSale",
+    "importAll", "resetSeed", "rebuildPlacements",
+  ];
+
+  const dir = "components/views";
+  let n = 0;
+  let screens = 0;
+
+  for (const name of fs.readdirSync(path.join(ROOT, dir))) {
+    if (!name.endsWith(".js")) continue;
+    // หน้ากำหนดสิทธิเป็นข้อยกเว้นที่ตั้งใจ ถ้าปิดตัวเองได้จะล็อกคนตั้งค่าออกถาวร
+    if (name === "Permissions.js") continue;
+
+    const src = read(path.join(dir, name));
+    if (!WRITES.some((w) => new RegExp("inv\\." + w + "\\(").test(src))) continue;
+    screens++;
+
+    if (!/const perm = inv\.perm\(/.test(src)) {
+      bad(name + " บันทึกข้อมูลได้แต่ไม่ได้อ่านสิทธิของหน้าจอ");
+      n++;
+    } else if (!/!perm\.edit/.test(src)) {
+      bad(name + " อ่านสิทธิแล้วแต่ไม่มีปุ่มไหนปิดตามสิทธิเลย");
+      n++;
+    }
+  }
+  if (!n) ok("ปิดปุ่มตามสิทธิครบ (" + screens + " หน้า)");
 }
 
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));

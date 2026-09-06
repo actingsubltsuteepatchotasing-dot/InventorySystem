@@ -151,7 +151,11 @@ export default function Products() {
                     <button className="btn btn-g btn-sm" onClick={() => setViewing(p.id)}>
                       รายละเอียด
                     </button>
-                    <button className="btn btn-o btn-sm" onClick={() => setEditing({ id: p.id })}>
+                    <button
+                      className="btn btn-o btn-sm"
+                      onClick={() => setEditing({ id: p.id })}
+                      disabled={!perm.edit}
+                    >
                       แก้ไข
                     </button>
                   </div>

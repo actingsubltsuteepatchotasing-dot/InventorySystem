@@ -498,7 +498,7 @@ create table if not exists public.invoices (
   total         numeric not null default 0,
   note          text not null default '',
 
-  ship_status   text not null default 'PACKING',
+  ship_status   text not null default 'WAIT',
   ship_from     text references public.warehouses (id) on delete set null,
   ship_note     text not null default '',
   ship_ts       bigint,
@@ -657,7 +657,7 @@ begin
     (p_inv ->> 'vat')::numeric,
     (p_inv ->> 'total')::numeric,
     coalesce(p_inv ->> 'note', ''),
-    coalesce(p_inv ->> 'ship_status', 'PACKING'),
+    coalesce(p_inv ->> 'ship_status', 'WAIT'),
     nullif(p_inv ->> 'ship_from', ''),
     coalesce(p_inv ->> 'ship_note', ''),
     coalesce(p_inv ->> 'user_name', ''),

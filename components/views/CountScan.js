@@ -61,6 +61,10 @@ export default function CountScan() {
   // ถ้ามาจากการกดในรายการ ห้ามเปิดกล้องใส่ เพราะเขากำลังไล่ดูรายการอยู่
   const fromScan = useRef(false);
 
+  // ตัวรับรหัสตัวล่าสุด ให้ลูปกล้องเรียกผ่าน ref ไม่ใช่ closure ที่จับไว้ตอน effect เริ่ม
+  // ไม่งั้นถ้ารายการในใบเปลี่ยนระหว่างที่กล้องเปิดอยู่ ตัวสแกนจะยังใช้รายการชุดเก่า
+  const acceptRef = useRef(null);
+
   const codeRef = useRef(null);
   const qtyRef = useRef(null);
   const videoRef = useRef(null);
@@ -131,7 +135,7 @@ export default function CountScan() {
             if (found && found.length) {
               const value = String(found[0].rawValue || "").trim();
               if (value) {
-                accept(value);
+                acceptRef.current(value);
                 return; // เจอแล้วหยุดวน กล้องจะถูกปิดใน accept
               }
             }
@@ -157,6 +161,8 @@ export default function CountScan() {
     return stopRef.current;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cam]);
+
+  acceptRef.current = accept;
 
   function stopCam() {
     if (stopRef.current) stopRef.current();
