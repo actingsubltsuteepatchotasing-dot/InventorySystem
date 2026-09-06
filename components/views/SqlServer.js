@@ -1,10 +1,15 @@
 "use client";
 
-// หน้าจอเชื่อมต่อ SQL Server — เก็บค่าการเชื่อมต่อไว้ใช้ซ้ำ
+// หน้าจอเชื่อมต่อฐานข้อมูลภายนอก — เก็บค่าการเชื่อมต่อไว้ใช้ซ้ำ
 //
-// ต้องพูดให้ตรงตั้งแต่ต้น: เว็บที่รันในเบราว์เซอร์ต่อ SQL Server ตรง ๆ ไม่ได้
-//   SQL Server พูดโปรโตคอล TDS บนพอร์ต 1433 ซึ่งเป็น TCP ดิบ
-//   เบราว์เซอร์เปิด TCP ดิบไม่ได้ ทำได้แค่ HTTP กับ WebSocket เท่านั้น
+// รองรับสามชนิด: SQL Server · MySQL/MariaDB · Microsoft Access
+//   แต่ละชนิดต้องการค่าคนละชุด (Access เป็นไฟล์ ไม่มีเครื่องและไม่มีพอร์ต)
+//   หน้าจอจึงซ่อนช่องที่ชนิดนั้นไม่ได้ใช้ ไม่ใช่แสดงทุกช่องแล้วให้เดาเอาเองว่าต้องกรอกอันไหน
+//
+// ต้องพูดให้ตรงตั้งแต่ต้น: เว็บที่รันในเบราว์เซอร์ต่อฐานข้อมูลพวกนี้ตรง ๆ ไม่ได้สักตัว
+//   SQL Server พูด TDS บนพอร์ต 1433 · MySQL พูดโปรโตคอลของตัวเองบน 3306
+//   ทั้งคู่เป็น TCP ดิบ ซึ่งเบราว์เซอร์เปิดไม่ได้ ทำได้แค่ HTTP กับ WebSocket
+//   ส่วน Access เป็นไฟล์บนเครื่อง เว็บก็เปิดไฟล์ในเครื่องคนอื่นไม่ได้เหมือนกัน
 //   และเซิร์ฟเวอร์ที่อยู่ในวงแลนของบริษัท เครื่องบนอินเทอร์เน็ตก็ต่อเข้าไปไม่ถึงอยู่ดี
 //
 // หน้านี้จึงทำสองอย่างที่ทำได้จริงและมีประโยชน์:
@@ -27,6 +32,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { DB_KINDS, DB_KIND_DEFAULT } from "@/lib/constants";
 import { thDateTime, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { Badge, Card, Empty, TableWrap } from "../ui";
@@ -52,11 +58,16 @@ const writePw = (id, pw) => {
   }
 };
 
+/** ค่าประจำชนิดฐานข้อมูล ไม่รู้จักชนิดไหนก็ถอยไปใช้ตัวแรก */
+export const kindOf = (id) => DB_KINDS.find((k) => k.id === id) || DB_KINDS[0];
+
 const BLANK = {
   id: "",
   name: "",
+  kind: DB_KIND_DEFAULT,
   server: "",
-  port: 1433,
+  port: kindOf(DB_KIND_DEFAULT).port,
+  filePath: "",
   database: "",
   login: "",
   encrypt: true,
@@ -67,30 +78,68 @@ const BLANK = {
 };
 
 /**
- * ข้อความการเชื่อมต่อแบบมาตรฐาน เอาไปวางในโปรแกรมอื่นได้เลย
- * ไม่ใส่รหัสผ่านลงไป เพราะข้อความนี้ถูกคัดลอกไปวางในที่ที่ควบคุมไม่ได้
+ * ข้อความการเชื่อมต่อของชนิดนั้น ๆ เอาไปวางในโปรแกรมอื่นได้เลย
+ *
+ * ไม่ใส่รหัสผ่านจริงลงไป เพราะข้อความนี้ถูกคัดลอกไปวางในที่ที่เราควบคุมไม่ได้
+ * รูปแบบต่างกันตามชนิด ถ้าใช้รูปแบบเดียวกันหมดจะวางแล้วใช้ไม่ได้ทันทีทุกตัว
  */
 export function connString(c) {
-  const parts = [
-    "Server=" + (c.server || "") + (Number(c.port) && Number(c.port) !== 1433 ? "," + c.port : ""),
-    "Database=" + (c.database || ""),
-    "User Id=" + (c.login || ""),
-    "Password=********",
-    "Encrypt=" + (c.encrypt ? "True" : "False"),
-    "TrustServerCertificate=" + (c.trustCert ? "True" : "False"),
-  ];
-  return parts.join(";") + ";";
+  const k = kindOf(c.kind);
+  const port = Number(c.port) || 0;
+  // ไม่ระบุมา = เปิดเข้ารหัส ให้ตรงกับตัวแปลงข้อมูลที่อ่านค่าจากฐานข้อมูล (r.encrypt !== false)
+  // ถ้าตีความคนละอย่าง ข้อความที่คัดลอกไปจะไม่ตรงกับที่ระบบใช้จริง
+  const enc = c.encrypt !== false;
+
+  if (k.id === "access") {
+    return (
+      "Driver={" + k.driver + "};DBQ=" + (c.filePath || "") +
+      (c.login ? ";Uid=" + c.login + ";Pwd=********" : "") + ";"
+    );
+  }
+
+  if (k.id === "mysql") {
+    return (
+      "Server=" + (c.server || "") +
+      ";Port=" + (port || k.port) +
+      ";Database=" + (c.database || "") +
+      ";Uid=" + (c.login || "") +
+      ";Pwd=********" +
+      ";SslMode=" + (enc ? "Required" : "None") + ";"
+    );
+  }
+
+  return (
+    "Server=" + (c.server || "") + (port && port !== k.port ? "," + port : "") +
+    ";Database=" + (c.database || "") +
+    ";User Id=" + (c.login || "") +
+    ";Password=********" +
+    ";Encrypt=" + (enc ? "True" : "False") +
+    ";TrustServerCertificate=" + (c.trustCert ? "True" : "False") + ";"
+  );
 }
 
-/** ตรวจว่ากรอกครบพอที่จะบันทึกได้หรือยัง */
+/**
+ * ตรวจว่ากรอกครบพอที่จะบันทึกได้หรือยัง
+ *
+ * ตรวจตามชนิดที่เลือก ไม่ใช่ตรวจทุกช่องเหมือนกันหมด
+ * ไม่งั้น Access จะบันทึกไม่ได้เพราะไม่มีชื่อ Server ทั้งที่ไม่ต้องมีอยู่แล้ว
+ */
 export function problemsOf(c) {
+  const k = kindOf(c.kind);
   const out = [];
+
   if (!String(c.name || "").trim()) out.push("ชื่อการเชื่อมต่อ");
-  if (!String(c.server || "").trim()) out.push("ชื่อ Server");
-  if (!String(c.database || "").trim()) out.push("ฐานข้อมูล");
-  if (!String(c.login || "").trim()) out.push("ผู้ใช้");
-  const port = Number(c.port);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) out.push("พอร์ต (1–65535)");
+
+  if (k.needsServer) {
+    if (!String(c.server || "").trim()) out.push("ชื่อ Server");
+    if (!String(c.database || "").trim()) out.push("ฐานข้อมูล");
+    const port = Number(c.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) out.push("พอร์ต (1–65535)");
+  }
+
+  if (k.needsFile && !String(c.filePath || "").trim()) out.push("ที่อยู่ไฟล์ฐานข้อมูล");
+  if (k.needsLogin && !String(c.login || "").trim()) out.push("ผู้ใช้");
+
   return out;
 }
 
@@ -116,11 +165,24 @@ export default function SqlServer() {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const problems = problemsOf(form);
   const editing = !!form.id;
+  const kind = kindOf(form.kind);
+
+  /**
+   * เปลี่ยนชนิดฐานข้อมูล — เปลี่ยนพอร์ตให้เป็นค่ามาตรฐานของชนิดใหม่ด้วย
+   * ถ้าไม่เปลี่ยนให้ คนจะเลือก MySQL แล้วพอร์ตยังค้างเป็น 1433 ของ SQL Server
+   */
+  function setKind(id) {
+    const k = kindOf(id);
+    setForm((f) => ({ ...f, kind: id, port: k.port }));
+    setTest(null);
+  }
 
   /** ชื่อ Server ที่เคยใช้ ให้เลือกซ้ำได้โดยไม่ต้องพิมพ์ใหม่ */
   const servers = useMemo(
-    () => [...new Set(list.map((c) => c.server).filter(Boolean))].sort(),
-    [list]
+    () =>
+      [...new Set(list.filter((c) => c.kind === form.kind).map((c) => c.server).filter(Boolean))]
+        .sort(),
+    [list, form.kind]
   );
 
   function edit(c) {
@@ -148,7 +210,8 @@ export default function SqlServer() {
       id,
       name: form.name.trim(),
       server: form.server.trim(),
-      port: Number(form.port) || 1433,
+      // Access ไม่มีพอร์ต เก็บเป็น 0 ไว้ ไม่ใช่ยัดค่ามาตรฐานของชนิดอื่นลงไป
+      port: kind.needsServer ? Number(form.port) || kind.port : 0,
       database: form.database.trim(),
       login: form.login.trim(),
       bridgeUrl: form.bridgeUrl.trim(),
@@ -211,8 +274,10 @@ export default function SqlServer() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          kind: form.kind,
           server: form.server.trim(),
-          port: Number(form.port) || 1433,
+          port: kind.needsServer ? Number(form.port) || kind.port : 0,
+          filePath: form.filePath.trim(),
           database: form.database.trim(),
           user: form.login.trim(),
           password: pw,
@@ -303,6 +368,26 @@ export default function SqlServer() {
         }
       >
         <div className="form-grid">
+          <div className="field span2">
+            <label className="lbl">ชนิดฐานข้อมูล</label>
+            <div className="cs-tabs" style={{ marginBottom: 0 }}>
+              {DB_KINDS.map((k) => (
+                <button
+                  key={k.id}
+                  className={"cs-tab" + (form.kind === k.id ? " on" : "")}
+                  onClick={() => setKind(k.id)}
+                  disabled={!perm.edit}
+                >
+                  {k.name}
+                </button>
+              ))}
+            </div>
+            <span className="hint">
+              เลือกชนิดก่อน ช่องที่ต้องกรอกจะเปลี่ยนตาม · ตัวขับที่ตัวเชื่อมต้องใช้:{" "}
+              <b>{kind.driver}</b>
+            </span>
+          </div>
+
           <div className="field">
             <label className="lbl" htmlFor="sq_name">ชื่อการเชื่อมต่อ *</label>
             <input
@@ -315,6 +400,24 @@ export default function SqlServer() {
             <span className="hint">ตั้งชื่อให้รู้ว่าต่อไปที่ไหน ใช้แยกเวลามีหลายชุด</span>
           </div>
 
+          {kind.needsFile ? (
+            <div className="field span2">
+              <label className="lbl" htmlFor="sq_file">ที่อยู่ไฟล์ฐานข้อมูล *</label>
+              <input
+                className="inp"
+                id="sq_file"
+                value={form.filePath}
+                onChange={(e) => set("filePath", e.target.value)}
+                placeholder="เช่น C:\\ERP\\data\\accounting.accdb หรือ \\\\SRV01\\share\\erp.mdb"
+              />
+              <span className="hint">
+                เป็นที่อยู่บน <b>เครื่องที่รันตัวเชื่อม</b> ไม่ใช่เครื่องที่เปิดหน้านี้
+                · ไฟล์บนแชร์ต้องให้ผู้ใช้ที่รันตัวเชื่อมเข้าถึงได้
+              </span>
+            </div>
+          ) : null}
+
+          {kind.needsServer ? (
           <div className="field">
             <label className="lbl" htmlFor="sq_server">ชื่อ Server *</label>
             {/* datalist ให้เลือกจากที่เคยใช้ได้ และพิมพ์ชื่อใหม่เองก็ได้ */}
@@ -331,11 +434,11 @@ export default function SqlServer() {
                 <option key={s} value={s} />
               ))}
             </datalist>
-            <span className="hint">
-              ใส่ชื่อเครื่อง ไอพี หรือ ชื่อเครื่อง\ชื่ออินสแตนซ์ · เลือกจากที่เคยใช้ได้
-            </span>
+            <span className="hint">{kind.serverHint} · เลือกจากที่เคยใช้ได้</span>
           </div>
+          ) : null}
 
+          {kind.needsServer ? (
           <div className="field">
             <label className="lbl" htmlFor="sq_port">พอร์ต</label>
             <input
@@ -347,9 +450,11 @@ export default function SqlServer() {
               value={form.port}
               onChange={(e) => set("port", e.target.value)}
             />
-            <span className="hint">ค่ามาตรฐานของ SQL Server คือ 1433</span>
+            <span className="hint">ค่ามาตรฐานของ {kind.name} คือ {kind.port}</span>
           </div>
+          ) : null}
 
+          {kind.needsServer ? (
           <div className="field">
             <label className="lbl" htmlFor="sq_db">ฐานข้อมูล *</label>
             <input
@@ -360,18 +465,25 @@ export default function SqlServer() {
               placeholder="เช่น ERPDB"
             />
           </div>
+          ) : null}
 
           <div className="field">
-            <label className="lbl" htmlFor="sq_login">ผู้ใช้ *</label>
+            <label className="lbl" htmlFor="sq_login">
+              ผู้ใช้{kind.needsLogin ? " *" : " (ถ้ามี)"}
+            </label>
             <input
               className="inp"
               id="sq_login"
               autoComplete="off"
               value={form.login}
               onChange={(e) => set("login", e.target.value)}
-              placeholder="เช่น sa หรือ erp_reader"
+              placeholder={kind.id === "mysql" ? "เช่น root หรือ erp_reader" : "เช่น sa หรือ erp_reader"}
             />
-            <span className="hint">ควรใช้ผู้ใช้ที่มีสิทธิเท่าที่จำเป็น ไม่ใช้ sa ถ้าเลี่ยงได้</span>
+            <span className="hint">
+              {kind.needsLogin
+                ? "ควรใช้ผู้ใช้ที่มีสิทธิเท่าที่จำเป็น ไม่ใช้บัญชีผู้ดูแลถ้าเลี่ยงได้"
+                : "ไฟล์ Access ส่วนใหญ่ไม่มีผู้ใช้ ปล่อยว่างไว้ได้ ใส่เมื่อไฟล์ตั้งรหัสไว้"}
+            </span>
           </div>
 
           <div className="field">
@@ -415,6 +527,7 @@ export default function SqlServer() {
             </span>
           </div>
 
+          {kind.needsServer ? (
           <div className="field">
             <label className="lbl">ตัวเลือกการเชื่อมต่อ</label>
             <label className="chk-line" htmlFor="sq_enc">
@@ -425,7 +538,9 @@ export default function SqlServer() {
                 checked={form.encrypt}
                 onChange={(e) => set("encrypt", e.target.checked)}
               />
-              <span>เข้ารหัสการเชื่อมต่อ (Encrypt)</span>
+              <span>
+                {kind.id === "mysql" ? "ใช้ SSL (SslMode=Required)" : "เข้ารหัสการเชื่อมต่อ (Encrypt)"}
+              </span>
             </label>
             <label className="chk-line" htmlFor="sq_trust" style={{ marginTop: 6 }}>
               <input
@@ -441,6 +556,7 @@ export default function SqlServer() {
               เซิร์ฟเวอร์ในวงแลนส่วนใหญ่ใช้ใบรับรองที่ออกเอง ถ้าต่อไม่ติดให้ลองติ๊กข้อล่าง
             </span>
           </div>
+          ) : null}
 
           <div className="field">
             <label className="lbl" htmlFor="sq_default">ค่าเริ่มต้น</label>
@@ -514,7 +630,8 @@ export default function SqlServer() {
             <thead>
               <tr>
                 <th style={{ minWidth: 160 }}>ชื่อการเชื่อมต่อ</th>
-                <th style={{ minWidth: 170 }}>Server</th>
+                <th style={{ minWidth: 120 }}>ชนิด</th>
+                <th style={{ minWidth: 190 }}>ปลายทาง</th>
                 <th style={{ minWidth: 130 }}>ฐานข้อมูล</th>
                 <th style={{ minWidth: 110 }}>ผู้ใช้</th>
                 <th style={{ minWidth: 140 }}>รหัสผ่าน</th>
@@ -537,9 +654,11 @@ export default function SqlServer() {
                         </>
                       ) : null}
                     </td>
+                    <td>{kindOf(c.kind).name}</td>
                     <td className="code-cell">
-                      {c.server}
-                      {c.port !== 1433 ? ":" + c.port : ""}
+                      {kindOf(c.kind).needsFile
+                        ? c.filePath || "—"
+                        : c.server + (c.port && c.port !== kindOf(c.kind).port ? ":" + c.port : "")}
                     </td>
                     <td>{c.database || "—"}</td>
                     <td>{c.login || "—"}</td>
@@ -579,8 +698,10 @@ export default function SqlServer() {
 
       <Card title="ทำไมต้องมีตัวเชื่อม และทำอย่างไร">
         <p className="muted" style={{ marginTop: 0 }}>
-          เว็บที่รันในเบราว์เซอร์ต่อ SQL Server ตรง ๆ ไม่ได้ เพราะ SQL Server พูดโปรโตคอล
-          TDS บนพอร์ต 1433 ซึ่งเป็น TCP ดิบ ส่วนเบราว์เซอร์เปิดได้แค่ HTTP กับ WebSocket
+          เว็บที่รันในเบราว์เซอร์ต่อฐานข้อมูลพวกนี้ตรง ๆ ไม่ได้สักตัว —
+          SQL Server พูด TDS บนพอร์ต 1433 · MySQL พูดโปรโตคอลของตัวเองบน 3306
+          ทั้งคู่เป็น TCP ดิบซึ่งเบราว์เซอร์เปิดไม่ได้ ทำได้แค่ HTTP กับ WebSocket
+          ส่วน Access เป็นไฟล์บนเครื่อง เว็บก็เปิดไฟล์ในเครื่องคนอื่นไม่ได้เหมือนกัน
           และเซิร์ฟเวอร์ที่อยู่ในวงแลนของบริษัท เครื่องบนอินเทอร์เน็ตก็ต่อเข้าไปไม่ถึงอยู่ดี
         </p>
         <p className="muted">
@@ -591,7 +712,8 @@ export default function SqlServer() {
 
         <ul className="note-list">
           <li>
-            รับ <b>POST</b> เป็น JSON: <code>server</code>, <code>port</code>,{" "}
+            รับ <b>POST</b> เป็น JSON: <code>kind</code> (mssql / mysql / access),{" "}
+            <code>server</code>, <code>port</code>, <code>filePath</code>,{" "}
             <code>database</code>, <code>user</code>, <code>password</code>,{" "}
             <code>encrypt</code>, <code>trustServerCertificate</code>
           </li>
@@ -607,6 +729,10 @@ export default function SqlServer() {
           </li>
           <li>
             ควรให้ตัวเชื่อมเป็น <b>https</b> เพราะรหัสผ่านถูกส่งไปในคำขอ
+          </li>
+          <li>
+            ตัวขับที่ตัวเชื่อมต้องมี:{" "}
+            {DB_KINDS.map((k) => k.name + " → " + k.driver).join(" · ")}
           </li>
         </ul>
 

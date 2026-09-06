@@ -11,10 +11,11 @@
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
---   4. GRANT สิทธิ์ระดับตารางให้ role authenticated
---   5. เปิด RLS และสร้าง policy ครบทุกตาราง
---   6. สั่ง PostgREST รีเฟรช schema cache
---   7. แสดงตารางสรุปผลว่าครบหรือไม่
+--   4. เพิ่มเลขลำดับแถว (row_order) ให้ทุกตาราง พร้อมเติมเลขให้แถวเดิม
+--   5. GRANT สิทธิ์ระดับตารางให้ role authenticated
+--   6. เปิด RLS และสร้าง policy ครบทุกตาราง
+--   7. สั่ง PostgREST รีเฟรช schema cache
+--   8. แสดงตารางสรุปผลว่าครบหรือไม่
 --
 -- รันซ้ำกี่ครั้งก็ได้ ปลอดภัย ไม่ลบข้อมูลเดิม
 -- ============================================================================
@@ -1256,8 +1257,11 @@ $cnt_loc$;
 create table if not exists public.sql_connections (
   id          text primary key,
   name        text not null,
-  server      text not null,
+  -- ชนิดฐานข้อมูล: SQL Server / MySQL / Access — แต่ละชนิดใช้ค่าคนละชุด
+  kind        text not null default 'mssql',
+  server      text not null default '',
   port        integer not null default 1433,
+  file_path   text not null default '',
   db_name     text not null default '',
   login       text not null default '',
   password    text,
@@ -1270,10 +1274,29 @@ create table if not exists public.sql_connections (
   ts          bigint not null,
   created_at  timestamptz not null default now(),
 
-  constraint sql_connections_port check (port between 1 and 65535)
+  -- Access เป็นไฟล์ ไม่มีพอร์ต จึงยอมให้เป็น 0 ได้
+  constraint sql_connections_port check (port between 0 and 65535)
 );
 
 create unique index if not exists sql_connections_name_key on public.sql_connections (lower(name));
+
+-- ฐานข้อมูลเดิมที่สร้างไว้ก่อนรองรับหลายชนิด ต้องเพิ่มคอลัมน์และผ่อนกติกาให้
+do $sql_kind$
+begin
+  alter table public.sql_connections add column if not exists kind text not null default 'mssql';
+  alter table public.sql_connections add column if not exists file_path text not null default '';
+  alter table public.sql_connections alter column server set default '';
+  alter table public.sql_connections alter column server drop not null;
+
+  alter table public.sql_connections drop constraint if exists sql_connections_port;
+  alter table public.sql_connections add constraint sql_connections_port
+    check (port between 0 and 65535);
+
+  alter table public.sql_connections drop constraint if exists sql_connections_kind;
+  alter table public.sql_connections add constraint sql_connections_kind
+    check (kind in ('mssql', 'mysql', 'access'));
+end
+$sql_kind$;
 
 -- ============================================================================
 -- สิทธิการใช้งานหน้าจอ
@@ -1290,6 +1313,68 @@ create table if not exists public.screen_perms (
   can_date   boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+-- ============================================================================
+-- เลขลำดับแถว (row_order) — ทุกตารางในระบบต้องมี
+-- ----------------------------------------------------------------------------
+-- เลขรันนิ่งต่อเนื่องประจำตาราง ฐานข้อมูลออกให้เองตอน insert ไม่ต้องส่งมาจากฝั่งแอป
+--
+-- ทำไมต้องมี:
+--   id ของระบบนี้เป็นข้อความสุ่ม (uid) ซึ่งเรียงลำดับไม่ได้และอ่านไม่รู้เรื่อง
+--   ส่วน created_at เป็นเวลา ซึ่งซ้ำกันได้เมื่อบันทึกพร้อมกันในวินาทีเดียว
+--   row_order ให้ "ลำดับที่แน่นอน" ของทุกแถว ใช้เรียง ใช้อ้างอิง และใช้ไล่ดูว่าเข้ามาก่อนหลัง
+--
+-- ทำไมใช้ sequence ไม่ใช่นับเองในแอป:
+--   ฐานข้อมูลใช้ร่วมกันหลายเครื่อง ถ้าให้แอปนับเองแล้วสองเครื่องอ่านเลขเดียวกัน
+--   จะได้เลขซ้ำ sequence ของฐานข้อมูลรับประกันว่าไม่ซ้ำแม้เขียนพร้อมกัน
+--
+-- หมายเหตุ: sequence ไม่รับประกันว่าเลข "ติดกันไม่ขาด" — transaction ที่ถูกยกเลิก
+--   จะกินเลขไปหนึ่งตัว เลขจึงอาจกระโดด แต่ยังเรียงจากน้อยไปมากตามลำดับที่เข้ามาเสมอ
+--   ซึ่งเป็นสิ่งที่ต้องการจริง ๆ ถ้าต้องการเลขที่ห้ามขาดต้องใช้เลขที่เอกสาร (doc_no) แทน
+do $row_order$
+declare
+  t   text;
+  seq text;
+  hi  bigint;
+begin
+  foreach t in array array[
+    'warehouses', 'products', 'txns',
+    'locations', 'product_locations', 'sales', 'sale_items',
+    'doc_groups', 'customers', 'company', 'invoices', 'invoice_items',
+    'screen_perms', 'suppliers', 'purchases', 'purchase_items',
+    'purchase_returns', 'purchase_return_items',
+    'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections'
+  ]
+  loop
+    seq := 'public.' || t || '_row_order_seq';
+
+    execute format('alter table public.%I add column if not exists row_order bigint', t);
+    execute format('create sequence if not exists %s owned by public.%I.row_order', seq, t);
+
+    -- เติมเลขให้แถวเก่าที่ยังไม่มี เรียงตามเวลาที่สร้างจริง ไม่ใช่ตามลำดับที่ฐานข้อมูลคืนมา
+    -- (UPDATE เฉย ๆ ไม่รับประกันลำดับ แถวเก่าจะได้เลขสลับกันมั่ว)
+    execute format(
+      'with ordered as (
+         select id, row_number() over (order by created_at, id) as n
+         from public.%I where row_order is null
+       )
+       update public.%I t set row_order = o.n from ordered o where t.id = o.id',
+      t, t
+    );
+
+    -- ดันตัวนับให้เลยเลขสูงสุดที่มีอยู่ ไม่งั้นแถวใหม่จะได้เลขซ้ำกับแถวเก่า
+    execute format('select coalesce(max(row_order), 0) from public.%I', t) into hi;
+    perform setval(seq, greatest(hi, 1), hi > 0);
+
+    execute format('alter table public.%I alter column row_order set default nextval(%L)', t, seq);
+    execute format(
+      'create index if not exists %I on public.%I (row_order)', t || '_row_order_idx', t
+    );
+  end loop;
+
+  raise notice 'เพิ่มเลขลำดับแถว (row_order) ครบทุกตารางแล้ว';
+end
+$row_order$;
 
 -- ------------------------------------------------------------ สิทธิ์ระดับตาราง
 -- สำคัญ: การเข้าถึงตารางต้องผ่าน 2 ด่าน

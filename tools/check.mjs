@@ -599,6 +599,9 @@ head("11. ทุกคอลัมน์ในฐานข้อมูลมี�
   const sql = read("supabase/schema.sql");
   const api = read("lib/api.js");
   const AUTO = new Set(["created_at"]); // ฐานข้อมูลเติมให้เอง
+  // คอลัมน์ที่ฐานข้อมูลออกให้ตอน insert — อ่านได้ แต่ไม่ต้องมีตัวแปลงเขียนกลับ
+  // ถ้าส่งกลับไปด้วยจะทับเลขที่ sequence ออกให้ ซึ่งทำให้เลขซ้ำได้
+  const READ_ONLY = new Set(["row_order"]);
 
   const tables = {};
   for (const m of sql.matchAll(/create table if not exists public\.(\w+) \(([\s\S]*?)\n\);/g)) {
@@ -628,13 +631,20 @@ head("11. ทุกคอลัมน์ในฐานข้อมูลมี�
       if (!readOk) {
         bad(t + "." + col + " — ไม่มีตัวแปลงอ่านค่าออกมา");
         n++;
-      } else if (!writeOk) {
+      } else if (!writeOk && !READ_ONLY.has(col)) {
         bad(t + "." + col + " — อ่านได้แต่ไม่มีตัวแปลงเขียนกลับ");
         n++;
       }
     });
   });
   if (!n) ok("มีตัวแปลงครบ " + cols + " คอลัมน์ ใน " + Object.keys(tables).length + " ตาราง");
+
+  // ตารางใหม่ที่ลืมใส่ในลูป row_order = ตารางนั้นไม่มีเลขลำดับแถว ทั้งที่ที่เหลือมีหมด
+  const roAt = sql.indexOf("do $row_order$");
+  const roBlock = sql.slice(roAt, sql.indexOf("$row_order$;", roAt));
+  const noRowOrder = Object.keys(tables).filter((t) => !roBlock.includes("'" + t + "'"));
+  if (noRowOrder.length) bad("ตารางที่ยังไม่มีเลขลำดับแถว: " + noRowOrder.join(", "));
+  else ok("ทุกตารางมีเลขลำดับแถว (row_order) ครบ " + Object.keys(tables).length + " ตาราง");
 }
 
 /* ----------------------------------------------------------------- 12 */
