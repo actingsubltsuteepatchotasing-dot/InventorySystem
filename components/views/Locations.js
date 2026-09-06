@@ -11,16 +11,7 @@ import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcBox, IcPin, IcPlus, IcTrash } from "../Icons";
 import Modal from "../Modal";
-import {
-  Badge,
-  Card,
-  Empty,
-  LocationSelect,
-  ProductSelect,
-  QtyInput,
-  TableWrap,
-  WarehouseSelect,
-} from "../ui";
+import { Badge, Card, Empty, LocationSelect, PrintPair, ProductSelect, QtyInput, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const kindOf = (id) => LOCATION_KINDS.find((k) => k.id === id) || LOCATION_KINDS[0];
@@ -172,9 +163,12 @@ export default function Locations() {
               <IcPlus size={15} />
               เพิ่มช่องเก็บ
             </button>
-            <button className="btn btn-g btn-sm" onClick={printLayout} disabled={!bins.length}>
-              พิมพ์ผัง
-            </button>
+            <PrintPair
+              onPrint={printLayout}
+              disabled={!bins.length}
+              toast={toast}
+              label="พิมพ์ผัง"
+            />
             <button
               className="btn btn-o btn-sm"
               onClick={repairLayout}

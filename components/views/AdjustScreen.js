@@ -11,16 +11,7 @@ import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import {
-  Badge,
-  Card,
-  Empty,
-  LocationSelect,
-  ProductSelect,
-  QtyInput,
-  TableWrap,
-  WarehouseSelect,
-} from "../ui";
+import { Badge, Card, Empty, LocationSelect, PrintPair, ProductSelect, QtyInput, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 import { CountSheetBody } from "./printBodies";
 
@@ -434,8 +425,8 @@ export default function AdjustScreen() {
         title="รายงานการปรับปรุงล่าสุด"
         actions={
           <>
-            <button className="btn btn-o btn-sm" onClick={printAdjustReport}>พิมพ์รายงาน</button>
-            <button className="btn btn-g btn-sm" onClick={printSheet}>พิมพ์ใบตรวจนับ</button>
+            <PrintPair onPrint={printAdjustReport} toast={toast} label="พิมพ์รายงาน" />
+            <PrintPair onPrint={printSheet} toast={toast} label="พิมพ์ใบตรวจนับ" />
           </>
         }
       >

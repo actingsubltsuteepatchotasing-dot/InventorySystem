@@ -21,7 +21,7 @@ import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcTrash } from "../Icons";
-import { Badge, Card, Empty, QtyInput, TableWrap, WarehouseSelect } from "../ui";
+import { Badge, Card, Empty, ExportPair, PrintPair, QtyInput, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 export default function StockCount() {
@@ -245,9 +245,8 @@ export default function StockCount() {
     });
   }
 
-  function exportCSV() {
-    if (!rows.length) return toast("ยังไม่มีรายการในใบตรวจนับ", "warn");
-    downloadCSV(
+  function exportFile(save) {
+    save(
       ["วันที่", "คลังสินค้า", "ที่เก็บ", "รหัสสินค้า", "ชื่อสินค้า", "หน่วย",
         "ยอดในระบบ", "นับได้จริง", "ผลต่าง", "ผู้ตรวจนับที่ 1", "ผู้ตรวจนับที่ 2"],
       rows.map((r) => {
@@ -262,7 +261,6 @@ export default function StockCount() {
       }),
       "ใบตรวจนับสินค้า.csv"
     );
-    toast("ส่งออกไฟล์ CSV แล้ว");
   }
 
   if (!inv.locationsReady) {
@@ -281,8 +279,8 @@ export default function StockCount() {
             <Badge kind={diffRows.length ? "warn" : "ok"}>
               ผลต่าง {diffRows.length} รายการ
             </Badge>
-            <button className="btn btn-o btn-sm" onClick={printSheet}>พิมพ์ใบตรวจนับ</button>
-            <button className="btn btn-g btn-sm" onClick={exportCSV}>ส่งออก CSV</button>
+            <PrintPair onPrint={printSheet} toast={toast} label="พิมพ์ใบตรวจนับ" />
+            <ExportPair onExport={exportFile} disabled={!rows.length} toast={toast} />
             <button
               className="btn btn-p btn-sm"
               onClick={saveAdjust}

@@ -10,7 +10,7 @@ import { localISO, num, thDate, todayISO } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
-import { Badge, Card, Empty, ProductSelect, TableWrap, WhLocFields } from "../ui";
+import { Badge, Card, Empty, ExportPair, PrintPair, ProductSelect, TableWrap, WhLocFields } from "../ui";
 import { PAY_METHODS } from "@/lib/constants";
 import { CountSheetBody, ReceiptBody } from "./printBodies";
 
@@ -159,23 +159,16 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
     <Card
       title="บิลขาย / ใบเสร็จรับเงิน"
       actions={
-        <button
-          className="btn btn-g btn-sm"
-          onClick={() => {
-            if (!bills.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
-            downloadCSV(
-              ["วันที่", "เลขที่บิล", "คลัง", "ลูกค้า", "ยอดรวม", "ส่วนลด", "VAT", "ยอดสุทธิ", "วิธีชำระ", "ผู้ขาย"],
+        <ExportPair
+          disabled={!bills.length}
+          toast={toast}
+          onExport={(save) => save(["วันที่", "เลขที่บิล", "คลัง", "ลูกค้า", "ยอดรวม", "ส่วนลด", "VAT", "ยอดสุทธิ", "วิธีชำระ", "ผู้ขาย"],
               bills.map((b) => [
                 b.date, b.docNo, inv.whLocName(b.whId, b.locId), b.customer || "ลูกค้าทั่วไป",
                 b.subtotal, b.discount, b.vat, b.total, payName(b.payMethod), b.user,
               ]),
-              "บิลขาย.csv"
-            );
-            toast("ส่งออกไฟล์ CSV แล้ว");
-          }}
-        >
-          ส่งออก CSV
-        </button>
+              "บิลขาย.csv")}
+        />
       }
     >
       {FilterBar}
@@ -217,18 +210,16 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
                   <td>{payName(b.payMethod)}</td>
                   <td style={{ fontSize: 12.5 }}>{b.user}</td>
                   <td>
-                    <button
-                      className="btn btn-o btn-sm"
-                      onClick={() =>
+                    <PrintPair
+                      onPrint={() =>
                         print({
                           receipt: true,
                           title: "ใบเสร็จรับเงิน",
                           body: <ReceiptBody inv={inv} sale={b} items={items} />,
-                        })
-                      }
-                    >
-                      พิมพ์ใบเสร็จ
-                    </button>
+                        })}
+                      toast={toast}
+                      label="พิมพ์ใบเสร็จ"
+                    />
                   </td>
                 </tr>
               );
@@ -274,9 +265,8 @@ function StockReport({ inv, db, filter, FilterBar, print, toast }) {
       title="สรุปยอดคงเหลือ"
       actions={
         <>
-          <button
-            className="btn btn-o btn-sm"
-            onClick={() =>
+          <PrintPair
+            onPrint={() =>
               print({
                 title: "รายงานสรุปยอดคงเหลือ",
                 subtitle:
@@ -315,24 +305,17 @@ function StockReport({ inv, db, filter, FilterBar, print, toast }) {
                     </tfoot>
                   </table>
                 ),
-              })
-            }
-          >
-            พิมพ์
-          </button>
-          <button
-            className="btn btn-g btn-sm"
-            onClick={() => {
-              downloadCSV(
-                ["รหัส", "รายการสินค้า", "หมวดหมู่", "หน่วย", "คงเหลือ", "จุดสั่งซื้อ", "มูลค่า"],
+              })}
+            toast={toast}
+            label="พิมพ์"
+          />
+          <ExportPair
+            disabled={!rows.length}
+            toast={toast}
+            onExport={(save) => save(["รหัส", "รายการสินค้า", "หมวดหมู่", "หน่วย", "คงเหลือ", "จุดสั่งซื้อ", "มูลค่า"],
                 rows.map((r) => [r.p.code, r.p.name, r.p.cat, r.p.unit, r.q, r.p.min, r.v]),
-                "สรุปยอดคงเหลือ.csv"
-              );
-              toast("ส่งออกไฟล์ CSV แล้ว");
-            }}
-          >
-            ส่งออก CSV
-          </button>
+                "สรุปยอดคงเหลือ.csv")}
+          />
         </>
       }
     >
@@ -393,19 +376,17 @@ function CountReport({ inv, db, filter, FilterBar, print }) {
     <Card
       title="ใบตรวจนับสินค้าคงคลัง"
       actions={
-        <button
-          className="btn btn-p btn-sm"
-          onClick={() =>
+        <PrintPair
+          onPrint={() =>
             print({
               title: "ใบตรวจนับสินค้าคงคลัง",
               subtitle:
                 (w ? w.name + " · จังหวัด" + w.province : "ทุกคลัง") + " · ณ วันที่ " + thDate(todayISO()),
               body: <CountSheetBody db={db} inv={inv} whId={whId} />,
-            })
-          }
-        >
-          พิมพ์ใบตรวจนับ
-        </button>
+            })}
+          toast={toast}
+          label="พิมพ์ใบตรวจนับ"
+        />
       }
     >
       {FilterBar}
@@ -482,9 +463,8 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
       title="บัตรสินค้า (Stock Card)"
       actions={
         <>
-          <button
-            className="btn btn-o btn-sm"
-            onClick={() =>
+          <PrintPair
+            onPrint={() =>
               print({
                 title: "บัตรสินค้า (Stock Card)",
                 subtitle:
@@ -531,27 +511,20 @@ function StockCard({ inv, db, filter, FilterBar, print, toast }) {
                     </tbody>
                   </table>
                 ),
-              })
-            }
-          >
-            พิมพ์
-          </button>
-          <button
-            className="btn btn-g btn-sm"
-            onClick={() => {
-              downloadCSV(
-                ["วันที่", "เลขที่เอกสาร", "ประเภท", "คลัง", "รับ", "จ่าย", "คงเหลือ"],
+              })}
+            toast={toast}
+            label="พิมพ์"
+          />
+          <ExportPair
+            disabled={!rows.length}
+            toast={toast}
+            onExport={(save) => save(["วันที่", "เลขที่เอกสาร", "ประเภท", "คลัง", "รับ", "จ่าย", "คงเหลือ"],
                 rows.map((r) => [
                   r.t.date, r.t.docNo, TYPES[r.t.type].name, inv.whLocName(r.t.whId, r.t.locId),
                   r.mv > 0 ? r.mv : "", r.mv < 0 ? -r.mv : "", r.bal,
                 ]),
-                "บัตรสินค้า.csv"
-              );
-              toast("ส่งออกไฟล์ CSV แล้ว");
-            }}
-          >
-            ส่งออก CSV
-          </button>
+                "บัตรสินค้า.csv")}
+          />
         </>
       }
     >
@@ -637,9 +610,8 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
       title={type === "ADJUST" ? "รายงานการปรับปรุงสินค้า" : "รายงาน" + T.name}
       actions={
         <>
-          <button
-            className="btn btn-o btn-sm"
-            onClick={() => {
+          <PrintPair
+            onPrint={() => {
               if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
               print({
                 title: "รายงาน" + T.name,
@@ -695,15 +667,13 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
                 ),
               });
             }}
-          >
-            พิมพ์
-          </button>
-          <button
-            className="btn btn-g btn-sm"
-            onClick={() => {
-              if (!list.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
-              downloadCSV(
-                ["วันที่", "เลขที่เอกสาร", "รหัสสินค้า", "รายการสินค้า", "หน่วย", "คลัง", "ที่เก็บ",
+            toast={toast}
+            label="พิมพ์"
+          />
+          <ExportPair
+            disabled={!list.length}
+            toast={toast}
+            onExport={(save) => save(["วันที่", "เลขที่เอกสาร", "รหัสสินค้า", "รายการสินค้า", "หน่วย", "คลัง", "ที่เก็บ",
                   "คลังปลายทาง", "ที่เก็บปลายทาง", "จำนวน", "ผู้ทำรายการ", "หมายเหตุ"],
                 list.map((t) => {
                   const p = inv.prod(t.productId);
@@ -712,13 +682,8 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
                     t.whTo ? inv.whName(t.whTo) : "", t.locTo ? inv.locName(t.locTo) : "",
                     t.qty, t.user, t.note || t.ref || ""];
                 }),
-                "รายงาน" + T.name + ".csv"
-              );
-              toast("ส่งออกไฟล์ CSV แล้ว");
-            }}
-          >
-            ส่งออก CSV
-          </button>
+                "รายงาน" + T.name + ".csv")}
+          />
         </>
       }
     >
@@ -881,9 +846,8 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
     });
   }
 
-  function exportCSV() {
-    if (!list.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
-    downloadCSV(
+  function exportFile(save) {
+    save(
       ["วันที่", "เลขที่เอกสาร", "รหัส" + cfg.party, "ชื่อ" + cfg.party,
         "รวมเงิน", "ส่วนลดท้ายบิล", "ก่อนภาษี", "อัตราภาษี", "ภาษี", "สุทธิ", "ผู้บันทึก"],
       list.map((v) => [
@@ -892,7 +856,6 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
       ]),
       "รายงาน" + cfg.name + ".csv"
     );
-    toast("ส่งออกไฟล์ CSV แล้ว");
   }
 
   return (
@@ -902,8 +865,8 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
         <>
           <Badge kind="info">{list.length} ใบ</Badge>
           <Badge>สุทธิ ฿{num(sum("total"), 2)}</Badge>
-          <button className="btn btn-o btn-sm" onClick={printReport}>พิมพ์</button>
-          <button className="btn btn-g btn-sm" onClick={exportCSV}>ส่งออก CSV</button>
+          <PrintPair onPrint={printReport} toast={toast} label="พิมพ์" />
+          <ExportPair onExport={exportFile} disabled={!list.length} toast={toast} />
         </>
       }
     >

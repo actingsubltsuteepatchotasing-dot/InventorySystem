@@ -23,7 +23,7 @@ import { geocodeAddress, roadDistance } from "@/lib/geo";
 import { useToast } from "../Toast";
 import { IcPin, IcReport } from "../Icons";
 import Modal from "../Modal";
-import { Badge, Card, Empty, TableWrap } from "../ui";
+import { Badge, Card, Empty, SearchSelect, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const statusOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
@@ -398,20 +398,20 @@ export default function Shipping() {
             <div className="form-grid" style={{ marginBottom: 12 }}>
               <div className="field span2">
                 <label className="lbl" htmlFor="sp_from">ต้นทางที่ส่งออก</label>
-                <select
-                  className="sel"
+                <SearchSelect
                   id="sp_from"
                   value={doc.shipFrom || ""}
-                  onChange={(e) => setOrigin(e.target.value)}
+                  onChange={setOrigin}
                   disabled={busy || !perm.edit}
-                >
-                  <option value="">— ยังไม่ระบุต้นทาง —</option>
-                  {db.warehouses.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} · จังหวัด{w.province}
-                    </option>
-                  ))}
-                </select>
+                  options={db.warehouses.map((w) => ({
+                    value: w.id,
+                    code: w.code,
+                    label: w.name,
+                    meta: w.province,
+                  }))}
+                  emptyLabel="— ยังไม่ระบุต้นทาง —"
+                  notFound="ไม่พบคลังที่ตรงกับ"
+                />
               </div>
             </div>
 

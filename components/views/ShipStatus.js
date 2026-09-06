@@ -18,7 +18,7 @@ import { SHIP_STATUS } from "@/lib/constants";
 import { num, thDate, thDateTime, todayISO } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
-import { Badge, Card, Empty, TableWrap } from "../ui";
+import { Badge, Card, Empty, ExportPair, SearchSelect, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const statusOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
@@ -252,9 +252,8 @@ export default function ShipStatus() {
     if (scanRef.current) scanRef.current.focus();
   }
 
-  function exportCSV() {
-    if (!rows.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
-    downloadCSV(
+  function exportFile(save) {
+    save(
       ["เลขที่เอกสาร", "วันที่เอกสาร", "รหัสลูกค้า", "ชื่อลูกค้า", "จังหวัดที่ส่ง",
         "ยอดสุทธิ", "ระยะทาง (กม.)", "สถานะการจัดส่ง", "ต้นทาง", "แก้สถานะล่าสุด"],
       rows.map((v) => [
@@ -266,7 +265,6 @@ export default function ShipStatus() {
       ]),
       "สถานะการจัดส่ง.csv"
     );
-    toast("ส่งออกไฟล์ CSV แล้ว");
   }
 
   if (!inv.invoicesReady) {
@@ -294,9 +292,7 @@ export default function ShipStatus() {
             <button className="btn btn-p btn-sm" onClick={manualPull} disabled={refreshing}>
               {refreshing ? "กำลังอัพเดท…" : "อัพเดทข้อมูล"}
             </button>
-            <button className="btn btn-o btn-sm" onClick={exportCSV}>
-              ส่งออก CSV
-            </button>
+            <ExportPair onExport={exportFile} disabled={!rows.length} toast={toast} />
             {filtering ? (
               <button className="btn btn-g btn-sm" onClick={clearFilters}>
                 ล้างตัวกรอง
@@ -349,17 +345,14 @@ export default function ShipStatus() {
 
           <div className="field">
             <label className="lbl" htmlFor="ss_pv">จังหวัดที่ส่ง</label>
-            <select
-              className="sel"
+            <SearchSelect
               id="ss_pv"
               value={province}
-              onChange={(e) => setProvince(e.target.value)}
-            >
-              <option value="">ทุกจังหวัด</option>
-              {provinces.map((p) => (
-                <option key={p}>{p}</option>
-              ))}
-            </select>
+              onChange={setProvince}
+              options={provinces.map((p) => ({ value: p, label: p }))}
+              emptyLabel="ทุกจังหวัด"
+              notFound="ไม่พบจังหวัดที่ตรงกับ"
+            />
           </div>
 
           <div className="field">

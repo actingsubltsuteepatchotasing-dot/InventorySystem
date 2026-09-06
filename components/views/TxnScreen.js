@@ -12,16 +12,7 @@ import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import {
-  Badge,
-  Card,
-  Empty,
-  LocationSelect,
-  ProductSelect,
-  QtyInput,
-  TableWrap,
-  WarehouseSelect,
-} from "../ui";
+import { Badge, Card, Empty, ExportPair, LocationSelect, PrintPair, ProductSelect, QtyInput, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 export default function TxnScreen({ type }) {
@@ -275,10 +266,9 @@ export default function TxnScreen({ type }) {
     });
   }
 
-  function exportCSV() {
+  function exportFile(save) {
     const list = db.txns.filter((t) => t.type === type).sort((a, b) => b.ts - a.ts);
-    if (!list.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
-    downloadCSV(
+    save(
       ["วันที่", "เลขที่เอกสาร", "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "คลัง", "ที่เก็บ",
         "คลังปลายทาง", "ที่เก็บปลายทาง", "ผู้ทำรายการ", "หมายเหตุ"],
       list.map((t) => {
@@ -290,7 +280,6 @@ export default function TxnScreen({ type }) {
       }),
       "รายงาน" + T.name + ".csv"
     );
-    toast("ส่งออกไฟล์ CSV แล้ว");
   }
 
   // ทุกรายการต้องระบุที่เก็บ ถ้ายังไม่มีตารางผังคลังก็บันทึกอะไรไม่ได้
@@ -505,8 +494,12 @@ export default function TxnScreen({ type }) {
         title={"รายงาน" + T.name + " ล่าสุด"}
         actions={
           <>
-            <button className="btn btn-o btn-sm" onClick={printReport}>พิมพ์รายงาน</button>
-            <button className="btn btn-g btn-sm" onClick={exportCSV}>ส่งออก CSV</button>
+            <PrintPair onPrint={printReport} toast={toast} label="พิมพ์รายงาน" />
+            <ExportPair
+              onExport={exportFile}
+              disabled={!db.txns.some((t) => t.type === type)}
+              toast={toast}
+            />
           </>
         }
       >

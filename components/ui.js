@@ -8,6 +8,8 @@ import { createPortal } from "react-dom";
 import { encode128 } from "@/lib/barcode";
 import { firstLocOf, locsOf } from "@/lib/db";
 import { num } from "@/lib/format";
+import { downloadCSV } from "@/lib/csv";
+import { downloadXLSX } from "@/lib/xlsx";
 
 /** การ์ดพร้อมหัวข้อและปุ่มด้านขวา */
 export function Card({ title, actions, children, style }) {
@@ -113,19 +115,33 @@ export function Barcode({ value, module = 2, height = 54, showText = true }) {
 }
 
 /**
- * เลือกสินค้า — กดเลือกจากรายการ หรือพิมพ์ค้นหาก็ได้
+ * ช่องเลือกที่พิมพ์ค้นหาได้ — ตัวกลางที่ทุกช่อง "เลือกอะไรสักอย่าง" ในระบบใช้ร่วมกัน
  *
  * ทำเป็น input + รายการเอง ไม่ใช้ <select> ของเบราว์เซอร์
  * เพราะ <select> พิมพ์ค้นหาไม่ได้จริง (พิมพ์ได้แค่กระโดดตามตัวอักษรแรก)
- * พอสินค้าเยอะขึ้นจะเลื่อนหาทีละรายการไม่ไหว
+ * พอรายการเยอะขึ้นจะเลื่อนหาทีละบรรทัดไม่ไหว
  *
- * ค้นได้จาก รหัส / ชื่อ / บาร์โค๊ด / หมวดหมู่
- * ใช้อินเทอร์เฟซเดิมทุกอย่าง หน้าจอที่เรียกอยู่แล้วจึงไม่ต้องแก้
+ * ค้นแบบ "เจอส่วนไหนก็ได้" และพิมพ์หลายคำได้ ทุกคำต้องเจอแต่อยู่คนละช่องกันได้
+ * เช่นพิมพ์ "ยาง สงขลา" เจอรายการที่มีทั้งสองคำ ไม่ต้องพิมพ์เรียงให้ตรง
+ *
+ * options = [{ value, code, label, meta, search }]
+ *   code  ขึ้นคอลัมน์ซ้าย (รหัส) — ไม่มีก็ได้
+ *   meta  ขึ้นคอลัมน์ขวาแบบจาง (หน่วยนับ จังหวัด ยอดเงิน)
+ *   search ข้อความเพิ่มที่ให้ค้นเจอแต่ไม่ได้แสดง
  *
  * รายการเรนเดอร์ผ่าน portal ไปที่ body และวางตำแหน่งแบบ fixed
  * ถ้าเรนเดอร์ในที่เดิมจะถูก overflow ของตาราง (.tbl-wrap) หรือของ modal ตัดหาย
  */
-export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = "ทุกรายการ" }) {
+export function SearchSelect({
+  id,
+  value,
+  onChange,
+  options,
+  placeholder = "— เลือก —",
+  emptyLabel,
+  disabled,
+  notFound = "ไม่พบรายการที่ตรงกับ",
+}) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
@@ -134,22 +150,24 @@ export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = 
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
-  const emptyLabel = includeAll ? allLabel : "— เลือกสินค้า —";
-  const selected = db.products.find((p) => p.id === value) || null;
-  const labelOf = (p) => (p ? p.code + " · " + p.name : emptyLabel);
+  /** ตัวเลือกว่าง (เช่น "ทุกรายการ") ใส่ไว้หัวรายการเมื่อผู้เรียกกำหนดมา */
+  const all = emptyLabel ? [{ value: "", label: emptyLabel }] : [];
 
-  // null ในรายการ = ตัวเลือก "ทุกรายการ" ของโหมดตัวกรอง
-  const options = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    const list = t
-      ? db.products.filter((p) =>
-          (p.code + " " + p.name + " " + (p.barcode || "") + " " + (p.cat || ""))
-            .toLowerCase()
-            .includes(t)
-        )
-      : db.products;
-    return includeAll ? [null, ...list] : list;
-  }, [db.products, q, includeAll]);
+  const selected = options.find((o) => o.value === value) || null;
+  const shown = selected
+    ? (selected.code ? selected.code + " · " : "") + selected.label
+    : emptyLabel || placeholder;
+
+  const list = useMemo(() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [...all, ...options];
+    const hit = options.filter((o) => {
+      const hay = [o.code, o.label, o.meta, o.search].filter(Boolean).join(" ").toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+    return [...all, ...hit];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, q, emptyLabel]);
 
   /** วางรายการให้ตรงกับช่องกรอก และพลิกขึ้นบนถ้าที่ด้านล่างไม่พอ */
   const place = useCallback(() => {
@@ -209,25 +227,22 @@ export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = 
     setQ("");
   }
 
-  function pick(p) {
-    onChange(p ? p.id : "");
+  function pick(o) {
+    onChange(o ? o.value : "");
     close();
   }
 
   function onKey(e) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      if (!open) {
-        setOpen(true);
-        return;
-      }
+      if (!open) return setOpen(true);
       const step = e.key === "ArrowDown" ? 1 : -1;
-      setHi((n) => Math.max(0, Math.min(options.length - 1, n + step)));
+      setHi((n) => Math.max(0, Math.min(list.length - 1, n + step)));
       return;
     }
     if (e.key === "Enter" && open) {
       e.preventDefault();
-      if (options.length) pick(options[hi]);
+      if (list.length) pick(list[hi]);
       return;
     }
     if (e.key === "Escape" && open) {
@@ -238,7 +253,7 @@ export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = 
 
   const listId = id ? id + "_list" : undefined;
 
-  const list =
+  const dropdown =
     open && box ? (
       <ul
         className="combo-list"
@@ -253,12 +268,12 @@ export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = 
           maxHeight: box.maxHeight,
         }}
       >
-        {options.length ? (
-          options.map((p, i) => {
-            const cur = p ? p.id === value : !value;
+        {list.length ? (
+          list.map((o, i) => {
+            const cur = o.value === value;
             return (
               <li
-                key={p ? p.id : "__all"}
+                key={o.value || "__all"}
                 role="option"
                 aria-selected={cur}
                 className={"combo-opt" + (i === hi ? " hi" : "") + (cur ? " cur" : "")}
@@ -266,23 +281,19 @@ export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = 
                 // pointerdown + preventDefault กันไม่ให้ input เสียโฟกัสก่อนเลือกติด
                 onPointerDown={(e) => {
                   e.preventDefault();
-                  pick(p);
+                  pick(o);
                 }}
               >
-                {p ? (
-                  <>
-                    <span className="c">{p.code}</span>
-                    <span className="n">{p.name}</span>
-                    <span className="m">{p.unit}</span>
-                  </>
-                ) : (
-                  <span className="n">{allLabel}</span>
-                )}
+                {o.code ? <span className="c">{o.code}</span> : null}
+                <span className="n">{o.label}</span>
+                {o.meta ? <span className="m">{o.meta}</span> : null}
               </li>
             );
           })
         ) : (
-          <li className="combo-empty">ไม่พบสินค้าที่ตรงกับ “{q.trim()}”</li>
+          <li className="combo-empty">
+            {notFound} “{q.trim()}”
+          </li>
         )}
       </ul>
     ) : null;
@@ -298,8 +309,9 @@ export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = 
         aria-controls={listId}
         aria-autocomplete="list"
         autoComplete="off"
-        value={open ? q : labelOf(selected)}
-        placeholder={open ? labelOf(selected) : ""}
+        disabled={disabled}
+        value={open ? q : shown}
+        placeholder={open ? shown : placeholder}
         onChange={(e) => {
           setQ(e.target.value);
           setHi(0);
@@ -312,22 +324,61 @@ export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = 
         ▾
       </span>
       {/* เรนเดอร์ที่ body เพื่อไม่ให้ถูก overflow ของตารางหรือ modal ตัด */}
-      {list ? createPortal(list, document.body) : null}
+      {dropdown ? createPortal(dropdown, document.body) : null}
     </div>
   );
 }
 
-/** เลือกคลังสินค้า */
-export function WarehouseSelect({ db, value, onChange, id, includeAll, allLabel = "ทุกคลัง" }) {
+/** เลือกสินค้า — ค้นได้จาก รหัส / ชื่อ / บาร์โค๊ด / หมวดหมู่ */
+export function ProductSelect({ db, value, onChange, id, includeAll, allLabel = "ทุกรายการ" }) {
+  const options = useMemo(
+    () =>
+      db.products.map((p) => ({
+        value: p.id,
+        code: p.code,
+        label: p.name,
+        meta: p.unit,
+        search: (p.barcode || "") + " " + (p.cat || ""),
+      })),
+    [db.products]
+  );
+
   return (
-    <select className="sel" id={id} value={value} onChange={(e) => onChange(e.target.value)}>
-      {includeAll ? <option value="">{allLabel}</option> : null}
-      {db.warehouses.map((w) => (
-        <option key={w.id} value={w.id}>
-          {w.code} · {w.name}
-        </option>
-      ))}
-    </select>
+    <SearchSelect
+      id={id}
+      value={value}
+      onChange={onChange}
+      options={options}
+      placeholder="— เลือกสินค้า —"
+      emptyLabel={includeAll ? allLabel : undefined}
+      notFound="ไม่พบสินค้าที่ตรงกับ"
+    />
+  );
+}
+
+/** เลือกคลังสินค้า — ค้นได้จาก รหัส / ชื่อ / จังหวัด */
+export function WarehouseSelect({ db, value, onChange, id, includeAll, allLabel = "ทุกคลัง" }) {
+  const options = useMemo(
+    () =>
+      db.warehouses.map((w) => ({
+        value: w.id,
+        code: w.code,
+        label: w.name,
+        meta: w.province,
+      })),
+    [db.warehouses]
+  );
+
+  return (
+    <SearchSelect
+      id={id}
+      value={value}
+      onChange={onChange}
+      options={options}
+      placeholder="— เลือกคลัง —"
+      emptyLabel={includeAll ? allLabel : undefined}
+      notFound="ไม่พบคลังที่ตรงกับ"
+    />
   );
 }
 
@@ -350,24 +401,31 @@ export function LocationSelect({
   const bins = whId ? locsOf(db, whId) : [];
   const empty = !!whId && bins.length === 0;
 
+  const options = useMemo(
+    () =>
+      bins.map((l) => ({
+        value: l.id,
+        code: l.code,
+        label: l.name || l.code,
+        meta: l.zone,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [db.locations, whId]
+  );
+
   return (
-    <select
-      className="sel"
+    <SearchSelect
       id={id}
       value={value || ""}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={onChange}
+      options={options}
+      placeholder={
+        !whId ? "— เลือกคลังก่อน —" : empty ? "— คลังนี้ยังไม่มีที่เก็บ —" : "— เลือกที่เก็บ —"
+      }
+      emptyLabel={includeAll ? allLabel : undefined}
       disabled={disabled || empty || (!whId && !includeAll)}
-    >
-      {includeAll ? <option value="">{allLabel}</option> : null}
-      {empty ? <option value="">— คลังนี้ยังไม่มีที่เก็บ —</option> : null}
-      {!whId && !includeAll ? <option value="">— เลือกคลังก่อน —</option> : null}
-      {bins.map((l) => (
-        <option key={l.id} value={l.id}>
-          {l.code}
-          {l.name ? " · " + l.name : ""}
-        </option>
-      ))}
-    </select>
+      notFound="ไม่พบที่เก็บที่ตรงกับ"
+    />
   );
 }
 
@@ -509,4 +567,63 @@ export function Row2({ k, children }) {
 /** ตัวเลขจัดชิดขวาแบบ tabular */
 export function N({ v, d = 0, bold, color }) {
   return <b style={{ fontWeight: bold ? 700 : 400, color }}>{num(v, d)}</b>;
+}
+
+/**
+ * ปุ่มส่งออก Excel + CSV คู่กัน
+ *
+ * ผู้เรียกส่ง onExport มาเป็นฟังก์ชันที่รับ "ตัวบันทึกไฟล์" แล้วเรียกมันด้วย
+ * (หัวตาราง, ข้อมูล, ชื่อไฟล์) — คอมโพเนนต์นี้เป็นคนเลือกว่าจะส่ง downloadCSV
+ * หรือ downloadXLSX เข้าไป ข้อมูลชุดเดียวจึงออกได้ทั้งสองแบบโดยไม่ต้องเขียนซ้ำ
+ *
+ * เขียนแบบนี้เพราะแต่ละหน้าประกอบหัวตารางกับข้อมูลคนละแบบ
+ * ถ้าให้ส่งข้อมูลสำเร็จรูปเข้ามา ทุกหน้าจะต้องคำนวณตารางทิ้งไว้ตลอดเวลา
+ * ทั้งที่ใช้จริงตอนกดปุ่มเท่านั้น
+ */
+export function ExportPair({ onExport, disabled, toast }) {
+  const run = (save, what) => {
+    if (disabled) return toast ? toast("ไม่มีข้อมูลสำหรับส่งออก", "warn") : undefined;
+    onExport(save);
+    if (toast) toast("ส่งออกไฟล์ " + what + " แล้ว");
+  };
+
+  return (
+    <>
+      <button className="btn btn-g btn-sm" onClick={() => run(downloadXLSX, "Excel")}>
+        Excel
+      </button>
+      <button className="btn btn-g btn-sm" onClick={() => run(downloadCSV, "CSV")}>
+        CSV
+      </button>
+    </>
+  );
+}
+
+/**
+ * ปุ่มพิมพ์ + PDF คู่กัน
+ *
+ * PDF ใช้หน้าต่างพิมพ์ของเบราว์เซอร์แล้วเลือกปลายทางเป็น "บันทึกเป็น PDF"
+ * ไม่ได้สร้างไฟล์ PDF เอง เพราะ PDF ที่มีข้อความไทยต้องฝังฟอนต์ไทยลงในไฟล์
+ * ซึ่งต้องมีตัวตัดฟอนต์ (subset) และตาราง CID ที่ใหญ่กว่าตัวโปรแกรมทั้งระบบ
+ * ทางนี้ได้ PDF ที่ตัวอักษรไทยถูกต้องแน่นอน เพราะเบราว์เซอร์วาดด้วยฟอนต์ในเครื่อง
+ */
+export function PrintPair({ onPrint, disabled, toast, label = "พิมพ์" }) {
+  return (
+    <>
+      <button className="btn btn-o btn-sm" onClick={onPrint} disabled={disabled}>
+        {label}
+      </button>
+      <button
+        className="btn btn-g btn-sm"
+        title="เปิดหน้าต่างพิมพ์แล้วเลือกปลายทางเป็น บันทึกเป็น PDF"
+        disabled={disabled}
+        onClick={() => {
+          if (toast) toast("ในหน้าต่างพิมพ์ ให้เลือกปลายทางเป็น “บันทึกเป็น PDF”", "info");
+          onPrint();
+        }}
+      >
+        PDF
+      </button>
+    </>
+  );
 }

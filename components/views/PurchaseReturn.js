@@ -19,7 +19,7 @@ import { invoiceTotals, lineAmount, nextDocNo } from "@/lib/db";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
-import { Badge, Card, Empty, QtyInput, TableWrap } from "../ui";
+import { Badge, Card, Empty, QtyInput, SearchSelect, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 import { ReturnBody } from "./printBodies";
 
@@ -256,19 +256,21 @@ export default function PurchaseReturn() {
           <div className="field span2">
             {/* อ้างใบซื้อเสมอ คืนของที่ไม่เคยซื้อไม่ได้ */}
             <label className="lbl" htmlFor="pr_pur">ใบซื้อที่อ้างถึง</label>
-            <select
-              className="sel"
+            {/* ยิงบาร์โค๊ดเลขที่ใบซื้อหรือพิมพ์ชื่อเจ้าหนี้ก็หาเจอ ไม่ต้องเลื่อนหาทีละใบ */}
+            <SearchSelect
               id="pr_pur"
               value={purId}
-              onChange={(e) => pickPurchase(e.target.value)}
-            >
-              <option value="">— เลือกเลขที่ใบซื้อ —</option>
-              {purchases.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.docNo} · {thDate(p.date)} · {p.supName} · ฿{num(p.total, 2)}
-                </option>
-              ))}
-            </select>
+              onChange={pickPurchase}
+              options={purchases.map((p) => ({
+                value: p.id,
+                code: p.docNo,
+                label: p.supName,
+                meta: thDate(p.date) + " · ฿" + num(p.total, 2),
+                search: p.refNo + " " + p.supCode,
+              }))}
+              placeholder="— เลือกเลขที่ใบซื้อ —"
+              notFound="ไม่พบใบซื้อที่ตรงกับ"
+            />
           </div>
 
           <div className="field">

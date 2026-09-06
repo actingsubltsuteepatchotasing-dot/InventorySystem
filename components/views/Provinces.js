@@ -15,7 +15,7 @@ import { useToast } from "../Toast";
 import { IcPin } from "../Icons";
 import Modal from "../Modal";
 import MapPicker from "../MapPicker";
-import { Badge, Card, Empty, TableWrap } from "../ui";
+import { Badge, Card, Empty, PrintPair, TableWrap } from "../ui";
 import { CountSheetBody } from "./printBodies";
 
 export default function Provinces() {
@@ -238,9 +238,11 @@ export default function Provinces() {
         title={"รายการสินค้าคงเหลือ — " + w.name}
         actions={
           <>
-            <button className="btn btn-o btn-sm" onClick={printWarehouseReport}>
-              พิมพ์รายงาน
-            </button>
+            <PrintPair
+              onPrint={printWarehouseReport}
+              toast={toast}
+              label="พิมพ์รายงาน"
+            />
             <button
               className="btn btn-g btn-sm"
               onClick={() =>

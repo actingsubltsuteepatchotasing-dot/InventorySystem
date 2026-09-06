@@ -28,16 +28,7 @@ import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import {
-  Badge,
-  Card,
-  Empty,
-  LocationSelect,
-  ProductSelect,
-  QtyInput,
-  TableWrap,
-  WarehouseSelect,
-} from "../ui";
+import { Badge, Card, Empty, LocationSelect, ProductSelect, QtyInput, SearchSelect, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 import { PurchaseBody } from "./printBodies";
 
@@ -286,19 +277,21 @@ export default function PurchaseInvoice() {
 
           <div className="field">
             <label className="lbl" htmlFor="pc_sup">รหัสเจ้าหนี้</label>
-            <select
-              className="sel"
+            {/* พิมพ์ค้นได้จากรหัส ชื่อ จังหวัด หรือเลขผู้เสียภาษี */}
+            <SearchSelect
               id="pc_sup"
               value={supId}
-              onChange={(e) => setSupId(e.target.value)}
-            >
-              <option value="">— เลือกรหัสเจ้าหนี้ —</option>
-              {suppliers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} · {c.name}
-                </option>
-              ))}
-            </select>
+              onChange={setSupId}
+              options={suppliers.map((c) => ({
+                value: c.id,
+                code: c.code,
+                label: c.name,
+                meta: c.province,
+                search: c.taxId + " " + c.phone,
+              }))}
+              placeholder="— เลือกรหัสเจ้าหนี้ —"
+              notFound="ไม่พบเจ้าหนี้ที่ตรงกับ"
+            />
           </div>
           <div className="field">
             {/* ชื่อมาจากรหัสที่เลือกเสมอ พิมพ์ทับเองไม่ได้ ไม่งั้นชื่อกับรหัสจะไม่ตรงกัน */}

@@ -20,7 +20,7 @@ import { uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { IcPlus, IcTrash } from "../Icons";
 import Modal from "../Modal";
-import { Badge, Card, Empty, TableWrap } from "../ui";
+import { Badge, Card, Empty, SearchSelect, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const blank = (code) => ({
@@ -365,53 +365,55 @@ export default function Suppliers() {
                 {/* เลือกไล่ลงมา: จังหวัด -> อำเภอ/เขต -> ตำบล/แขวง -> รหัสไปรษณีย์เติมให้เอง */}
                 <div className="field">
                   <label className="lbl" htmlFor="sf_prov">จังหวัด</label>
-                  <select
-                    className="sel"
+                  <SearchSelect
                     id="sf_prov"
                     value={form.province}
-                    onChange={(e) => pickProvince(e.target.value)}
-                  >
-                    <option value="">— เลือกจังหวัด —</option>
-                    {withCurrent(provinceList, form.province).map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
+                    onChange={pickProvince}
+                    options={withCurrent(provinceList, form.province).map((v) => ({
+                      value: v,
+                      label: v,
+                    }))}
+                    placeholder="— เลือกจังหวัด —"
+                    notFound="ไม่พบจังหวัดที่ตรงกับ"
+                  />
                 </div>
 
                 <div className="field">
                   <label className="lbl" htmlFor="sf_dis">{words.district}</label>
-                  <select
-                    className="sel"
+                  <SearchSelect
                     id="sf_dis"
                     value={form.district}
-                    onChange={(e) => pickDistrict(e.target.value)}
+                    onChange={pickDistrict}
                     disabled={!form.province}
-                  >
-                    <option value="">
-                      {form.province ? "— เลือก" + words.district + " —" : "เลือกจังหวัดก่อน"}
-                    </option>
-                    {withCurrent(districtList, form.district).map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
+                    options={withCurrent(districtList, form.district).map((v) => ({
+                      value: v,
+                      label: v,
+                    }))}
+                    placeholder={
+                      form.province ? "— เลือก" + words.district + " —" : "เลือกจังหวัดก่อน"
+                    }
+                    notFound={"ไม่พบ" + words.district + "ที่ตรงกับ"}
+                  />
                 </div>
 
                 <div className="field">
                   <label className="lbl" htmlFor="sf_sub">{words.subdistrict}</label>
-                  <select
-                    className="sel"
+                  <SearchSelect
                     id="sf_sub"
                     value={form.subdistrict}
-                    onChange={(e) => pickSub(e.target.value)}
+                    onChange={pickSub}
                     disabled={!form.district}
-                  >
-                    <option value="">
-                      {form.district ? "— เลือก" + words.subdistrict + " —" : "เลือก" + words.district + "ก่อน"}
-                    </option>
-                    {withCurrent(subList, form.subdistrict).map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
+                    options={withCurrent(subList, form.subdistrict).map((v) => ({
+                      value: v,
+                      label: v,
+                    }))}
+                    placeholder={
+                      form.district
+                        ? "— เลือก" + words.subdistrict + " —"
+                        : "เลือก" + words.district + "ก่อน"
+                    }
+                    notFound={"ไม่พบ" + words.subdistrict + "ที่ตรงกับ"}
+                  />
                 </div>
 
                 <div className="field">

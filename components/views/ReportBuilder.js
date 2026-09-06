@@ -24,7 +24,7 @@ import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import { Badge, Card, Empty, TableWrap } from "../ui";
+import { Badge, Card, Empty, ExportPair, PrintPair, SearchSelect, TableWrap } from "../ui";
 
 /** ค่าที่ส่งให้ตัวแปลงข้อมูล เผื่อบางชุดต้องแปลงรหัสเป็นชื่อ */
 const EXTRA = {
@@ -174,19 +174,15 @@ export default function ReportBuilder() {
             <span className="muted" style={{ fontSize: 12.5 }}>ยังไม่ได้เลือก</span>
           )}
         </div>
-        <select
-          className="sel"
+        {/* ฟิลด์บางชุดมีสิบกว่าอัน พิมพ์ค้นเร็วกว่าเลื่อนหา */}
+        <SearchSelect
           value=""
-          onChange={(e) => addTo(list, set, e.target.value)}
+          onChange={(v) => addTo(list, set, v)}
           disabled={!left.length}
-        >
-          <option value="">{left.length ? "+ เพิ่มฟิลด์…" : "เลือกครบแล้ว"}</option>
-          {left.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
+          options={left.map((f) => ({ value: f.id, label: f.name }))}
+          placeholder={left.length ? "+ เพิ่มฟิลด์…" : "เลือกครบแล้ว"}
+          notFound="ไม่พบฟิลด์ที่ตรงกับ"
+        />
       </div>
     );
   }
@@ -227,11 +223,9 @@ export default function ReportBuilder() {
     return { head, body };
   }
 
-  function exportCSV() {
-    if (!pivot.rowKeys.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
+  function exportFile(save) {
     const { head, body } = flatTable();
-    downloadCSV(head, body, "รายงาน-" + ds.name + ".csv");
-    toast("ส่งออกไฟล์ CSV แล้ว");
+    save(head, body, "รายงาน-" + ds.name + ".csv");
   }
 
   function printReport() {
@@ -281,26 +275,21 @@ export default function ReportBuilder() {
         actions={
           <>
             <Badge kind="info">{num(rows.length, 0)} แถวข้อมูล</Badge>
-            <button className="btn btn-o btn-sm" onClick={printReport}>พิมพ์</button>
-            <button className="btn btn-g btn-sm" onClick={exportCSV}>ส่งออก CSV</button>
+            <PrintPair onPrint={printReport} toast={toast} label="พิมพ์" />
+            <ExportPair onExport={exportFile} disabled={!pivot.rowKeys.length} toast={toast} />
           </>
         }
       >
         <div className="form-grid" style={{ marginBottom: 12 }}>
           <div className="field span2">
             <label className="lbl" htmlFor="rb_set">ชุดข้อมูล (มาจากหน้าจอไหน)</label>
-            <select
-              className="sel"
+            <SearchSelect
               id="rb_set"
               value={setId}
-              onChange={(e) => pickSet(e.target.value)}
-            >
-              {DATASETS.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+              onChange={pickSet}
+              options={DATASETS.map((d) => ({ value: d.id, label: d.name, meta: d.hint }))}
+              notFound="ไม่พบชุดข้อมูลที่ตรงกับ"
+            />
             <span className="hint">{ds.hint}</span>
           </div>
 

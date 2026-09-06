@@ -7,7 +7,7 @@ import { useInv } from "@/lib/store";
 import { num, thDate, todayISO } from "@/lib/format";
 import { usePrint } from "../Print";
 import { IcBox, IcPlus } from "../Icons";
-import { Badge, Card, Empty } from "../ui";
+import { Badge, Card, Empty, PrintPair } from "../ui";
 import ProductForm from "./ProductForm";
 import ProductDetail from "./ProductDetail";
 import { LabelSheetBody } from "./printBodies";
@@ -86,22 +86,18 @@ export default function Products() {
               <IcPlus size={15} />
               เพิ่มสินค้าใหม่
             </button>
-            <button
-              className="btn btn-o btn-sm"
-              onClick={() =>
+            <PrintPair
+              onPrint={() =>
                 print({
                   title: "ป้ายบาร์โค๊ดสินค้า",
                   subtitle: "ทั้งหมด " + db.products.length + " รายการ",
                   signers: false,
                   body: <LabelSheetBody items={db.products} />,
-                })
-              }
-            >
-              พิมพ์ป้ายบาร์โค๊ด
-            </button>
-            <button className="btn btn-g btn-sm" onClick={printProductList}>
-              พิมพ์ทะเบียนสินค้า
-            </button>
+                })}
+              toast={toast}
+              label="พิมพ์ป้ายบาร์โค๊ด"
+            />
+            <PrintPair onPrint={printProductList} toast={toast} label="พิมพ์ทะเบียนสินค้า" />
           </>
         }
       >

@@ -26,16 +26,7 @@ import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
-import {
-  Badge,
-  Card,
-  Empty,
-  LocationSelect,
-  ProductSelect,
-  QtyInput,
-  TableWrap,
-  WarehouseSelect,
-} from "../ui";
+import { Badge, Card, Empty, LocationSelect, ProductSelect, QtyInput, SearchSelect, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
 import { TaxInvoiceBody } from "./printBodies";
 
@@ -336,19 +327,21 @@ export default function SalesInvoice() {
 
           <div className="field">
             <label className="lbl" htmlFor="iv_cust">รหัสลูกค้า</label>
-            <select
-              className="sel"
+            {/* พิมพ์ค้นได้จากรหัส ชื่อ จังหวัด หรือเลขผู้เสียภาษี ไม่ต้องเลื่อนหาทีละราย */}
+            <SearchSelect
               id="iv_cust"
               value={custId}
-              onChange={(e) => setCustId(e.target.value)}
-            >
-              <option value="">— เลือกรหัสลูกค้า —</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} · {c.name}
-                </option>
-              ))}
-            </select>
+              onChange={setCustId}
+              options={customers.map((c) => ({
+                value: c.id,
+                code: c.code,
+                label: c.name,
+                meta: c.province,
+                search: c.taxId + " " + c.phone,
+              }))}
+              placeholder="— เลือกรหัสลูกค้า —"
+              notFound="ไม่พบลูกค้าที่ตรงกับ"
+            />
           </div>
           <div className="field">
             {/* ชื่อมาจากรหัสที่เลือกเสมอ พิมพ์ทับเองไม่ได้ ไม่งั้นชื่อกับรหัสจะไม่ตรงกัน */}
