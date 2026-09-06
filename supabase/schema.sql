@@ -7,9 +7,10 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 13 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 18 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
---   3. สร้างฟังก์ชัน stock_of() create_sale() และ create_invoice()
+--   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
+--      create_purchase() และ create_purchase_return()
 --   4. GRANT สิทธิ์ระดับตารางให้ role authenticated
 --   5. เปิด RLS และสร้าง policy ครบทุกตาราง
 --   6. สั่ง PostgREST รีเฟรช schema cache
@@ -712,6 +713,437 @@ end;
 $create_invoice$;
 
 -- ============================================================================
+-- เจ้าหนี้ (ผู้ขายสินค้าให้เรา)
+-- ----------------------------------------------------------------------------
+-- โครงเดียวกับตารางลูกค้าทุกประการ เพราะเป็น "คู่ค้า" เหมือนกัน
+-- แค่คนละทิศทางของการค้า จึงตั้งใจให้หน้าจอและข้อมูลเหมือนกันด้วย
+-- คนที่ใช้หน้าลูกค้าเป็นแล้วจะใช้หน้านี้ได้ทันทีโดยไม่ต้องเรียนใหม่
+--
+-- ไม่รวมกับ customers เป็นตารางเดียวแล้วใส่ธง เพราะคู่ค้าบางรายเป็นทั้งลูกค้า
+-- และเจ้าหนี้ แต่มีรหัส เงื่อนไข และที่อยู่ส่งของคนละชุดกัน
+create table if not exists public.suppliers (
+  id          text primary key,
+  code        text not null,
+  name        text not null,
+  address     text not null default '',
+  subdistrict text not null default '',
+  district    text not null default '',
+  province    text not null default '',
+  postcode    text not null default '',
+  phone       text not null default '',
+  kind        text not null default '',
+  tax_id      text not null default '',
+  branch      text not null default '',
+  created_at  timestamptz not null default now()
+);
+
+create unique index if not exists suppliers_code_uniq on public.suppliers (code);
+
+-- ============================================================================
+-- การซื้อสินค้าและบริการ
+-- ----------------------------------------------------------------------------
+-- ด้านกลับของ invoices: invoices คือเราขายให้ลูกค้า purchases คือเราซื้อจากเจ้าหนี้
+-- โครงเหมือนกันเป๊ะ (ส่วนลดรายบรรทัด ส่วนลดท้ายบิล อัตราภาษี) ต่างกันที่:
+--   invoices  ตัดสต็อกออก  ด้วยรายการชนิด SALE
+--   purchases เพิ่มสต็อกเข้า ด้วยรายการชนิด RECEIVE
+--
+-- ชื่อ/ที่อยู่/เลขผู้เสียภาษีของเจ้าหนี้ถูกคัดลอกมาเก็บในใบ (snapshot)
+-- เหตุผลเดียวกับใบขาย เอกสารภาษีต้องคงข้อความเดิม ณ วันที่ออก
+create table if not exists public.purchases (
+  id            text primary key,
+  doc_no        text not null,
+  date          date not null,
+  supplier_id   text references public.suppliers (id) on delete restrict,
+  sup_code      text not null default '',
+  sup_name      text not null default '',
+  sup_address   text not null default '',
+  sup_province  text not null default '',
+  sup_tax_id    text not null default '',
+  sup_branch    text not null default '',
+
+  -- เลขที่ใบกำกับภาษีของเจ้าหนี้ คนละเลขกับเลขที่เอกสารของเรา
+  -- ต้องเก็บไว้เพราะเป็นตัวที่ใช้อ้างตอนยื่นภาษีซื้อ
+  ref_no        text not null default '',
+
+  vat_rate      numeric not null default 7,
+  items_total   numeric not null default 0,
+  bill_discount numeric not null default 0,
+  base          numeric not null default 0,
+  vat           numeric not null default 0,
+  total         numeric not null default 0,
+  note          text not null default '',
+
+  user_name     text not null default '',
+  ts            bigint not null,
+  created_at    timestamptz not null default now(),
+
+  constraint purchases_vat_rate check (vat_rate >= 0 and vat_rate <= 100)
+);
+
+create unique index if not exists purchases_doc_no_key on public.purchases (doc_no);
+create index if not exists purchases_ts_idx on public.purchases (ts);
+
+create table if not exists public.purchase_items (
+  id          text primary key,
+  purchase_id text not null references public.purchases (id) on delete cascade,
+  product_id  text not null references public.products (id) on delete restrict,
+  wh_id       text not null references public.warehouses (id) on delete restrict,
+  loc_id      text,
+  qty         numeric not null,
+  price       numeric not null default 0,
+  disc_pct    numeric not null default 0,
+  disc_amt    numeric not null default 0,
+  amount      numeric not null default 0,
+  seq         int not null default 0,
+  created_at  timestamptz not null default now(),
+
+  constraint purchase_items_qty_positive check (qty > 0),
+  constraint purchase_items_disc_pct check (disc_pct >= 0 and disc_pct <= 100),
+  constraint purchase_items_disc_amt check (disc_amt >= 0)
+);
+
+create index if not exists purchase_items_pur_idx on public.purchase_items (purchase_id);
+
+do $pur_loc$
+begin
+  alter table public.purchase_items drop constraint if exists purchase_items_loc_in_wh;
+  alter table public.purchase_items add constraint purchase_items_loc_in_wh
+    foreign key (loc_id, wh_id) references public.locations (id, wh_id) on delete restrict;
+end
+$pur_loc$;
+
+-- ============================================================================
+-- การส่งคืนสินค้าและบริการ (คืนของให้เจ้าหนี้)
+-- ----------------------------------------------------------------------------
+-- ต้องอ้างใบซื้อเสมอ (purchase_id บังคับ ไม่ใช่ null ได้)
+-- คืนของที่ไม่เคยซื้อไม่ได้ และคืนเกินจำนวนที่ซื้อมาก็ไม่ได้
+-- ถ้าปล่อยให้คืนลอย ๆ ยอดภาษีซื้อกับของจริงจะไม่ตรงกันแล้วตามกลับไม่ได้ว่าคืนของใบไหน
+create table if not exists public.purchase_returns (
+  id            text primary key,
+  doc_no        text not null,
+  date          date not null,
+  purchase_id   text not null references public.purchases (id) on delete restrict,
+  pur_doc_no    text not null default '',
+  supplier_id   text references public.suppliers (id) on delete restrict,
+  sup_code      text not null default '',
+  sup_name      text not null default '',
+  sup_address   text not null default '',
+  sup_province  text not null default '',
+  sup_tax_id    text not null default '',
+  sup_branch    text not null default '',
+
+  reason        text not null default '',
+  vat_rate      numeric not null default 7,
+  items_total   numeric not null default 0,
+  bill_discount numeric not null default 0,
+  base          numeric not null default 0,
+  vat           numeric not null default 0,
+  total         numeric not null default 0,
+  note          text not null default '',
+
+  user_name     text not null default '',
+  ts            bigint not null,
+  created_at    timestamptz not null default now(),
+
+  constraint purchase_returns_vat_rate check (vat_rate >= 0 and vat_rate <= 100)
+);
+
+create unique index if not exists purchase_returns_doc_no_key on public.purchase_returns (doc_no);
+create index if not exists purchase_returns_pur_idx on public.purchase_returns (purchase_id);
+create index if not exists purchase_returns_ts_idx  on public.purchase_returns (ts);
+
+create table if not exists public.purchase_return_items (
+  id        text primary key,
+  return_id text not null references public.purchase_returns (id) on delete cascade,
+  item_id   text not null default '',
+  product_id text not null references public.products (id) on delete restrict,
+  wh_id     text not null references public.warehouses (id) on delete restrict,
+  loc_id    text,
+  qty       numeric not null,
+  price     numeric not null default 0,
+  disc_pct  numeric not null default 0,
+  disc_amt  numeric not null default 0,
+  amount    numeric not null default 0,
+  seq       int not null default 0,
+  created_at timestamptz not null default now(),
+
+  constraint purchase_return_items_qty_positive check (qty > 0)
+);
+
+create index if not exists purchase_return_items_ret_idx
+  on public.purchase_return_items (return_id);
+
+do $ret_loc$
+begin
+  alter table public.purchase_return_items drop constraint if exists purchase_return_items_loc_in_wh;
+  alter table public.purchase_return_items add constraint purchase_return_items_loc_in_wh
+    foreign key (loc_id, wh_id) references public.locations (id, wh_id) on delete restrict;
+end
+$ret_loc$;
+
+-- ----------------------------------------------------------------------------
+-- บันทึกใบซื้อแบบ atomic — ด้านกลับของ create_invoice
+-- เพิ่มของเข้าช่องเก็บ ไม่ใช่ตัดออก จึงไม่ต้องตรวจว่าของพอไหม
+create or replace function public.create_purchase(p_pur jsonb, p_items jsonb)
+returns void
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $create_purchase$
+declare
+  it    jsonb;
+  v_pid text;
+  v_qty numeric;
+  v_wh  text;
+  v_loc text;
+begin
+  insert into public.purchases (
+    id, doc_no, date, supplier_id,
+    sup_code, sup_name, sup_address, sup_province, sup_tax_id, sup_branch,
+    ref_no, vat_rate, items_total, bill_discount, base, vat, total, note,
+    user_name, ts
+  )
+  values (
+    p_pur ->> 'id',
+    p_pur ->> 'doc_no',
+    (p_pur ->> 'date')::date,
+    nullif(p_pur ->> 'supplier_id', ''),
+    coalesce(p_pur ->> 'sup_code', ''),
+    coalesce(p_pur ->> 'sup_name', ''),
+    coalesce(p_pur ->> 'sup_address', ''),
+    coalesce(p_pur ->> 'sup_province', ''),
+    coalesce(p_pur ->> 'sup_tax_id', ''),
+    coalesce(p_pur ->> 'sup_branch', ''),
+    coalesce(p_pur ->> 'ref_no', ''),
+    (p_pur ->> 'vat_rate')::numeric,
+    (p_pur ->> 'items_total')::numeric,
+    (p_pur ->> 'bill_discount')::numeric,
+    (p_pur ->> 'base')::numeric,
+    (p_pur ->> 'vat')::numeric,
+    (p_pur ->> 'total')::numeric,
+    coalesce(p_pur ->> 'note', ''),
+    coalesce(p_pur ->> 'user_name', ''),
+    (p_pur ->> 'ts')::bigint
+  );
+
+  for it in select * from jsonb_array_elements(p_items)
+  loop
+    v_pid := it ->> 'product_id';
+    v_qty := (it ->> 'qty')::numeric;
+    v_wh  := it ->> 'wh_id';
+    v_loc := nullif(it ->> 'loc_id', '');
+
+    if v_loc is null then
+      raise exception 'ไม่ได้ระบุที่เก็บของสินค้า %', v_pid using errcode = 'P0001';
+    end if;
+    if not exists (select 1 from public.locations where id = v_loc and wh_id = v_wh) then
+      raise exception 'ที่เก็บ % ไม่ได้อยู่ในคลังที่รับ', v_loc using errcode = 'P0001';
+    end if;
+
+    insert into public.purchase_items (
+      id, purchase_id, product_id, wh_id, loc_id, qty, price, disc_pct, disc_amt, amount, seq
+    )
+    values (
+      it ->> 'id',
+      p_pur ->> 'id',
+      v_pid,
+      v_wh,
+      v_loc,
+      v_qty,
+      (it ->> 'price')::numeric,
+      (it ->> 'disc_pct')::numeric,
+      (it ->> 'disc_amt')::numeric,
+      (it ->> 'amount')::numeric,
+      (it ->> 'seq')::int
+    );
+
+    -- เพิ่มของเข้าช่องเก็บ มีแถวอยู่แล้วก็บวกทับ
+    insert into public.product_locations (id, product_id, location_id, qty)
+    values (it ->> 'pl_id', v_pid, v_loc, v_qty)
+    on conflict (product_id, location_id)
+    do update set qty = public.product_locations.qty + excluded.qty;
+
+    -- ยอดคงเหลือมาจาก txns ที่เดียวเสมอ ใบซื้อจึงต้องสร้างรายการรับด้วย
+    insert into public.txns (
+      id, type, doc_no, date, product_id, qty, wh_id, wh_to,
+      loc_id, loc_to, note, ref, user_name, ts
+    )
+    values (
+      it ->> 'txn_id',
+      'RECEIVE',
+      p_pur ->> 'doc_no',
+      (p_pur ->> 'date')::date,
+      v_pid,
+      v_qty,
+      v_wh,
+      null,
+      v_loc,
+      null,
+      'ซื้อสินค้าและบริการ',
+      coalesce(nullif(p_pur ->> 'ref_no', ''), p_pur ->> 'doc_no'),
+      coalesce(p_pur ->> 'user_name', ''),
+      (p_pur ->> 'ts')::bigint
+    );
+  end loop;
+end;
+$create_purchase$;
+
+-- ----------------------------------------------------------------------------
+-- บันทึกใบส่งคืนแบบ atomic — ตัดของออกเหมือนการขาย
+-- ตรวจสองชั้น: ของในช่องเก็บต้องพอ และคืนรวมกันต้องไม่เกินที่ซื้อมาในใบนั้น
+create or replace function public.create_purchase_return(p_ret jsonb, p_items jsonb)
+returns void
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $create_return$
+declare
+  it        jsonb;
+  v_pid     text;
+  v_qty     numeric;
+  v_wh      text;
+  v_loc     text;
+  v_item    text;
+  v_bought  numeric;
+  v_back    numeric;
+  v_bin     numeric;
+  v_name    text;
+  v_bincode text;
+begin
+  insert into public.purchase_returns (
+    id, doc_no, date, purchase_id, pur_doc_no, supplier_id,
+    sup_code, sup_name, sup_address, sup_province, sup_tax_id, sup_branch,
+    reason, vat_rate, items_total, bill_discount, base, vat, total, note,
+    user_name, ts
+  )
+  values (
+    p_ret ->> 'id',
+    p_ret ->> 'doc_no',
+    (p_ret ->> 'date')::date,
+    p_ret ->> 'purchase_id',
+    coalesce(p_ret ->> 'pur_doc_no', ''),
+    nullif(p_ret ->> 'supplier_id', ''),
+    coalesce(p_ret ->> 'sup_code', ''),
+    coalesce(p_ret ->> 'sup_name', ''),
+    coalesce(p_ret ->> 'sup_address', ''),
+    coalesce(p_ret ->> 'sup_province', ''),
+    coalesce(p_ret ->> 'sup_tax_id', ''),
+    coalesce(p_ret ->> 'sup_branch', ''),
+    coalesce(p_ret ->> 'reason', ''),
+    (p_ret ->> 'vat_rate')::numeric,
+    (p_ret ->> 'items_total')::numeric,
+    (p_ret ->> 'bill_discount')::numeric,
+    (p_ret ->> 'base')::numeric,
+    (p_ret ->> 'vat')::numeric,
+    (p_ret ->> 'total')::numeric,
+    coalesce(p_ret ->> 'note', ''),
+    coalesce(p_ret ->> 'user_name', ''),
+    (p_ret ->> 'ts')::bigint
+  );
+
+  for it in select * from jsonb_array_elements(p_items)
+  loop
+    v_pid  := it ->> 'product_id';
+    v_qty  := (it ->> 'qty')::numeric;
+    v_wh   := it ->> 'wh_id';
+    v_loc  := nullif(it ->> 'loc_id', '');
+    v_item := coalesce(it ->> 'item_id', '');
+
+    if v_loc is null then
+      raise exception 'ไม่ได้ระบุที่เก็บของสินค้า %', v_pid using errcode = 'P0001';
+    end if;
+
+    -- คืนเกินที่ซื้อมาไม่ได้ นับรวมใบคืนก่อนหน้าของบรรทัดเดียวกันด้วย
+    select coalesce(sum(qty), 0) into v_bought
+    from public.purchase_items
+    where id = v_item and purchase_id = p_ret ->> 'purchase_id';
+
+    select coalesce(sum(ri.qty), 0) into v_back
+    from public.purchase_return_items ri
+    join public.purchase_returns r on r.id = ri.return_id
+    where ri.item_id = v_item
+      and r.purchase_id = p_ret ->> 'purchase_id'
+      and r.id <> p_ret ->> 'id';
+
+    if v_bought = 0 then
+      raise exception 'บรรทัดที่คืนไม่ได้อยู่ในใบซื้อที่อ้างถึง' using errcode = 'P0001';
+    end if;
+    if v_back + v_qty > v_bought then
+      select name into v_name from public.products where id = v_pid;
+      raise exception 'คืนเกินที่ซื้อมา: % ซื้อ % คืนไปแล้ว % คืนอีก %',
+        coalesce(v_name, v_pid), v_bought, v_back, v_qty
+        using errcode = 'P0001';
+    end if;
+
+    perform pg_advisory_xact_lock(hashtext(v_pid || '|' || v_wh));
+
+    select qty into v_bin
+    from public.product_locations
+    where product_id = v_pid and location_id = v_loc
+    for update;
+
+    if v_bin is null or v_bin < v_qty then
+      select code into v_bincode from public.locations where id = v_loc;
+      select name into v_name  from public.products  where id = v_pid;
+      raise exception 'ของในช่องเก็บ % ไม่พอคืน: % มีอยู่ % แต่จะคืน %',
+        coalesce(v_bincode, v_loc), coalesce(v_name, v_pid), coalesce(v_bin, 0), v_qty
+        using errcode = 'P0001';
+    end if;
+
+    if v_bin = v_qty then
+      delete from public.product_locations
+      where product_id = v_pid and location_id = v_loc;
+    else
+      update public.product_locations
+      set qty = qty - v_qty
+      where product_id = v_pid and location_id = v_loc;
+    end if;
+
+    insert into public.purchase_return_items (
+      id, return_id, item_id, product_id, wh_id, loc_id,
+      qty, price, disc_pct, disc_amt, amount, seq
+    )
+    values (
+      it ->> 'id',
+      p_ret ->> 'id',
+      v_item,
+      v_pid,
+      v_wh,
+      v_loc,
+      v_qty,
+      (it ->> 'price')::numeric,
+      (it ->> 'disc_pct')::numeric,
+      (it ->> 'disc_amt')::numeric,
+      (it ->> 'amount')::numeric,
+      (it ->> 'seq')::int
+    );
+
+    -- ของออกจากคลังจริง จึงเป็นรายการชนิดเบิก
+    insert into public.txns (
+      id, type, doc_no, date, product_id, qty, wh_id, wh_to,
+      loc_id, loc_to, note, ref, user_name, ts
+    )
+    values (
+      it ->> 'txn_id',
+      'ISSUE',
+      p_ret ->> 'doc_no',
+      (p_ret ->> 'date')::date,
+      v_pid,
+      v_qty,
+      v_wh,
+      null,
+      v_loc,
+      null,
+      'ส่งคืนสินค้าและบริการ',
+      coalesce(p_ret ->> 'pur_doc_no', ''),
+      coalesce(p_ret ->> 'user_name', ''),
+      (p_ret ->> 'ts')::bigint
+    );
+  end loop;
+end;
+$create_return$;
+
+-- ============================================================================
 -- สิทธิการใช้งานหน้าจอ
 -- ----------------------------------------------------------------------------
 -- หนึ่งแถวคือหนึ่งหน้าจอ ไม่มีแถว = ยังไม่ได้จำกัดสิทธิ ใช้ได้เต็มทุกอย่าง
@@ -748,9 +1180,16 @@ grant all privileges on table public.company           to authenticated;
 grant all privileges on table public.invoices          to authenticated;
 grant all privileges on table public.invoice_items     to authenticated;
 grant all privileges on table public.screen_perms      to authenticated;
+grant all privileges on table public.suppliers         to authenticated;
+grant all privileges on table public.purchases         to authenticated;
+grant all privileges on table public.purchase_items    to authenticated;
+grant all privileges on table public.purchase_returns  to authenticated;
+grant all privileges on table public.purchase_return_items to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
+grant execute on function public.create_purchase(jsonb, jsonb) to authenticated;
+grant execute on function public.create_purchase_return(jsonb, jsonb) to authenticated;
 grant execute on function public.stock_of(text, text)         to authenticated;
 
 -- ---------------------------------------------------------- Row Level Security
@@ -766,7 +1205,8 @@ begin
     'warehouses', 'products', 'txns',
     'locations', 'product_locations', 'sales', 'sale_items',
     'doc_groups', 'customers', 'company', 'invoices', 'invoice_items',
-    'screen_perms'
+    'screen_perms', 'suppliers', 'purchases', 'purchase_items',
+    'purchase_returns', 'purchase_return_items'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -781,7 +1221,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 13 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 18 ตารางแล้ว';
 end
 $$;
 
@@ -839,6 +1279,7 @@ from (values
   ('warehouses'), ('products'), ('txns'),
   ('locations'), ('product_locations'), ('sales'), ('sale_items'),
   ('doc_groups'), ('customers'), ('company'), ('invoices'), ('invoice_items'),
-  ('screen_perms')
+  ('screen_perms'), ('suppliers'), ('purchases'), ('purchase_items'),
+  ('purchase_returns'), ('purchase_return_items')
 ) as x(name)
 order by x.name;

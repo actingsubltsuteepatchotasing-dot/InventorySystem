@@ -371,3 +371,222 @@ export function TaxInvoiceBody({ inv, company, invoice, items }) {
     </div>
   );
 }
+
+/**
+ * โครงเอกสารการค้าฝั่งซื้อ (ใบซื้อ / ใบส่งคืน)
+ *
+ * ใช้โครงเดียวกับใบกำกับภาษีของฝั่งขาย เพราะเป็นเอกสารประเภทเดียวกัน
+ * ต่างกันแค่ว่าใครเป็นผู้ขายใครเป็นผู้ซื้อ กับชื่อหัวเอกสาร
+ * แยกเป็นคอมโพเนนต์กลางไม่ให้ต้องแก้สามที่ทุกครั้งที่เปลี่ยนหน้าตาเอกสาร
+ */
+function TradeDoc({ inv, title, note, seller, buyer, meta, doc, items, vatLabel }) {
+  const lines = items || [];
+
+  return (
+    <div className="tinv">
+      <div className="ti-head">
+        <div className="ti-seller">
+          <b>{seller.name || "(ไม่ระบุ)"}</b>
+          <div>{seller.address}</div>
+          <div>
+            เลขประจำตัวผู้เสียภาษี {seller.taxId || "-"}
+            {seller.branch ? " · " + seller.branch : ""}
+          </div>
+          {seller.phone ? <div>โทร. {seller.phone}</div> : null}
+        </div>
+        <div className="ti-kind">
+          <div className="ti-title">{title}</div>
+          <div className="ti-orig">{note}</div>
+          <Barcode value={doc.docNo} module={1.5} height={34} />
+        </div>
+      </div>
+
+      <div className="ti-parties">
+        <div className="ti-box">
+          <span className="ti-lbl">{buyer.label}</span>
+          <b>{buyer.name}</b>
+          <div>{buyer.address || "-"}</div>
+          <div>
+            เลขประจำตัวผู้เสียภาษี {buyer.taxId || "-"}
+            {buyer.branch ? " · " + buyer.branch : ""}
+          </div>
+          {buyer.code ? <div>รหัส {buyer.code}</div> : null}
+        </div>
+        <div className="ti-box">
+          {meta.map((m) => (
+            <div className="ti-kv" key={m.k}>
+              <span>{m.k}</span>
+              <b>{m.v || "-"}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style={{ width: 34 }}>ลำดับ</th>
+            <th style={{ width: 78 }}>รหัส</th>
+            <th>รายการสินค้า / บริการ</th>
+            <th style={{ width: 60 }}>หน่วย</th>
+            <th style={{ width: 58, textAlign: "right" }}>จำนวน</th>
+            <th style={{ width: 74, textAlign: "right" }}>ราคา/หน่วย</th>
+            <th style={{ width: 74, textAlign: "right" }}>ส่วนลด</th>
+            <th style={{ width: 86, textAlign: "right" }}>จำนวนเงิน</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((it, i) => {
+            const p = inv.prod(it.productId);
+            const gross = (Number(it.qty) || 0) * (Number(it.price) || 0);
+            const disc = gross - (Number(it.amount) || 0);
+            return (
+              <tr key={it.id}>
+                <td>{i + 1}</td>
+                <td>{p ? p.code : ""}</td>
+                <td>
+                  {inv.prodName(it.productId)}
+                  {it.discPct ? " (ลด " + num(it.discPct, 2) + "%)" : ""}
+                </td>
+                <td>{p ? p.unit : ""}</td>
+                <td style={{ textAlign: "right" }}>{num(it.qty, 0)}</td>
+                <td style={{ textAlign: "right" }}>{num(it.price, 2)}</td>
+                <td style={{ textAlign: "right" }}>{disc > 0 ? num(disc, 2) : "-"}</td>
+                <td style={{ textAlign: "right" }}>{num(it.amount, 2)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="ti-foot">
+        <div className="ti-words">
+          <span className="ti-lbl">จำนวนเงินรวมทั้งสิ้น (ตัวอักษร)</span>
+          <b>{bahtText(doc.total)}</b>
+          {doc.note ? <div className="ti-note">หมายเหตุ: {doc.note}</div> : null}
+        </div>
+
+        <table className="ti-total">
+          <tbody>
+            <tr>
+              <td>รวมเงิน</td>
+              <td>{num(doc.itemsTotal, 2)}</td>
+            </tr>
+            <tr>
+              <td>ส่วนลดท้ายบิล</td>
+              <td>{num(doc.billDiscount, 2)}</td>
+            </tr>
+            <tr>
+              <td>มูลค่าก่อนภาษี</td>
+              <td>{num(doc.base, 2)}</td>
+            </tr>
+            <tr>
+              <td>{vatLabel} {num(doc.vatRate, 2)}%</td>
+              <td>{num(doc.vat, 2)}</td>
+            </tr>
+            <tr className="grand">
+              <td>จำนวนเงินรวมทั้งสิ้น</td>
+              <td>{num(doc.total, 2)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="pr-sign">
+        <div>
+          <div className="line" />
+          ผู้ส่งของ / วันที่
+        </div>
+        <div>
+          <div className="line" />
+          ผู้รับของ / วันที่
+        </div>
+        <div>
+          <div className="line" />
+          ผู้มีอำนาจลงนาม
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * บันทึกซื้อ / ใบรับสินค้า
+ *
+ * หัวกระดาษเป็นชื่อ "เจ้าหนี้" ไม่ใช่ชื่อกิจการเรา เพราะเอกสารนี้บันทึกว่า
+ * เราซื้อของจากใคร ผู้ขายคือเจ้าหนี้ ผู้ซื้อคือเรา ตรงข้ามกับใบกำกับภาษีขาย
+ */
+export function PurchaseBody({ inv, company, purchase, items }) {
+  const co = company || {};
+  return (
+    <TradeDoc
+      inv={inv}
+      title="บันทึกซื้อ / ใบรับสินค้า"
+      note="เอกสารภายใน ใช้คู่กับใบกำกับภาษีที่เจ้าหนี้ออกให้"
+      vatLabel="ภาษีซื้อ"
+      doc={purchase}
+      items={items}
+      seller={{
+        name: purchase.supName,
+        address: purchase.supAddress,
+        taxId: purchase.supTaxId,
+        branch: purchase.supBranch,
+      }}
+      buyer={{
+        label: "ผู้ซื้อ",
+        name: co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)",
+        address: co.address,
+        taxId: co.taxId,
+        branch: co.branch,
+      }}
+      meta={[
+        { k: "เลขที่เอกสาร", v: purchase.docNo },
+        { k: "วันที่", v: thDate(purchase.date) },
+        { k: "เลขที่ใบของเจ้าหนี้", v: purchase.refNo },
+        { k: "ผู้บันทึก", v: purchase.user },
+      ]}
+    />
+  );
+}
+
+/**
+ * ใบส่งคืนสินค้า
+ *
+ * ทิศทางกลับกับใบซื้อ: เราเป็นผู้ส่งของคืน เจ้าหนี้เป็นผู้รับ
+ * หัวกระดาษจึงเป็นชื่อกิจการเรา และต้องอ้างเลขที่ใบซื้อเดิมไว้บนเอกสาร
+ * ไม่งั้นเจ้าหนี้ออกใบลดหนี้ให้ไม่ได้ว่าลดของใบไหน
+ */
+export function ReturnBody({ inv, company, ret, items }) {
+  const co = company || {};
+  return (
+    <TradeDoc
+      inv={inv}
+      title="ใบส่งคืนสินค้า"
+      note={"ส่งคืนตามใบซื้อเลขที่ " + (ret.purDocNo || "-")}
+      vatLabel="ภาษีซื้อที่ต้องคืน"
+      doc={ret}
+      items={items}
+      seller={{
+        name: co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)",
+        address: co.address,
+        taxId: co.taxId,
+        branch: co.branch,
+        phone: co.phone,
+      }}
+      buyer={{
+        label: "ส่งคืนให้",
+        name: ret.supName,
+        address: ret.supAddress,
+        taxId: ret.supTaxId,
+        branch: ret.supBranch,
+        code: ret.supCode,
+      }}
+      meta={[
+        { k: "เลขที่เอกสาร", v: ret.docNo },
+        { k: "วันที่", v: thDate(ret.date) },
+        { k: "อ้างใบซื้อเลขที่", v: ret.purDocNo },
+        { k: "เหตุผลที่คืน", v: ret.reason },
+      ]}
+    />
+  );
+}

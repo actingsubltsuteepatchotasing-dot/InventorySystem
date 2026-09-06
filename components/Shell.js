@@ -31,6 +31,11 @@ import Shipping from "./views/Shipping";
 import Company from "./views/Company";
 import ShipStatus from "./views/ShipStatus";
 import Permissions from "./views/Permissions";
+import Suppliers from "./views/Suppliers";
+import PurchaseInvoice from "./views/PurchaseInvoice";
+import PurchaseReturn from "./views/PurchaseReturn";
+import ReportBuilder from "./views/ReportBuilder";
+import StockCount from "./views/StockCount";
 
 const NAV = [
   {
@@ -44,6 +49,15 @@ const NAV = [
       { id: "issue", Icon: IcOut, title: "เบิกสินค้า", sub: "บันทึกการเบิก-จ่ายสินค้า" },
       { id: "transfer", Icon: IcMove, title: "โอนสินค้า", sub: "โอนย้ายระหว่างคลัง" },
       { id: "adjust", Icon: IcAdjust, title: "ปรับปรุงสินค้า", sub: "ปรับยอดตามผลการตรวจนับ" },
+      { id: "stockcount", Icon: IcGrid, title: "ตรวจนับสินค้า", sub: "ยิงบาร์โค๊ดนับของ เทียบยอดในระบบ" },
+    ],
+  },
+  {
+    group: "งานซื้อ",
+    items: [
+      { id: "purchase", Icon: IcIn, title: "ซื้อสินค้าและบริการ", sub: "รับของเข้าและบันทึกภาษีซื้อ" },
+      { id: "purret", Icon: IcOut, title: "ส่งคืนสินค้าและบริการ", sub: "คืนของให้เจ้าหนี้ตามใบซื้อ" },
+      { id: "suppliers", Icon: IcPin, title: "รายละเอียดเจ้าหนี้", sub: "ทะเบียนเจ้าหนี้และที่อยู่" },
     ],
   },
   {
@@ -78,6 +92,7 @@ const NAV = [
     items: [
       { id: "reports", Icon: IcReport, title: "รายงาน", sub: "รายงานสรุปและการตรวจนับ" },
       { id: "graphs", Icon: IcChart, title: "กราฟสรุป", sub: "ปริมาณขึ้น-ลง และยอดคงเหลือ" },
+      { id: "builder", Icon: IcData, title: "สร้างรายงาน", sub: "เลือกคอลัมน์และจัดรูปแบบเอง" },
     ],
   },
 ];
@@ -354,6 +369,11 @@ export default function Shell() {
           {activeView === "graphs" && <Graphs />}
           {activeView === "invoice" && <SalesInvoice />}
           {activeView === "shipstatus" && <ShipStatus />}
+          {activeView === "purchase" && <PurchaseInvoice />}
+          {activeView === "purret" && <PurchaseReturn />}
+          {activeView === "suppliers" && <Suppliers />}
+          {activeView === "stockcount" && <StockCount />}
+          {activeView === "builder" && <ReportBuilder />}
           {activeView === "perms" && <Permissions />}
           {activeView === "shipping" && <Shipping />}
           {activeView === "company" && <Company />}

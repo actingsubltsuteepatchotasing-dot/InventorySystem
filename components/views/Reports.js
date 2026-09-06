@@ -22,6 +22,9 @@ const TABS = [
   { id: "ADJUST", label: "รายงานปรับปรุง" },
   { id: "SALE", label: "รายงานการขาย" },
   { id: "bills", label: "บิลขาย / ใบเสร็จ" },
+  { id: "docINVOICE", label: "ใบขายสินค้าและบริการ" },
+  { id: "docPURCHASE", label: "ใบซื้อสินค้าและบริการ" },
+  { id: "docPURRET", label: "ใบส่งคืนสินค้า" },
   { id: "count", label: "ใบตรวจนับสินค้า" },
   { id: "card", label: "บัตรสินค้า (Stock Card)" },
 ];
@@ -116,6 +119,9 @@ export default function Reports() {
       {tab === "count" && <CountReport {...{ inv, db, filter, FilterBar, print }} />}
       {tab === "card" && <StockCard {...{ inv, db, filter, FilterBar, print, toast }} />}
       {tab === "bills" && <BillsReport {...{ inv, db, filter, FilterBar, print, toast }} />}
+      {tab.startsWith("doc") && (
+        <DocReport key={tab} kind={tab.slice(3)} {...{ inv, db, filter, FilterBar, print, toast }} />
+      )}
       {["RECEIVE", "ISSUE", "TRANSFER", "ADJUST", "SALE"].includes(tab) && (
         <TxnReport key={tab} type={tab} {...{ inv, db, inRange, filter, FilterBar, print, toast }} />
       )}
@@ -776,6 +782,171 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
         </TableWrap>
       ) : (
         <Empty>ไม่พบรายการในช่วงเวลาที่เลือก</Empty>
+      )}
+    </Card>
+  );
+}
+
+/* ------------------------------------- รายงานเอกสารการค้า (ขาย/ซื้อ/ส่งคืน) */
+
+/**
+ * เอกสารทั้งสามชนิดมีโครงเหมือนกัน (เลขที่ วันที่ คู่ค้า ยอดก่อนภาษี ภาษี สุทธิ)
+ * จึงใช้รายงานตัวเดียวกัน ต่างแค่ว่าอ่านจากตารางไหนและเรียกคู่ค้าว่าอะไร
+ * ถ้าเขียนแยกสามชุด เวลาจะเพิ่มคอลัมน์ทีต้องไปแก้สามที่แล้วมักลืมที่ใดที่หนึ่ง
+ */
+const DOC_KINDS_REPORT = {
+  INVOICE: {
+    name: "ใบขายสินค้าและบริการ",
+    party: "ลูกค้า",
+    rows: (db) => db.invoices || [],
+    code: (v) => v.custCode,
+    partyName: (v) => v.custName,
+  },
+  PURCHASE: {
+    name: "ใบซื้อสินค้าและบริการ",
+    party: "เจ้าหนี้",
+    rows: (db) => db.purchases || [],
+    code: (v) => v.supCode,
+    partyName: (v) => v.supName,
+  },
+  PURRET: {
+    name: "ใบส่งคืนสินค้า",
+    party: "เจ้าหนี้",
+    rows: (db) => db.purchaseReturns || [],
+    code: (v) => v.supCode,
+    partyName: (v) => v.supName,
+  },
+};
+
+function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
+  const cfg = DOC_KINDS_REPORT[kind];
+
+  const list = useMemo(() => {
+    return cfg
+      .rows(db)
+      .filter((v) => {
+        if (filter.from && v.date < filter.from) return false;
+        if (filter.to && v.date > filter.to) return false;
+        return true;
+      })
+      .slice()
+      .sort((a, b) => b.ts - a.ts);
+  }, [db, cfg, filter]);
+
+  const sum = (f) => list.reduce((s, v) => s + (Number(v[f]) || 0), 0);
+
+  function printReport() {
+    if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+    print({
+      title: "รายงาน" + cfg.name,
+      subtitle: "ทั้งหมด " + list.length + " ใบ",
+      body: (
+        <table>
+          <thead>
+            <tr>
+              <th>ลำดับ</th>
+              <th>วันที่</th>
+              <th>เลขที่เอกสาร</th>
+              <th>รหัส{cfg.party}</th>
+              <th>ชื่อ{cfg.party}</th>
+              <th style={{ textAlign: "right" }}>ก่อนภาษี</th>
+              <th style={{ textAlign: "right" }}>ภาษี</th>
+              <th style={{ textAlign: "right" }}>สุทธิ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((v, i) => (
+              <tr key={v.id}>
+                <td>{i + 1}</td>
+                <td>{thDate(v.date)}</td>
+                <td>{v.docNo}</td>
+                <td>{cfg.code(v)}</td>
+                <td>{cfg.partyName(v)}</td>
+                <td style={{ textAlign: "right" }}>{num(v.base, 2)}</td>
+                <td style={{ textAlign: "right" }}>{num(v.vat, 2)}</td>
+                <td style={{ textAlign: "right" }}>{num(v.total, 2)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={5}>รวม {list.length} ใบ</td>
+              <td style={{ textAlign: "right" }}>{num(sum("base"), 2)}</td>
+              <td style={{ textAlign: "right" }}>{num(sum("vat"), 2)}</td>
+              <td style={{ textAlign: "right" }}>{num(sum("total"), 2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      ),
+    });
+  }
+
+  function exportCSV() {
+    if (!list.length) return toast("ไม่มีข้อมูลสำหรับส่งออก", "warn");
+    downloadCSV(
+      ["วันที่", "เลขที่เอกสาร", "รหัส" + cfg.party, "ชื่อ" + cfg.party,
+        "รวมเงิน", "ส่วนลดท้ายบิล", "ก่อนภาษี", "อัตราภาษี", "ภาษี", "สุทธิ", "ผู้บันทึก"],
+      list.map((v) => [
+        v.date, v.docNo, cfg.code(v), cfg.partyName(v),
+        v.itemsTotal, v.billDiscount, v.base, v.vatRate, v.vat, v.total, v.user,
+      ]),
+      "รายงาน" + cfg.name + ".csv"
+    );
+    toast("ส่งออกไฟล์ CSV แล้ว");
+  }
+
+  return (
+    <Card
+      title={"รายงาน" + cfg.name}
+      actions={
+        <>
+          <Badge kind="info">{list.length} ใบ</Badge>
+          <Badge>สุทธิ ฿{num(sum("total"), 2)}</Badge>
+          <button className="btn btn-o btn-sm" onClick={printReport}>พิมพ์</button>
+          <button className="btn btn-g btn-sm" onClick={exportCSV}>ส่งออก CSV</button>
+        </>
+      }
+    >
+      <FilterBar />
+      {list.length ? (
+        <TableWrap>
+          <thead>
+            <tr>
+              <th style={{ width: 118 }}>วันที่</th>
+              <th style={{ minWidth: 150 }}>เลขที่เอกสาร</th>
+              <th style={{ width: 90 }}>รหัส{cfg.party}</th>
+              <th style={{ minWidth: 200 }}>ชื่อ{cfg.party}</th>
+              <th className="num" style={{ width: 110 }}>ก่อนภาษี</th>
+              <th className="num" style={{ width: 100 }}>ภาษี</th>
+              <th className="num" style={{ width: 120 }}>สุทธิ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((v) => (
+              <tr key={v.id}>
+                <td>{thDate(v.date)}</td>
+                <td className="code-cell">{v.docNo}</td>
+                <td>{cfg.code(v)}</td>
+                <td>{cfg.partyName(v)}</td>
+                <td className="num">{num(v.base, 2)}</td>
+                <td className="num">{num(v.vat, 2)}</td>
+                <td className="num">
+                  <b>{num(v.total, 2)}</b>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={4}>รวม {list.length} ใบ</td>
+              <td className="num">{num(sum("base"), 2)}</td>
+              <td className="num">{num(sum("vat"), 2)}</td>
+              <td className="num">{num(sum("total"), 2)}</td>
+            </tr>
+          </tfoot>
+        </TableWrap>
+      ) : (
+        <Empty>ไม่มีเอกสารในช่วงวันที่ที่เลือก</Empty>
       )}
     </Card>
   );

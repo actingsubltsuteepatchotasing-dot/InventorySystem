@@ -25,7 +25,20 @@ const TABS = [
   { id: "TRANSFER", label: "กราฟโอนสินค้า", type: "TRANSFER" },
   { id: "ADJUST", label: "กราฟปรับปรุง", type: "ADJUST" },
   { id: "SALE", label: "กราฟการขาย", type: "SALE" },
+
+  // กราฟระดับ "เอกสาร" ไม่ใช่ระดับรายการเคลื่อนไหว
+  // จึงอ่านจากตารางเอกสารโดยตรงและวัดเป็นมูลค่า ไม่ใช่จำนวนชิ้น
+  { id: "docINVOICE", label: "กราฟใบขายสินค้าและบริการ", doc: "INVOICE" },
+  { id: "docPURCHASE", label: "กราฟใบซื้อสินค้าและบริการ", doc: "PURCHASE" },
+  { id: "docPURRET", label: "กราฟใบส่งคืนสินค้า", doc: "PURRET" },
 ];
+
+/** เอกสารแต่ละชนิดอ่านจากตารางไหน และเรียกคู่ค้าว่าอะไร */
+const DOC_SRC = {
+  INVOICE: { rows: (db) => db.invoices || [], party: (v) => v.custName, label: "ลูกค้า" },
+  PURCHASE: { rows: (db) => db.purchases || [], party: (v) => v.supName, label: "เจ้าหนี้" },
+  PURRET: { rows: (db) => db.purchaseReturns || [], party: (v) => v.supName, label: "เจ้าหนี้" },
+};
 
 export default function Graphs() {
   const inv = useInv();
@@ -39,6 +52,7 @@ export default function Graphs() {
 
   const current = TABS.find((t) => t.id === tab) || TABS[0];
   const kind = current.type;
+  const docKind = current.doc || null;
 
   const data = useMemo(() => {
     const now = new Date();
@@ -180,6 +194,55 @@ export default function Graphs() {
 
   const sum = (a) => a.reduce((x, y) => x + y, 0);
 
+  /**
+   * ยอดรายเดือนของเอกสาร — มูลค่าสุทธิและจำนวนใบ
+   * ตัวกรองสินค้า/คลัง/ที่เก็บใช้ไม่ได้กับกราฟชุดนี้ เพราะเป็นยอดระดับใบ ไม่ใช่ระดับบรรทัด
+   */
+  const docData = useMemo(() => {
+    if (!docKind) return null;
+    const src = DOC_SRC[docKind];
+    const now = new Date();
+    const keys = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      keys.push({
+        key: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"),
+        label:
+          d.toLocaleDateString("th-TH", { month: "short" }) +
+          (months > 6 ? " " + String((d.getFullYear() + 543) % 100) : ""),
+      });
+    }
+
+    const money = new Map(keys.map((k) => [k.key, 0]));
+    const count = new Map(keys.map((k) => [k.key, 0]));
+    const byParty = new Map();
+    let total = 0;
+    let docs = 0;
+
+    src.rows(db).forEach((v) => {
+      const k = String(v.date || "").slice(0, 7);
+      if (!money.has(k)) return;
+      money.set(k, money.get(k) + (Number(v.total) || 0));
+      count.set(k, count.get(k) + 1);
+      const name = src.party(v) || "(ไม่ระบุ)";
+      byParty.set(name, (byParty.get(name) || 0) + (Number(v.total) || 0));
+      total += Number(v.total) || 0;
+      docs++;
+    });
+
+    return {
+      label: src.label,
+      total,
+      docs,
+      money: keys.map((k) => ({ label: k.label, value: money.get(k.key) })),
+      count: keys.map((k) => ({ label: k.label, value: count.get(k.key) })),
+      top: [...byParty.entries()]
+        .map(([label, value]) => ({ label, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10),
+    };
+  }, [db, months, docKind]);
+
   return (
     <>
       <div className="tabs" role="tablist">
@@ -237,7 +300,7 @@ export default function Graphs() {
         </Card>
 
         {/* ---------------- ภาพรวมยอดคงเหลือ ---------------- */}
-        {!kind ? (
+        {!kind && !docKind ? (
           <>
             <Card title="ปริมาณคงเหลือ (แนวโน้มขึ้น-ลง)" actions={<Badge>ยอดสะสมปลายเดือน</Badge>}>
               <div className="chart">
@@ -281,6 +344,38 @@ export default function Graphs() {
                 <div className="chart">
                   <HBarChart items={data.topProd} />
                 </div>
+              </Card>
+            </div>
+          </>
+        ) : null}
+
+        {/* ---------------- กราฟระดับเอกสาร ---------------- */}
+        {docData && !docData.docs ? (
+          <Card title={current.label}>
+            <Empty>ไม่มีเอกสารในช่วงเวลาที่เลือก</Empty>
+          </Card>
+        ) : null}
+
+        {docData && docData.docs > 0 ? (
+          <>
+            <Card
+              title={current.label + " รายเดือน (มูลค่า)"}
+              actions={
+                <>
+                  <Badge kind="info">{num(docData.docs, 0)} ใบ</Badge>
+                  <Badge>รวม ฿{num(docData.total, 2)}</Badge>
+                </>
+              }
+            >
+              <BarChart data={docData.money} />
+            </Card>
+
+            <div className="grid g2">
+              <Card title="จำนวนใบรายเดือน">
+                <BarChart data={docData.count} />
+              </Card>
+              <Card title={"10 อันดับ" + docData.label + " (มูลค่า)"}>
+                <HBarChart data={docData.top} />
               </Card>
             </div>
           </>
