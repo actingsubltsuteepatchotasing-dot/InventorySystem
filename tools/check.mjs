@@ -828,5 +828,85 @@ head("15. การ์ดบนแดชบอร์ดประกาศคร�
   }
 }
 
+head("16. ฟอร์มพิมพ์ที่ออกแบบเองใช้ได้จริงทุกจุด");
+{
+  // ฟอร์มที่มีคอลัมน์ซึ่งหาค่าไม่ได้ หรือชนิดเอกสารที่ฐานข้อมูลไม่ยอมรับ
+  // จะบันทึกได้ในหน้าจอ แต่ไปพังตอนสั่งพิมพ์ ซึ่งรู้ตอนกระดาษออกมาเปล่าแล้ว
+  const lib = read("lib/printForms.js");
+  const sql = read("supabase/schema.sql");
+  let n = 0;
+
+  const colBlock = (lib.match(/export const FORM_COLUMNS = \[([\s\S]*?)\n\];/) || ["", ""])[1];
+  const colIds = [...colBlock.matchAll(/id: "(\w+)"/g)].map((m) => m[1]);
+  const values = (colBlock.match(/value: \(/g) || []).length;
+  if (colIds.length !== values) {
+    bad("คอลัมน์ " + colIds.length + " แบบ แต่มีวิธีหาค่า " + values + " ตัว");
+    n++;
+  }
+  if (new Set(colIds).size !== colIds.length) {
+    bad("รหัสคอลัมน์ในฟอร์มซ้ำกัน");
+    n++;
+  }
+
+  // คอลัมน์ที่ฟอร์มมาตรฐานเลือกไว้ต้องมีอยู่จริง ไม่งั้นฟอร์มตั้งต้นก็พังเอง
+  const defCols = ((lib.match(/columns: \[([^\]]*)\]/) || ["", ""])[1])
+    .split(",")
+    .map((x) => x.trim().replace(/"/g, ""))
+    .filter(Boolean);
+  const missing = defCols.filter((c) => !colIds.includes(c));
+  if (missing.length) {
+    bad("ฟอร์มมาตรฐานใช้คอลัมน์ที่ไม่มีอยู่: " + missing.join(", "));
+    n++;
+  }
+
+  // ชนิดเอกสารที่ออกแบบฟอร์มได้ ต้องตรงกับที่ฐานข้อมูลยอมรับเป๊ะ ๆ
+  const kinds = [...lib.matchAll(/\{ id: "(\w+)", name: "[^"]+", party:/g)].map((m) => m[1]);
+  const sqlKinds = ((sql.match(/print_forms_kind check \(doc_kind in \(([^)]*)\)/) || ["", ""])[1])
+    .split(",")
+    .map((x) => x.trim().replace(/'/g, ""))
+    .filter(Boolean);
+  if (kinds.slice().sort().join() !== sqlKinds.slice().sort().join()) {
+    bad("ชนิดเอกสารไม่ตรงกัน — โค้ด: " + kinds.join(",") + " · ฐานข้อมูล: " + sqlKinds.join(","));
+    n++;
+  }
+
+  // ทุกหน้าจอที่พิมพ์เอกสารการค้าต้องเลือกฟอร์มด้วยกติกาเดียวกัน
+  // ถ้าหน้าไหนวาดเองตรง ๆ ฟอร์มที่ผู้ใช้ออกแบบไว้จะไม่ถูกใช้เฉพาะหน้านั้น
+  [
+    ["components/views/SalesInvoice.js", "INVOICE"],
+    ["components/views/PurchaseInvoice.js", "PURCHASE"],
+    ["components/views/PurchaseReturn.js", "PURRET"],
+  ].forEach(([file, kind]) => {
+    const src = read(file);
+    if (!src.includes('resolveForm(db, "' + kind + '"')) {
+      bad(file + " ไม่ได้เลือกฟอร์มด้วย resolveForm ของชนิด " + kind);
+      n++;
+    }
+    if (!src.includes("<TradeDocBody")) {
+      bad(file + " ไม่ได้ใช้ตัววาดเดียวกับหน้าออกแบบฟอร์ม");
+      n++;
+    }
+    if (!src.includes('<FormPick kind="' + kind + '"')) {
+      bad(file + " ไม่มีตัวเลือกฟอร์มตอนพิมพ์");
+      n++;
+    }
+  });
+
+  // ตัวอย่างบนจอกับกระดาษจริงต้องใช้กฎ CSS ชุดเดียวกัน ไม่ใช่เขียนแยกกันสองชุด
+  const css = read("app/globals.css");
+  const shared = (css.match(/#printRoot [^,{]*, \.pf-paper /g) || []).length;
+  if (shared < 10) {
+    bad("กฎหน้าตาเอกสารที่ใช้ร่วมกับกรอบตัวอย่างมีแค่ " + shared + " ข้อ — ตัวอย่างจะเพี้ยนจากกระดาษจริง");
+    n++;
+  }
+
+  if (!n) {
+    ok(
+      "คอลัมน์ " + colIds.length + " แบบ · ชนิดเอกสาร " + kinds.length +
+        " ชนิดตรงกับฐานข้อมูล · ทุกหน้าที่พิมพ์เลือกฟอร์มด้วยกติกาเดียวกัน"
+    );
+  }
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);

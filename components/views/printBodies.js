@@ -3,7 +3,15 @@
 // เนื้อหาเอกสารที่ใช้พิมพ์ร่วมกันหลายหน้าจอ
 
 import { PAY_METHODS, VAT_RATE } from "@/lib/constants";
-import { bahtText, num, thDate, thDateTime } from "@/lib/format";
+import { bahtText, num, thDateTime } from "@/lib/format";
+import {
+  bodyRows,
+  defaultForm,
+  headCells,
+  metaRows,
+  totalRows,
+} from "@/lib/printForms";
+import { Logo } from "../Icons";
 import { Barcode } from "../ui";
 
 /**
@@ -229,194 +237,79 @@ export function LabelSheetBody({ items }) {
  * ชื่อ/ที่อยู่ผู้ซื้ออ่านจากตัวใบ ไม่ได้อ่านสดจากทะเบียนลูกค้า
  * เพราะเอกสารภาษีต้องคงข้อความเดิม ณ วันที่ออก
  */
-export function TaxInvoiceBody({ inv, company, invoice, items }) {
-  const co = company || {};
-  const lines = items || [];
-
-  return (
-    <div className="tinv">
-      <div className="ti-head">
-        <div className="ti-seller">
-          <b>{co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)"}</b>
-          <div>{co.address}</div>
-          <div>
-            เลขประจำตัวผู้เสียภาษี {co.taxId || "-"}
-            {co.branch ? " · " + co.branch : ""}
-          </div>
-          {co.phone ? <div>โทร. {co.phone}</div> : null}
-          {co.email ? <div>{co.email}</div> : null}
-        </div>
-        <div className="ti-kind">
-          <div className="ti-title">ใบกำกับภาษี / ใบส่งของ</div>
-          <div className="ti-orig">ต้นฉบับ (เอกสารออกเป็นชุด)</div>
-          <Barcode value={invoice.docNo} module={1.5} height={34} />
-        </div>
-      </div>
-
-      <div className="ti-parties">
-        <div className="ti-box">
-          <span className="ti-lbl">ผู้ซื้อ</span>
-          <b>{invoice.custName}</b>
-          <div>{invoice.custAddress || "-"}</div>
-          <div>
-            เลขประจำตัวผู้เสียภาษี {invoice.custTaxId || "-"}
-            {invoice.custBranch ? " · " + invoice.custBranch : ""}
-          </div>
-          <div>รหัสลูกค้า {invoice.custCode || "-"}</div>
-        </div>
-        <div className="ti-box">
-          <div className="ti-kv">
-            <span>เลขที่เอกสาร</span>
-            <b>{invoice.docNo}</b>
-          </div>
-          <div className="ti-kv">
-            <span>วันที่</span>
-            <b>{thDate(invoice.date)}</b>
-          </div>
-          <div className="ti-kv">
-            <span>ผู้ออกเอกสาร</span>
-            <b>{invoice.user || "-"}</b>
-          </div>
-          <div className="ti-kv">
-            <span>พิมพ์เมื่อ</span>
-            <b>{thDateTime(Date.now())}</b>
-          </div>
-        </div>
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th style={{ width: 34 }}>ลำดับ</th>
-            <th style={{ width: 78 }}>รหัส</th>
-            <th>รายการสินค้า / บริการ</th>
-            <th style={{ width: 60 }}>หน่วย</th>
-            <th style={{ width: 58, textAlign: "right" }}>จำนวน</th>
-            <th style={{ width: 74, textAlign: "right" }}>ราคา/หน่วย</th>
-            <th style={{ width: 74, textAlign: "right" }}>ส่วนลด</th>
-            <th style={{ width: 86, textAlign: "right" }}>จำนวนเงิน</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((it, i) => {
-            const p = inv.prod(it.productId);
-            const gross = (Number(it.qty) || 0) * (Number(it.price) || 0);
-            const disc = gross - (Number(it.amount) || 0);
-            return (
-              <tr key={it.id}>
-                <td>{i + 1}</td>
-                <td>{p ? p.code : ""}</td>
-                <td>
-                  {inv.prodName(it.productId)}
-                  {it.discPct ? " (ลด " + num(it.discPct, 2) + "%)" : ""}
-                </td>
-                <td>{p ? p.unit : ""}</td>
-                <td style={{ textAlign: "right" }}>{num(it.qty, 0)}</td>
-                <td style={{ textAlign: "right" }}>{num(it.price, 2)}</td>
-                <td style={{ textAlign: "right" }}>{disc > 0 ? num(disc, 2) : "-"}</td>
-                <td style={{ textAlign: "right" }}>{num(it.amount, 2)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <div className="ti-foot">
-        <div className="ti-words">
-          <span className="ti-lbl">จำนวนเงินรวมทั้งสิ้น (ตัวอักษร)</span>
-          <b>{bahtText(invoice.total)}</b>
-          {invoice.note ? <div className="ti-note">หมายเหตุ: {invoice.note}</div> : null}
-        </div>
-
-        <table className="ti-total">
-          <tbody>
-            <tr>
-              <td>รวมเงิน</td>
-              <td>{num(invoice.itemsTotal, 2)}</td>
-            </tr>
-            <tr>
-              <td>ส่วนลดท้ายบิล</td>
-              <td>{num(invoice.billDiscount, 2)}</td>
-            </tr>
-            <tr>
-              <td>มูลค่าก่อนภาษี</td>
-              <td>{num(invoice.base, 2)}</td>
-            </tr>
-            <tr>
-              <td>ภาษีมูลค่าเพิ่ม {num(invoice.vatRate, 2)}%</td>
-              <td>{num(invoice.vat, 2)}</td>
-            </tr>
-            <tr className="grand">
-              <td>จำนวนเงินรวมทั้งสิ้น</td>
-              <td>{num(invoice.total, 2)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div className="pr-sign">
-        <div>
-          <div className="line" />
-          ผู้รับสินค้า / วันที่
-        </div>
-        <div>
-          <div className="line" />
-          ผู้ส่งสินค้า / วันที่
-        </div>
-        <div>
-          <div className="line" />
-          ผู้มีอำนาจลงนาม
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /**
- * โครงเอกสารการค้าฝั่งซื้อ (ใบซื้อ / ใบส่งคืน)
+ * เอกสารการค้าที่วาดตามฟอร์มที่ออกแบบไว้
  *
- * ใช้โครงเดียวกับใบกำกับภาษีของฝั่งขาย เพราะเป็นเอกสารประเภทเดียวกัน
- * ต่างกันแค่ว่าใครเป็นผู้ขายใครเป็นผู้ซื้อ กับชื่อหัวเอกสาร
- * แยกเป็นคอมโพเนนต์กลางไม่ให้ต้องแก้สามที่ทุกครั้งที่เปลี่ยนหน้าตาเอกสาร
+ * ตัววาดตัวเดียวใช้ทั้งตอนดูตัวอย่างในหน้าออกแบบฟอร์ม และตอนพิมพ์จริง
+ * จึงไม่มีทางที่ตัวอย่างสวยแต่พิมพ์ออกมาคนละอย่าง
+ *
+ * ฟอร์มบอกว่าจะแสดงส่วนไหนบ้างและเอาคอลัมน์ไหน ตัววาดไม่ตัดสินใจเอง
+ * ไม่ส่งฟอร์มมาก็ใช้ฟอร์มมาตรฐาน ของเดิมจึงพิมพ์ออกมาเหมือนเดิมทุกประการ
+ *
+ * @param {object} props.doc เอกสาร (ใบขาย / ใบซื้อ / ใบส่งคืน)
+ * @param {object} props.form ฟอร์มที่เลือกไว้
+ * @param {string} props.party คำเรียกคู่ค้าบนเอกสาร เช่น "ผู้ซื้อ"
  */
-function TradeDoc({ inv, title, note, seller, buyer, meta, doc, items, vatLabel }) {
-  const lines = items || [];
+export function TradeDocBody({ inv, company, doc, items, form, party = "ผู้ซื้อ" }) {
+  const f = form || defaultForm("INVOICE");
+  const co = company || {};
+  const cols = headCells(f);
+  const rows = bodyRows(f, items, inv);
+
+  // ฝั่งขายเก็บข้อมูลคู่ค้าไว้ในชื่อ cust* ฝั่งซื้อใช้ sup* — รับได้ทั้งสองแบบ
+  const other = {
+    name: doc.custName || doc.supName || "-",
+    address: doc.custAddress || doc.supAddress || "",
+    taxId: doc.custTaxId || doc.supTaxId || "",
+    branch: doc.custBranch || doc.supBranch || "",
+    code: doc.custCode || doc.supCode || "",
+  };
 
   return (
     <div className="tinv">
       <div className="ti-head">
         <div className="ti-seller">
-          <b>{seller.name || "(ไม่ระบุ)"}</b>
-          <div>{seller.address}</div>
-          <div>
-            เลขประจำตัวผู้เสียภาษี {seller.taxId || "-"}
-            {seller.branch ? " · " + seller.branch : ""}
-          </div>
-          {seller.phone ? <div>โทร. {seller.phone}</div> : null}
+          {f.showCompany ? (
+            <>
+              {f.showLogo ? (
+                <div className="ti-logo">
+                  <Logo size={40} />
+                </div>
+              ) : null}
+              <b>{co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)"}</b>
+              <div>{co.address}</div>
+              <div>
+                เลขประจำตัวผู้เสียภาษี {co.taxId || "-"}
+                {co.branch ? " · " + co.branch : ""}
+              </div>
+              {co.phone ? <div>โทร. {co.phone}</div> : null}
+              {co.email ? <div>{co.email}</div> : null}
+            </>
+          ) : null}
         </div>
         <div className="ti-kind">
-          <div className="ti-title">{title}</div>
-          <div className="ti-orig">{note}</div>
-          <Barcode value={doc.docNo} module={1.5} height={34} />
+          <div className="ti-title">{f.title}</div>
+          {f.copyLabel ? <div className="ti-orig">{f.copyLabel}</div> : null}
+          {f.showBarcode ? <Barcode value={doc.docNo} module={1.5} height={34} /> : null}
         </div>
       </div>
 
       <div className="ti-parties">
         <div className="ti-box">
-          <span className="ti-lbl">{buyer.label}</span>
-          <b>{buyer.name}</b>
-          <div>{buyer.address || "-"}</div>
+          <span className="ti-lbl">{party}</span>
+          <b>{other.name}</b>
+          <div>{other.address || "-"}</div>
           <div>
-            เลขประจำตัวผู้เสียภาษี {buyer.taxId || "-"}
-            {buyer.branch ? " · " + buyer.branch : ""}
+            เลขประจำตัวผู้เสียภาษี {other.taxId || "-"}
+            {other.branch ? " · " + other.branch : ""}
           </div>
-          {buyer.code ? <div>รหัส {buyer.code}</div> : null}
+          {other.code ? <div>รหัส {other.code}</div> : null}
         </div>
         <div className="ti-box">
-          {meta.map((m) => (
-            <div className="ti-kv" key={m.k}>
-              <span>{m.k}</span>
-              <b>{m.v || "-"}</b>
+          {metaRows(doc).map(([k, v]) => (
+            <div className="ti-kv" key={k}>
+              <span>{k}</span>
+              <b>{v || "-"}</b>
             </div>
           ))}
         </div>
@@ -425,168 +318,67 @@ function TradeDoc({ inv, title, note, seller, buyer, meta, doc, items, vatLabel 
       <table>
         <thead>
           <tr>
-            <th style={{ width: 34 }}>ลำดับ</th>
-            <th style={{ width: 78 }}>รหัส</th>
-            <th>รายการสินค้า / บริการ</th>
-            <th style={{ width: 60 }}>หน่วย</th>
-            <th style={{ width: 58, textAlign: "right" }}>จำนวน</th>
-            <th style={{ width: 74, textAlign: "right" }}>ราคา/หน่วย</th>
-            <th style={{ width: 74, textAlign: "right" }}>ส่วนลด</th>
-            <th style={{ width: 86, textAlign: "right" }}>จำนวนเงิน</th>
+            {cols.map((c) => (
+              <th
+                key={c.id}
+                style={{
+                  width: c.width || undefined,
+                  textAlign: c.align === "right" ? "right" : undefined,
+                }}
+              >
+                {c.name}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {lines.map((it, i) => {
-            const p = inv.prod(it.productId);
-            const gross = (Number(it.qty) || 0) * (Number(it.price) || 0);
-            const disc = gross - (Number(it.amount) || 0);
-            return (
-              <tr key={it.id}>
-                <td>{i + 1}</td>
-                <td>{p ? p.code : ""}</td>
-                <td>
-                  {inv.prodName(it.productId)}
-                  {it.discPct ? " (ลด " + num(it.discPct, 2) + "%)" : ""}
+          {rows.map((r, i) => (
+            <tr key={i}>
+              {r.map((cell, j) => (
+                <td key={j} style={cols[j].align === "right" ? { textAlign: "right" } : undefined}>
+                  {cell}
                 </td>
-                <td>{p ? p.unit : ""}</td>
-                <td style={{ textAlign: "right" }}>{num(it.qty, 0)}</td>
-                <td style={{ textAlign: "right" }}>{num(it.price, 2)}</td>
-                <td style={{ textAlign: "right" }}>{disc > 0 ? num(disc, 2) : "-"}</td>
-                <td style={{ textAlign: "right" }}>{num(it.amount, 2)}</td>
-              </tr>
-            );
-          })}
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
 
       <div className="ti-foot">
         <div className="ti-words">
-          <span className="ti-lbl">จำนวนเงินรวมทั้งสิ้น (ตัวอักษร)</span>
-          <b>{bahtText(doc.total)}</b>
-          {doc.note ? <div className="ti-note">หมายเหตุ: {doc.note}</div> : null}
+          {f.showWords ? (
+            <>
+              <span className="ti-lbl">จำนวนเงินรวมทั้งสิ้น (ตัวอักษร)</span>
+              <b>{bahtText(doc.total)}</b>
+            </>
+          ) : null}
+          {f.showNote && doc.note ? <div className="ti-note">หมายเหตุ: {doc.note}</div> : null}
         </div>
 
-        <table className="ti-total">
-          <tbody>
-            <tr>
-              <td>รวมเงิน</td>
-              <td>{num(doc.itemsTotal, 2)}</td>
-            </tr>
-            <tr>
-              <td>ส่วนลดท้ายบิล</td>
-              <td>{num(doc.billDiscount, 2)}</td>
-            </tr>
-            <tr>
-              <td>มูลค่าก่อนภาษี</td>
-              <td>{num(doc.base, 2)}</td>
-            </tr>
-            <tr>
-              <td>{vatLabel} {num(doc.vatRate, 2)}%</td>
-              <td>{num(doc.vat, 2)}</td>
-            </tr>
-            <tr className="grand">
-              <td>จำนวนเงินรวมทั้งสิ้น</td>
-              <td>{num(doc.total, 2)}</td>
-            </tr>
-          </tbody>
-        </table>
+        {f.showTotals ? (
+          <table className="ti-total">
+            <tbody>
+              {totalRows(doc).map(([k, v], i, all) => (
+                <tr key={k} className={i === all.length - 1 ? "grand" : ""}>
+                  <td>{k}</td>
+                  <td>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
       </div>
 
-      <div className="pr-sign">
-        <div>
-          <div className="line" />
-          ผู้ส่งของ / วันที่
+      {f.signs && f.signs.length ? (
+        <div className="pr-sign">
+          {f.signs.map((sg, i) => (
+            <div key={sg + i}>
+              <div className="line" />
+              {sg}
+            </div>
+          ))}
         </div>
-        <div>
-          <div className="line" />
-          ผู้รับของ / วันที่
-        </div>
-        <div>
-          <div className="line" />
-          ผู้มีอำนาจลงนาม
-        </div>
-      </div>
+      ) : null}
     </div>
-  );
-}
-
-/**
- * บันทึกซื้อ / ใบรับสินค้า
- *
- * หัวกระดาษเป็นชื่อ "เจ้าหนี้" ไม่ใช่ชื่อกิจการเรา เพราะเอกสารนี้บันทึกว่า
- * เราซื้อของจากใคร ผู้ขายคือเจ้าหนี้ ผู้ซื้อคือเรา ตรงข้ามกับใบกำกับภาษีขาย
- */
-export function PurchaseBody({ inv, company, purchase, items }) {
-  const co = company || {};
-  return (
-    <TradeDoc
-      inv={inv}
-      title="บันทึกซื้อ / ใบรับสินค้า"
-      note="เอกสารภายใน ใช้คู่กับใบกำกับภาษีที่เจ้าหนี้ออกให้"
-      vatLabel="ภาษีซื้อ"
-      doc={purchase}
-      items={items}
-      seller={{
-        name: purchase.supName,
-        address: purchase.supAddress,
-        taxId: purchase.supTaxId,
-        branch: purchase.supBranch,
-      }}
-      buyer={{
-        label: "ผู้ซื้อ",
-        name: co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)",
-        address: co.address,
-        taxId: co.taxId,
-        branch: co.branch,
-      }}
-      meta={[
-        { k: "เลขที่เอกสาร", v: purchase.docNo },
-        { k: "วันที่", v: thDate(purchase.date) },
-        { k: "เลขที่ใบของเจ้าหนี้", v: purchase.refNo },
-        { k: "ผู้บันทึก", v: purchase.user },
-      ]}
-    />
-  );
-}
-
-/**
- * ใบส่งคืนสินค้า
- *
- * ทิศทางกลับกับใบซื้อ: เราเป็นผู้ส่งของคืน เจ้าหนี้เป็นผู้รับ
- * หัวกระดาษจึงเป็นชื่อกิจการเรา และต้องอ้างเลขที่ใบซื้อเดิมไว้บนเอกสาร
- * ไม่งั้นเจ้าหนี้ออกใบลดหนี้ให้ไม่ได้ว่าลดของใบไหน
- */
-export function ReturnBody({ inv, company, ret, items }) {
-  const co = company || {};
-  return (
-    <TradeDoc
-      inv={inv}
-      title="ใบส่งคืนสินค้า"
-      note={"ส่งคืนตามใบซื้อเลขที่ " + (ret.purDocNo || "-")}
-      vatLabel="ภาษีซื้อที่ต้องคืน"
-      doc={ret}
-      items={items}
-      seller={{
-        name: co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)",
-        address: co.address,
-        taxId: co.taxId,
-        branch: co.branch,
-        phone: co.phone,
-      }}
-      buyer={{
-        label: "ส่งคืนให้",
-        name: ret.supName,
-        address: ret.supAddress,
-        taxId: ret.supTaxId,
-        branch: ret.supBranch,
-        code: ret.supCode,
-      }}
-      meta={[
-        { k: "เลขที่เอกสาร", v: ret.docNo },
-        { k: "วันที่", v: thDate(ret.date) },
-        { k: "อ้างใบซื้อเลขที่", v: ret.purDocNo },
-        { k: "เหตุผลที่คืน", v: ret.reason },
-      ]}
-    />
   );
 }

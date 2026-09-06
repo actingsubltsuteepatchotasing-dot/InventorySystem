@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 24 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 25 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
@@ -1255,6 +1255,59 @@ end
 $cnt_loc$;
 
 -- ============================================================================
+-- ฟอร์มพิมพ์ที่ออกแบบเอง
+-- ----------------------------------------------------------------------------
+-- เก็บ "สิ่งที่เลือกไว้" ของฟอร์มหนึ่ง ไม่ได้เก็บตำแหน่งพิกัดของแต่ละชิ้น
+--
+-- ทำไมไม่เก็บเป็นผืนผ้าใบลากวาง:
+--   ลากวางอิสระฟังดูยืดหยุ่นกว่า แต่ในทางปฏิบัติได้ฟอร์มที่ข้อความล้นกรอบ
+--   เมื่อชื่อสินค้ายาว และเพี้ยนเมื่อจำนวนบรรทัดเปลี่ยน
+--   เอกสารการค้าเป็นตารางที่มีโครงตายตัวอยู่แล้ว สิ่งที่คนอยากเปลี่ยนจริง ๆ คือ
+--   หัวเอกสารเขียนว่าอะไร · เอาคอลัมน์ไหนบ้างเรียงยังไง · ช่องลงนามมีกี่ช่อง
+--
+-- columns กับ signs เก็บเป็น jsonb เพราะเป็นรายการที่ลำดับมีความหมาย
+--   ถ้าแตกเป็นตารางลูก จะต้องมีคอลัมน์ลำดับและต้องเขียน join ทุกครั้งที่พิมพ์
+--   ทั้งที่ข้อมูลชุดนี้อ่านทั้งก้อนเสมอ ไม่เคยอ่านทีละบรรทัด
+create table if not exists public.print_forms (
+  id           text primary key,
+  name         text not null,
+  doc_kind     text not null,
+  title        text not null default '',
+  copy_label   text not null default '',
+  paper        text not null default 'A4',
+  show_logo    boolean not null default false,
+  show_company boolean not null default true,
+  show_barcode boolean not null default true,
+  show_words   boolean not null default true,
+  show_note    boolean not null default true,
+  show_totals  boolean not null default true,
+  columns      jsonb not null default '[]'::jsonb,
+  signs        jsonb not null default '[]'::jsonb,
+  note         text not null default '',
+  is_default   boolean not null default false,
+  user_name    text not null default '',
+  ts           bigint not null,
+  created_at   timestamptz not null default now(),
+
+  constraint print_forms_kind check (doc_kind in ('INVOICE', 'PURCHASE', 'PURRET')),
+  constraint print_forms_paper check (paper in ('A4', 'A5'))
+);
+
+create index if not exists print_forms_kind_idx on public.print_forms (doc_kind);
+
+-- กลุ่มเอกสารเลือกฟอร์มที่จะใช้เป็นค่าเริ่มต้นของเอกสารชนิดนั้นได้
+-- on delete set null: ลบฟอร์มแล้วกลุ่มเอกสารกลับไปใช้ฟอร์มมาตรฐาน ไม่ใช่พิมพ์ไม่ออก
+alter table public.doc_groups add column if not exists form_id text;
+
+do $doc_form$
+begin
+  alter table public.doc_groups drop constraint if exists doc_groups_form_fk;
+  alter table public.doc_groups add constraint doc_groups_form_fk
+    foreign key (form_id) references public.print_forms (id) on delete set null;
+end
+$doc_form$;
+
+-- ============================================================================
 -- พนักงานขาย
 -- ----------------------------------------------------------------------------
 -- ใช้ผูกกับใบขายและกับลูกค้า เพื่อดูยอดขายรายคนและตั้งเป้าขายรายคน
@@ -1443,7 +1496,7 @@ begin
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
-    'salespersons', 'sales_targets'
+    'salespersons', 'sales_targets', 'print_forms'
   ]
   loop
     seq := 'public.' || t || '_row_order_seq';
@@ -1508,6 +1561,7 @@ grant all privileges on table public.ship_events        to authenticated;
 grant all privileges on table public.sql_connections    to authenticated;
 grant all privileges on table public.salespersons       to authenticated;
 grant all privileges on table public.sales_targets      to authenticated;
+grant all privileges on table public.print_forms        to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -1531,7 +1585,7 @@ begin
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
-    'salespersons', 'sales_targets'
+    'salespersons', 'sales_targets', 'print_forms'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1546,7 +1600,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 24 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 25 ตารางแล้ว';
 end
 $$;
 
@@ -1607,6 +1661,6 @@ from (values
   ('screen_perms'), ('suppliers'), ('purchases'), ('purchase_items'),
   ('purchase_returns'), ('purchase_return_items'),
   ('stock_counts'), ('stock_count_items'), ('ship_events'), ('sql_connections'),
-  ('salespersons'), ('sales_targets')
+  ('salespersons'), ('sales_targets'), ('print_forms')
 ) as x(name)
 order by x.name;

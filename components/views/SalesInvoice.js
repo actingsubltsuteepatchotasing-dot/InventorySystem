@@ -28,7 +28,9 @@ import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
 import { Badge, Card, DocBrowser, Empty, LocationSelect, ProductSelect, QtyInput, SearchSelect, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
-import { TaxInvoiceBody } from "./printBodies";
+import { resolveForm } from "@/lib/printForms";
+import FormPick from "./FormPick";
+import { TradeDocBody } from "./printBodies";
 
 const shipOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
 
@@ -46,6 +48,8 @@ export default function SalesInvoice() {
   const print = usePrint();
 
   const [saving, setSaving] = useState(false);
+  // ฟอร์มที่เลือกตอนพิมพ์ ว่าง = ใช้ตามที่ตั้งไว้ในกลุ่มเอกสาร
+  const [formId, setFormId] = useState("");
   const [date, setDate] = useState(todayISO);
   const [custId, setCustId] = useState("");
   const [salesId, setSalesId] = useState("");
@@ -267,7 +271,7 @@ export default function SalesInvoice() {
       await inv.addInvoice(invoice, items);
       toast("บันทึกใบขาย " + docNo + " (" + items.length + " รายการ) เรียบร้อย");
       clearAll();
-      printInvoice(invoice, items);
+      printInvoice(invoice, items, formId);
     } catch (e) {
       toast("บันทึกไม่สำเร็จ: " + e.message, "err");
     } finally {
@@ -275,11 +279,23 @@ export default function SalesInvoice() {
     }
   }
 
-  function printInvoice(invoice, items) {
+  function printInvoice(invoice, items, formId) {
     // bare = ไม่ใส่หัวกระดาษมาตรฐานของโปรแกรม เพราะใบกำกับภาษีต้องขึ้นชื่อกิจการผู้ออก
+    // ฟอร์ม: ที่เลือกตอนพิมพ์ -> ที่ตั้งไว้ในกลุ่มเอกสาร -> ค่าเริ่มต้นของชนิด -> ฟอร์มมาตรฐาน
+    const group = inv.docGroup("INVOICE");
+    const form = resolveForm(db, "INVOICE", formId || (group && group.formId) || "");
     print({
       bare: true,
-      body: <TaxInvoiceBody inv={inv} company={db.company} invoice={invoice} items={items} />,
+      body: (
+        <TradeDocBody
+          inv={inv}
+          company={db.company}
+          doc={invoice}
+          items={items}
+          form={form}
+          party="ผู้ซื้อ"
+        />
+      ),
     });
   }
 
@@ -333,6 +349,7 @@ export default function SalesInvoice() {
             <button className="btn btn-g btn-sm" onClick={clearAll} disabled={saving}>
               ล้างตาราง
             </button>
+            <FormPick kind="INVOICE" value={formId} onChange={setFormId} disabled={saving} />
           </>
         }
       >
@@ -645,7 +662,7 @@ export default function SalesInvoice() {
                     <td>
                       <button
                         className="btn btn-o btn-sm"
-                        onClick={() => printInvoice(v, inv.itemsOfInvoice(v.id))}
+                        onClick={() => printInvoice(v, inv.itemsOfInvoice(v.id), formId)}
                       >
                         พิมพ์ซ้ำ
                       </button>

@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "./Toast";
 import {
   IcAdjust, IcBox, IcCart, IcChart, IcChevron, IcDash, IcData, IcDownload, IcGrid, IcIn,
-  IcMap, IcMenu, IcMove, IcOut, IcPin, IcReport, Logo,
+  IcMap, IcMenu, IcMove, IcOut, IcPin, IcPrint, IcReport, Logo,
 } from "./Icons";
 import BackupModal from "./BackupModal";
 import ChatWidget from "./ChatWidget";
@@ -41,6 +41,7 @@ import Users from "./views/Users";
 import SqlServer from "./views/SqlServer";
 import DataImport from "./views/DataImport";
 import Salespersons from "./views/Salespersons";
+import PrintForms from "./views/PrintForms";
 import Targets from "./views/Targets";
 import QuickView from "./views/QuickView";
 import CountPrep from "./views/CountPrep";
@@ -104,6 +105,7 @@ const NAV = [
   {
     group: "การจัดการระบบ",
     items: [
+      { id: "printforms", Icon: IcPrint, title: "ออกแบบฟอร์มพิมพ์", sub: "เลือกส่วนที่จะแสดงบนเอกสาร" },
       { id: "docgroups", Icon: IcReport, title: "การกำหนดกลุ่มเอกสาร", sub: "รูปแบบเลขที่เอกสารแบบรันนิ่ง" },
       { id: "whsetup", Icon: IcData, title: "กำหนดคลังและที่เก็บ", sub: "เพิ่ม แก้ไข และลบคลังกับช่องเก็บ" },
       { id: "company", Icon: IcBox, title: "ข้อมูลกิจการ", sub: "ผู้ออกใบกำกับภาษี" },
@@ -407,6 +409,7 @@ export default function Shell() {
           {activeView === "sqlserver" && <SqlServer />}
           {activeView === "dataimport" && <DataImport />}
           {activeView === "salespersons" && <Salespersons />}
+          {activeView === "printforms" && <PrintForms />}
           {activeView === "targets" && <Targets />}
           {activeView === "password" && <Password />}
           {activeView === "billimport" && <BillImport />}

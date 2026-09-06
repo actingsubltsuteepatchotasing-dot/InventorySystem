@@ -56,6 +56,7 @@ const PARTS = [
   { key: "sqlConnections", name: "การเชื่อมต่อฐานข้อมูลภายนอก" },
   { key: "salespersons", name: "พนักงานขาย" },
   { key: "salesTargets", name: "เป้าขาย" },
+  { key: "printForms", name: "ฟอร์มพิมพ์" },
 ];
 
 const stamp = () =>

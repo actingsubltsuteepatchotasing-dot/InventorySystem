@@ -10,12 +10,26 @@ import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { DOC_KINDS, DOC_PERIODS, SEED_DOC_GROUPS } from "@/lib/constants";
 import { docPrefixOf, docSample, nextDocNo } from "@/lib/db";
+import { formsOf, FORM_KINDS } from "@/lib/printForms";
 import { num, todayISO } from "@/lib/format";
 import { useToast } from "../Toast";
 import { Badge, Card, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const periodName = (id) => (DOC_PERIODS.find((p) => p.id === id) || DOC_PERIODS[2]).name;
+
+// ชนิดที่ออกแบบฟอร์มพิมพ์ได้ ชนิดอื่นพิมพ์ด้วยแบบมาตรฐานของหน้าจอนั้น จึงไม่มีให้เลือก
+const canPickForm = (type) => FORM_KINDS.some((k) => k.id === type);
+
+/** ชื่อฟอร์มที่กลุ่มเลือกไว้ — ฟอร์มที่ถูกลบไปแล้วต้องไม่แสดงเป็นช่องว่างเปล่า ๆ */
+function formName(db, type, formId) {
+  if (!canPickForm(type)) return "ใช้แบบมาตรฐาน";
+  const list = formsOf(db, type);
+  const picked = formId ? list.find((f) => f.id === formId) : null;
+  if (picked) return picked.name;
+  const def = list.find((f) => f.isDefault);
+  return def ? def.name + " (ค่าเริ่มต้น)" : "ฟอร์มมาตรฐานของระบบ";
+}
 
 export default function DocGroups() {
   const inv = useInv();
@@ -103,6 +117,8 @@ export default function DocGroups() {
       prefix: String(form.prefix).trim().toUpperCase(),
       period: form.period,
       digits: Number(form.digits),
+      // ฟอร์มพิมพ์ที่ผูกกับกลุ่มนี้ ว่าง = ใช้ฟอร์มที่ตั้งเป็นค่าเริ่มต้นของชนิดนั้น
+      formId: canPickForm(editing) ? String(form.formId || "") : "",
     };
 
     const before = rows.find((r) => r.type === editing);
@@ -164,6 +180,7 @@ export default function DocGroups() {
               <th style={{ minWidth: 140 }}>การขึ้นเลขใหม่</th>
               <th className="num" style={{ width: 90 }}>จำนวนหลัก</th>
               <th style={{ minWidth: 170 }}>เลขที่ถัดไป</th>
+              <th style={{ minWidth: 180 }}>ฟอร์มพิมพ์</th>
               <th className="num" style={{ width: 90 }}>ออกแล้ว</th>
               <th style={{ width: 90 }} />
             </tr>
@@ -248,6 +265,30 @@ export default function DocGroups() {
                   <td>
                     {/* ตอนแก้ไขให้เห็นผลทันทีว่าเลขจะออกมาหน้าตาแบบไหน */}
                     <code>{isEdit ? docSample(form, today) : r.next}</code>
+                  </td>
+
+                  <td>
+                    {/* เลือกฟอร์มที่จะใช้พิมพ์เอกสารของกลุ่มนี้ ออกแบบฟอร์มได้ที่หน้า "ออกแบบฟอร์มพิมพ์" */}
+                    {!canPickForm(r.type) ? (
+                      <span className="muted">ใช้แบบมาตรฐาน</span>
+                    ) : isEdit ? (
+                      <select
+                        className="sel"
+                        value={form.formId || ""}
+                        onChange={(e) => set("formId", e.target.value)}
+                        aria-label={"ฟอร์มพิมพ์ของ " + DOC_KINDS[r.type]}
+                      >
+                        <option value="">ฟอร์มมาตรฐานของระบบ</option>
+                        {formsOf(db, r.type).map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                            {f.isDefault ? " (ค่าเริ่มต้น)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      formName(db, r.type, r.group.formId)
+                    )}
                   </td>
 
                   <td className="num">{num(r.used, 0)}</td>

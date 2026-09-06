@@ -30,7 +30,9 @@ import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
 import { Badge, Card, DocBrowser, Empty, LocationSelect, ProductSelect, QtyInput, SearchSelect, TableWrap, WarehouseSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
-import { PurchaseBody } from "./printBodies";
+import { resolveForm } from "@/lib/printForms";
+import FormPick from "./FormPick";
+import { TradeDocBody } from "./printBodies";
 
 export default function PurchaseInvoice() {
   const inv = useInv();
@@ -46,6 +48,8 @@ export default function PurchaseInvoice() {
   const print = usePrint();
 
   const [saving, setSaving] = useState(false);
+  // ฟอร์มที่เลือกตอนพิมพ์ ว่าง = ใช้ตามที่ตั้งไว้ในกลุ่มเอกสาร
+  const [formId, setFormId] = useState("");
   const [date, setDate] = useState(todayISO);
   const [supId, setSupId] = useState("");
   const [refNo, setRefNo] = useState("");
@@ -191,7 +195,7 @@ export default function PurchaseInvoice() {
       await inv.addPurchase(purchase, items);
       toast("บันทึกใบซื้อ " + docNo + " (" + items.length + " รายการ) เรียบร้อย");
       clearAll();
-      printDoc(purchase, items);
+      printDoc(purchase, items, formId);
     } catch (e) {
       toast("บันทึกไม่สำเร็จ: " + e.message, "err");
     } finally {
@@ -199,10 +203,21 @@ export default function PurchaseInvoice() {
     }
   }
 
-  function printDoc(purchase, items) {
+  function printDoc(purchase, items, formId) {
+    const group = inv.docGroup("PURCHASE");
+    const form = resolveForm(db, "PURCHASE", formId || (group && group.formId) || "");
     print({
       bare: true,
-      body: <PurchaseBody inv={inv} company={db.company} purchase={purchase} items={items} />,
+      body: (
+        <TradeDocBody
+          inv={inv}
+          company={db.company}
+          doc={purchase}
+          items={items}
+          form={form}
+          party="ผู้ขาย"
+        />
+      ),
     });
   }
 
@@ -255,6 +270,7 @@ export default function PurchaseInvoice() {
             <button className="btn btn-g btn-sm" onClick={clearAll} disabled={saving}>
               ล้างตาราง
             </button>
+            <FormPick kind="PURCHASE" value={formId} onChange={setFormId} disabled={saving} />
           </>
         }
       >
@@ -544,7 +560,7 @@ export default function PurchaseInvoice() {
                   <td>
                     <button
                       className="btn btn-o btn-sm"
-                      onClick={() => printDoc(v, inv.itemsOfPurchase(v.id))}
+                      onClick={() => printDoc(v, inv.itemsOfPurchase(v.id), formId)}
                     >
                       พิมพ์ซ้ำ
                     </button>

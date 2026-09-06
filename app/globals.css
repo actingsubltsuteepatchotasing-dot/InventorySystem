@@ -1322,6 +1322,180 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 
 /* ---------- Print ---------- */
 #printRoot { display: none; }
+/* ---------- หน้าตาเอกสารที่พิมพ์ ----------
+   ประกาศนอก @media print เพราะหน้าออกแบบฟอร์มต้องเอามาแสดงตัวอย่างบนจอด้วย
+   ใช้กฎชุดเดียวกันทั้งสองที่ ตัวอย่างบนจอกับกระดาษจริงจึงไม่มีทางเพี้ยนจากกัน
+   ตัวเลือกจำกัดอยู่ใต้ #printRoot (ซ่อนอยู่ตอนไม่พิมพ์) และ .pf-paper (กรอบตัวอย่าง)
+   จึงไม่รั่วไปโดนหน้าจออื่น */
+#printRoot table, .pf-paper table {
+  width: 100%; border-collapse: collapse; font-size: 10pt;
+}
+#printRoot th, .pf-paper th {
+  background: #eaf5ef !important;
+  border: 1px solid #9bbfab;
+  padding: 5px 7px;
+  text-align: left;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+#printRoot td, .pf-paper td {
+  border: 1px solid #c3cfc8; padding: 4.5px 7px;
+}
+#printRoot tfoot td, .pf-paper tfoot td {
+  background: #eaf5ef !important;
+  font-weight: 700;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+#printRoot .pr-sign, .pf-paper .pr-sign {
+  display: flex; justify-content: space-around; margin-top: 34px; font-size: 10pt; text-align: center;
+}
+#printRoot .pr-sign div, .pf-paper .pr-sign div {
+  width: 31%;
+}
+#printRoot .pr-sign .line, .pf-paper .pr-sign .line {
+  border-bottom: 1px dotted #333; height: 34px; margin-bottom: 5px;
+}
+#printRoot .pr-note, .pf-paper .pr-note {
+  margin-top: 10px; font-size: 9pt; color: #555;
+}
+/* ---------- ใบกำกับภาษีเต็มรูปแบบ ---------- */
+#printRoot .tinv, .pf-paper .tinv {
+  color: #000;
+}
+#printRoot .ti-head, .pf-paper .ti-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  border-bottom: 2.5px solid #000;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+#printRoot .ti-seller, .pf-paper .ti-seller {
+  flex: 1; font-size: 9.5pt; line-height: 1.5;
+}
+#printRoot .ti-seller b, .pf-paper .ti-seller b {
+  display: block; font-size: 13pt; margin-bottom: 2px;
+}
+#printRoot .ti-kind, .pf-paper .ti-kind {
+  text-align: right;
+}
+#printRoot .ti-title, .pf-paper .ti-title {
+  font-size: 14pt; font-weight: 700;
+}
+#printRoot .ti-orig, .pf-paper .ti-orig {
+  font-size: 9pt; color: #444; margin-bottom: 4px;
+}
+#printRoot .ti-kind svg, .pf-paper .ti-kind svg {
+  max-width: 100%; height: auto;
+}
+#printRoot .ti-parties, .pf-paper .ti-parties {
+  display: flex; gap: 10px; margin-bottom: 10px;
+}
+#printRoot .ti-box, .pf-paper .ti-box {
+  flex: 1;
+  border: 1px solid #666;
+  padding: 6px 9px;
+  font-size: 9.5pt;
+  line-height: 1.5;
+  break-inside: avoid;
+}
+#printRoot .ti-box b, .pf-paper .ti-box b {
+  font-size: 10.5pt;
+}
+#printRoot .ti-lbl, .pf-paper .ti-lbl {
+  display: block; font-size: 8.5pt; color: #444;
+}
+#printRoot .ti-kv, .pf-paper .ti-kv {
+  display: flex; justify-content: space-between; gap: 10px;
+}
+#printRoot .ti-foot, .pf-paper .ti-foot {
+  display: flex; gap: 10px; margin-top: 10px; align-items: flex-start;
+}
+#printRoot .ti-words, .pf-paper .ti-words {
+  flex: 1;
+  border: 1px solid #666;
+  padding: 7px 9px;
+  font-size: 10pt;
+  break-inside: avoid;
+}
+#printRoot .ti-note, .pf-paper .ti-note {
+  margin-top: 5px; font-size: 9pt; color: #333;
+}
+#printRoot table.ti-total, .pf-paper table.ti-total {
+  width: 260px; flex: none; font-size: 10pt;
+}
+#printRoot table.ti-total td, .pf-paper table.ti-total td {
+  border: 1px solid #666; padding: 4px 8px;
+}
+#printRoot table.ti-total td:last-child, .pf-paper table.ti-total td:last-child {
+  text-align: right; width: 96px;
+}
+#printRoot table.ti-total tr.grand td, .pf-paper table.ti-total tr.grand td {
+  font-weight: 700;
+  border-top: 2px solid #000;
+  background: #eaf5ef !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+
+/* ---------- หน้าออกแบบฟอร์มพิมพ์ ---------- */
+.pf-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 4px;
+}
+
+/* รายการคอลัมน์และช่องลงนาม — ลำดับในรายการคือลำดับที่จะพิมพ์จริง */
+.pf-cols { list-style: none; margin: 0 0 10px; padding: 0; }
+.pf-cols li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  margin-bottom: 6px;
+}
+.pf-cols li b { font-weight: 600; }
+.pf-cols li .muted { font-size: 12px; }
+
+/* กรอบตัวอย่าง — เลื่อนดูในกรอบของตัวเอง ไม่ดันหน้าจอให้เลื่อนซ้ายขวา */
+.pf-preview {
+  overflow-x: auto;
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+/* กระดาษจำลอง — กว้างเท่ากระดาษจริงลบขอบ 12mm ทั้งสองข้าง
+   สีพื้นขาวและตัวอักษรดำตายตัว เพราะกระดาษจริงไม่มีธีมมืด */
+.pf-paper {
+  background: #fff;
+  color: #000;
+  width: 186mm;
+  min-width: 186mm;
+  padding: 12mm;
+  margin: 0 auto;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.18);
+  font-size: 11.5pt;
+  line-height: 1.45;
+}
+.pf-paper.a5 { width: 124mm; min-width: 124mm; padding: 9mm; font-size: 10.5pt; }
+.pf-paper * { color: inherit; }
+#printRoot .ti-logo, .pf-paper .ti-logo { width: 46px; height: 46px; flex: none; margin-bottom: 4px; }
+
+@media (max-width: 720px) {
+  .pf-cols li { grid-template-columns: 1fr auto; }
+  .pf-preview { padding: 8px; }
+}
+
 
 @media print {
   @page { size: A4; margin: 12mm; }
@@ -1344,82 +1518,9 @@ body.col-resizing { cursor: col-resize; user-select: none; }
   .pr-title { text-align: center; font-size: 13.5pt; font-weight: 700; margin: 6px 0 3px; }
   .pr-sub { text-align: center; font-size: 10pt; color: #444; margin-bottom: 12px; }
 
-  #printRoot table { width: 100%; border-collapse: collapse; font-size: 10pt; }
-  #printRoot th {
-    background: #eaf5ef !important;
-    border: 1px solid #9bbfab;
-    padding: 5px 7px;
-    text-align: left;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  #printRoot td { border: 1px solid #c3cfc8; padding: 4.5px 7px; }
-  #printRoot tfoot td {
-    background: #eaf5ef !important;
-    font-weight: 700;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .pr-sign { display: flex; justify-content: space-around; margin-top: 34px; font-size: 10pt; text-align: center; }
-  .pr-sign div { width: 31%; }
-  .pr-sign .line { border-bottom: 1px dotted #333; height: 34px; margin-bottom: 5px; }
-  .pr-note { margin-top: 10px; font-size: 9pt; color: #555; }
-
   .lbl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; }
   .lbl-card { border: 1px dashed #888; padding: 5px; text-align: center; break-inside: avoid; }
   .lbl-card svg { max-width: 100%; height: auto; }
-
-  /* ---------- ใบกำกับภาษีเต็มรูปแบบ ---------- */
-  .tinv { color: #000; }
-  .ti-head {
-    display: flex;
-    gap: 14px;
-    align-items: flex-start;
-    border-bottom: 2.5px solid #000;
-    padding-bottom: 8px;
-    margin-bottom: 10px;
-  }
-  .ti-seller { flex: 1; font-size: 9.5pt; line-height: 1.5; }
-  .ti-seller b { display: block; font-size: 13pt; margin-bottom: 2px; }
-  .ti-kind { text-align: right; }
-  .ti-title { font-size: 14pt; font-weight: 700; }
-  .ti-orig { font-size: 9pt; color: #444; margin-bottom: 4px; }
-  .ti-kind svg { max-width: 100%; height: auto; }
-
-  .ti-parties { display: flex; gap: 10px; margin-bottom: 10px; }
-  .ti-box {
-    flex: 1;
-    border: 1px solid #666;
-    padding: 6px 9px;
-    font-size: 9.5pt;
-    line-height: 1.5;
-    break-inside: avoid;
-  }
-  .ti-box b { font-size: 10.5pt; }
-  .ti-lbl { display: block; font-size: 8.5pt; color: #444; }
-  .ti-kv { display: flex; justify-content: space-between; gap: 10px; }
-
-  .ti-foot { display: flex; gap: 10px; margin-top: 10px; align-items: flex-start; }
-  .ti-words {
-    flex: 1;
-    border: 1px solid #666;
-    padding: 7px 9px;
-    font-size: 10pt;
-    break-inside: avoid;
-  }
-  .ti-note { margin-top: 5px; font-size: 9pt; color: #333; }
-
-  table.ti-total { width: 260px; flex: none; font-size: 10pt; }
-  table.ti-total td { border: 1px solid #666; padding: 4px 8px; }
-  table.ti-total td:last-child { text-align: right; width: 96px; }
-  table.ti-total tr.grand td {
-    font-weight: 700;
-    border-top: 2px solid #000;
-    background: #eaf5ef !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
 
   /* ---------- ใบเสร็จรับเงิน ---------- */
   #printRoot.mode-receipt { display: flex !important; justify-content: center; }

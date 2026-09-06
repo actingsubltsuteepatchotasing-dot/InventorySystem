@@ -21,7 +21,9 @@ import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { Badge, Card, DocBrowser, Empty, QtyInput, SearchSelect, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
-import { ReturnBody } from "./printBodies";
+import { resolveForm } from "@/lib/printForms";
+import FormPick from "./FormPick";
+import { TradeDocBody } from "./printBodies";
 
 export default function PurchaseReturn() {
   const inv = useInv();
@@ -32,6 +34,8 @@ export default function PurchaseReturn() {
   const print = usePrint();
 
   const [saving, setSaving] = useState(false);
+  // ฟอร์มที่เลือกตอนพิมพ์ ว่าง = ใช้ตามที่ตั้งไว้ในกลุ่มเอกสาร
+  const [formId, setFormId] = useState("");
   const [date, setDate] = useState(todayISO);
   const [purId, setPurId] = useState("");
   const [reason, setReason] = useState(RETURN_REASONS[0]);
@@ -171,7 +175,7 @@ export default function PurchaseReturn() {
       setQty({});
       setBillDiscount("");
       setNote("");
-      printDoc(ret, items);
+      printDoc(ret, items, formId);
     } catch (e) {
       toast("บันทึกไม่สำเร็จ: " + e.message, "err");
     } finally {
@@ -179,10 +183,21 @@ export default function PurchaseReturn() {
     }
   }
 
-  function printDoc(ret, items) {
+  function printDoc(ret, items, formId) {
+    const group = inv.docGroup("PURRET");
+    const form = resolveForm(db, "PURRET", formId || (group && group.formId) || "");
     print({
       bare: true,
-      body: <ReturnBody inv={inv} company={db.company} ret={ret} items={items} />,
+      body: (
+        <TradeDocBody
+          inv={inv}
+          company={db.company}
+          doc={ret}
+          items={items}
+          form={form}
+          party="ผู้รับคืน"
+        />
+      ),
     });
   }
 
@@ -233,6 +248,7 @@ export default function PurchaseReturn() {
             >
               {saving ? "กำลังบันทึก…" : "บันทึกและพิมพ์"}
             </button>
+            <FormPick kind="PURRET" value={formId} onChange={setFormId} disabled={saving} />
           </>
         }
       >
@@ -445,7 +461,7 @@ export default function PurchaseReturn() {
                   <td>
                     <button
                       className="btn btn-o btn-sm"
-                      onClick={() => printDoc(v, inv.itemsOfReturn(v.id))}
+                      onClick={() => printDoc(v, inv.itemsOfReturn(v.id), formId)}
                     >
                       พิมพ์ซ้ำ
                     </button>
