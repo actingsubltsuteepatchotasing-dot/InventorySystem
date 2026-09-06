@@ -1,32 +1,62 @@
 "use client";
 
-// หน้าจอรายงาน 9 แท็บ — กรองด้วยช่วงวันที่ / คลัง / สินค้า พิมพ์และส่งออก CSV ได้ทุกแท็บ
+// หน้าจอรายงาน — หนึ่งแท็บต่อหนึ่งงานที่มีการบันทึกข้อมูลลงระบบ
+//
+// ทุกแท็บพิมพ์และส่งออก CSV/Excel ได้ และค้นหาได้จากข้อมูลที่มีในแท็บนั้นจริง ๆ
+// แถบตัวกรองเปลี่ยนตามแท็บที่เปิดอยู่ ไม่ได้แสดงทุกช่องตลอดเวลา
+// เพราะช่องที่กรองอะไรไม่ได้ทำให้คนใช้เข้าใจผิดว่าไม่มีข้อมูล ทั้งที่ช่องนั้นไม่มีผลกับแท็บนี้
 
 import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
-import { TYPES } from "@/lib/constants";
-import { movement } from "@/lib/db";
-import { localISO, num, thDate, todayISO } from "@/lib/format";
+import { PAY_METHODS, SHIP_STATUS, TYPES } from "@/lib/constants";
+import { customerAddress, movement } from "@/lib/db";
+import { fmtDuration, localISO, num, thDate, thDateTime, thTime, todayISO } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
-import { Badge, Card, Empty, ExportPair, PrintPair, ProductSelect, TableWrap, WhLocFields } from "../ui";
-import { PAY_METHODS } from "@/lib/constants";
+import {
+  Badge, Card, Empty, ExportPair, PrintPair, ProductSelect, SearchSelect, TableWrap, WhLocFields,
+} from "../ui";
 import { CountSheetBody, ReceiptBody } from "./printBodies";
 
+/**
+ * แท็บรายงานทั้งหมด — หนึ่งแท็บคือหนึ่งงานที่มีการบันทึกข้อมูลลงระบบ
+ *
+ * needs บอกว่าแท็บนั้นใช้ตัวกรองอะไรบ้าง แถบตัวกรองจะแสดงเฉพาะช่องที่แท็บนั้นใช้จริง
+ * ที่ทำแบบนี้เพราะช่องกรองที่กรองอะไรไม่ได้ทำให้คนใช้เข้าใจผิดว่าไม่มีข้อมูล
+ * ทั้งที่จริงคือช่องนั้นไม่มีผลกับแท็บที่เปิดอยู่
+ *
+ *   date     ช่วงวันที่
+ *   wh       คลังและที่เก็บ
+ *   product  สินค้า
+ *   customer ลูกค้า
+ *   supplier เจ้าหนี้
+ *   text     ช่องค้นหาอิสระ (เลขที่เอกสาร รหัส ชื่อ หรือส่วนใดส่วนหนึ่งก็ได้)
+ */
 const TABS = [
-  { id: "stock", label: "สรุปยอดคงเหลือ" },
-  { id: "RECEIVE", label: "รายงานรับสินค้า" },
-  { id: "ISSUE", label: "รายงานเบิกสินค้า" },
-  { id: "TRANSFER", label: "รายงานโอนสินค้า" },
-  { id: "ADJUST", label: "รายงานปรับปรุง" },
-  { id: "SALE", label: "รายงานการขาย" },
-  { id: "bills", label: "บิลขาย / ใบเสร็จ" },
-  { id: "docINVOICE", label: "ใบขายสินค้าและบริการ" },
-  { id: "docPURCHASE", label: "ใบซื้อสินค้าและบริการ" },
-  { id: "docPURRET", label: "ใบส่งคืนสินค้า" },
-  { id: "count", label: "ใบตรวจนับสินค้า" },
-  { id: "card", label: "บัตรสินค้า (Stock Card)" },
+  { id: "stock", label: "สรุปยอดคงเหลือ", group: "ภาพรวม", needs: ["wh", "product", "text"] },
+  { id: "card", label: "บัตรสินค้า (Stock Card)", group: "ภาพรวม", needs: ["date", "wh", "product"] },
+
+  { id: "RECEIVE", label: "รับสินค้า", group: "ทำรายการ", needs: ["date", "wh", "product", "text"] },
+  { id: "ISSUE", label: "เบิกสินค้า", group: "ทำรายการ", needs: ["date", "wh", "product", "text"] },
+  { id: "TRANSFER", label: "โอนสินค้า", group: "ทำรายการ", needs: ["date", "wh", "product", "text"] },
+  { id: "ADJUST", label: "ปรับปรุงสินค้า", group: "ทำรายการ", needs: ["date", "wh", "product", "text"] },
+  { id: "counts", label: "ใบตรวจนับที่บันทึกไว้", group: "ทำรายการ", needs: ["date", "wh", "text"] },
+  { id: "count", label: "ใบตรวจนับเปล่า (พิมพ์)", group: "ทำรายการ", needs: ["wh"] },
+
+  { id: "docPURCHASE", label: "ใบซื้อสินค้าและบริการ", group: "งานซื้อ", needs: ["date", "supplier", "text"] },
+  { id: "docPURRET", label: "ใบส่งคืนสินค้า", group: "งานซื้อ", needs: ["date", "supplier", "text"] },
+
+  { id: "SALE", label: "รายการขาย", group: "งานขาย", needs: ["date", "wh", "product", "text"] },
+  { id: "bills", label: "บิลขาย / ใบเสร็จ", group: "งานขาย", needs: ["date", "wh", "product", "text"] },
+  { id: "docINVOICE", label: "ใบขายสินค้าและบริการ", group: "งานขาย", needs: ["date", "customer", "text"] },
+
+  { id: "ship", label: "การจัดส่งและเวลาแต่ละขั้น", group: "งานจัดส่ง", needs: ["date", "customer", "text"] },
+
+  { id: "products", label: "ทะเบียนสินค้า", group: "ข้อมูลหลัก", needs: ["product", "text"] },
+  { id: "customers", label: "ทะเบียนลูกค้า", group: "ข้อมูลหลัก", needs: ["customer", "text"] },
+  { id: "suppliers", label: "ทะเบียนเจ้าหนี้", group: "ข้อมูลหลัก", needs: ["supplier", "text"] },
+  { id: "bins", label: "คลังและช่องเก็บ", group: "ข้อมูลหลัก", needs: ["wh", "text"] },
 ];
 
 function threeMonthsAgo() {
@@ -34,6 +64,32 @@ function threeMonthsAgo() {
   d.setMonth(d.getMonth() - 3);
   // localISO ไม่ใช่ toISOString เพราะ UTC จะย้อนวันให้ในช่วงเช้ามืดของไทย
   return localISO(d);
+}
+
+/**
+ * ตัดตัวคั่นออกให้เทียบกันได้
+ *
+ * คนพิมพ์เลขที่เอกสารกันคนละแบบ: IV-202609-0001 / iv2026090001 / IV 202609 0001
+ * ถ้าเทียบตรง ๆ จะหาไม่เจอทั้งที่พิมพ์ถูก ใช้กติกาเดียวกับช่องยิงบาร์โค๊ดที่หน้าจัดส่ง
+ */
+const squash = (v) => String(v == null ? "" : v).toLowerCase().replace(/[\s\-\/.,]/g, "");
+
+/**
+ * สร้างตัวเทียบข้อความจากคำค้น
+ *
+ * พิมพ์หลายคำได้ ต้องเจอครบทุกคำ แต่อยู่คนละช่องกันได้
+ * (เช่น "ic001 ก.ย." เจอใบที่มีทั้งรหัสสินค้านั้นและเดือนกันยายน)
+ * และเจอจากส่วนใดส่วนหนึ่งของค่าก็พอ ไม่ต้องพิมพ์เต็ม
+ */
+function makeMatch(term) {
+  const words = String(term || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return () => true;
+
+  return (...values) => {
+    const hay = values.filter((v) => v !== null && v !== undefined && v !== "").join(" ").toLowerCase();
+    const tight = squash(hay);
+    return words.every((w) => hay.includes(w) || tight.includes(squash(w)));
+  };
 }
 
 export default function Reports() {
@@ -54,30 +110,121 @@ export default function Reports() {
   const [whId, setWhId] = useState("");
   const [locId, setLocId] = useState("");
   const [productId, setProductId] = useState("");
+  const [custId, setCustId] = useState("");
+  const [supId, setSupId] = useState("");
+  const [term, setTerm] = useState("");
 
-  const filter = { from, to, whId, locId, productId };
+  const cur = TABS.find((t) => t.id === tab) || TABS[0];
+  const uses = (k) => cur.needs.includes(k);
+
+  /*
+   * ตัวกรองที่ "ไม่มีในแท็บนี้" ต้องไม่ถูกนำไปใช้กรอง
+   *
+   * ไม่งั้นคนเลือกลูกค้าไว้ที่แท็บใบขาย แล้วสลับไปแท็บรับสินค้า
+   * จะเห็นรายการว่างเปล่าโดยไม่มีช่องไหนบนจอบอกว่าถูกกรองด้วยลูกค้าอยู่
+   */
+  const filter = {
+    from: uses("date") ? from : "",
+    to: uses("date") ? to : "",
+    whId: uses("wh") ? whId : "",
+    locId: uses("wh") ? locId : "",
+    productId: uses("product") ? productId : "",
+    custId: uses("customer") ? custId : "",
+    supId: uses("supplier") ? supId : "",
+    term: uses("text") ? term : "",
+    match: makeMatch(uses("text") ? term : ""),
+  };
 
   const inRange = (t) => {
-    if (from && t.date < from) return false;
-    if (to && t.date > to) return false;
-    if (productId && t.productId !== productId) return false;
-    if (whId && t.whId !== whId && t.whTo !== whId) return false;
+    if (filter.from && t.date < filter.from) return false;
+    if (filter.to && t.date > filter.to) return false;
+    if (filter.productId && t.productId !== filter.productId) return false;
+    if (filter.whId && t.whId !== filter.whId && t.whTo !== filter.whId) return false;
     // กรองที่เก็บ: นับทั้งขาออกจากช่องนั้นและขาเข้าช่องนั้น (การโอน)
-    if (locId && t.locId !== locId && t.locTo !== locId) return false;
+    if (filter.locId && t.locId !== filter.locId && t.locTo !== filter.locId) return false;
     return true;
   };
 
+  const custOpts = (db.customers || []).map((c) => ({
+    value: c.id,
+    code: c.code,
+    label: c.name,
+    meta: c.province,
+    search: c.phone + " " + c.taxId,
+  }));
+
+  const supOpts = (db.suppliers || []).map((c) => ({
+    value: c.id,
+    code: c.code,
+    label: c.name,
+    meta: c.province,
+    search: c.phone + " " + c.taxId,
+  }));
+
+  /** ตัวกรองที่ตั้งไว้อยู่ตอนนี้ ใช้บอกจำนวนและปุ่มล้าง */
+  const active =
+    (uses("text") && term ? 1 : 0) +
+    (filter.whId ? 1 : 0) +
+    (filter.locId ? 1 : 0) +
+    (filter.productId ? 1 : 0) +
+    (filter.custId ? 1 : 0) +
+    (filter.supId ? 1 : 0);
+
+  function clearAll() {
+    setTerm("");
+    setWhId("");
+    setLocId("");
+    setProductId("");
+    setCustId("");
+    setSupId("");
+  }
+
   const FilterBar = (
-    <div className="row" style={{ marginBottom: 15, alignItems: "flex-end" }}>
-      <div style={{ minWidth: 150 }}>
-        <label className="lbl" htmlFor="r_from">ตั้งแต่วันที่</label>
-        <input className="inp" type="date" id="r_from" value={from} disabled={!perm.date} onChange={(e) => setFrom(e.target.value)} />
-      </div>
-      <div style={{ minWidth: 150 }}>
-        <label className="lbl" htmlFor="r_to">ถึงวันที่</label>
-        <input className="inp" type="date" id="r_to" value={to} disabled={!perm.date} onChange={(e) => setTo(e.target.value)} />
-      </div>
-      <div className="form-grid" style={{ margin: 0, minWidth: 420, flex: "1 1 420px" }}>
+    <div className="rep-filter">
+      {uses("text") ? (
+        <div className="field span2">
+          <label className="lbl" htmlFor="r_q">ค้นหา</label>
+          <input
+            className="inp"
+            id="r_q"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder={cur.searchHint || "เลขที่เอกสาร รหัส ชื่อ หรือพิมพ์แค่ส่วนใดส่วนหนึ่ง"}
+          />
+          <span className="hint">
+            พิมพ์หลายคำได้ ระบบหาแถวที่มีครบทุกคำ · เลขที่เอกสารมีขีดหรือไม่มีขีดก็เจอเหมือนกัน
+          </span>
+        </div>
+      ) : null}
+
+      {uses("date") ? (
+        <>
+          <div className="field">
+            <label className="lbl" htmlFor="r_from">ตั้งแต่วันที่</label>
+            <input
+              className="inp"
+              type="date"
+              id="r_from"
+              value={from}
+              disabled={!perm.date}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label className="lbl" htmlFor="r_to">ถึงวันที่</label>
+            <input
+              className="inp"
+              type="date"
+              id="r_to"
+              value={to}
+              disabled={!perm.date}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </div>
+        </>
+      ) : null}
+
+      {uses("wh") ? (
         <WhLocFields
           db={db}
           idPrefix="r"
@@ -91,34 +238,95 @@ export default function Reports() {
             setLocId(l);
           }}
         />
-      </div>
-      <div style={{ minWidth: 220 }}>
-        <label className="lbl" htmlFor="r_prod">สินค้า</label>
-        <ProductSelect db={db} id="r_prod" value={productId} onChange={setProductId} includeAll />
-      </div>
+      ) : null}
+
+      {uses("product") ? (
+        <div className="field">
+          <label className="lbl" htmlFor="r_prod">สินค้า</label>
+          <ProductSelect db={db} id="r_prod" value={productId} onChange={setProductId} includeAll />
+        </div>
+      ) : null}
+
+      {uses("customer") ? (
+        <div className="field">
+          <label className="lbl" htmlFor="r_cust">ลูกค้า</label>
+          <SearchSelect
+            id="r_cust"
+            value={custId}
+            onChange={setCustId}
+            options={custOpts}
+            emptyLabel="ทุกลูกค้า"
+            notFound="ไม่พบลูกค้าที่ตรงกับ"
+          />
+        </div>
+      ) : null}
+
+      {uses("supplier") ? (
+        <div className="field">
+          <label className="lbl" htmlFor="r_sup">เจ้าหนี้</label>
+          <SearchSelect
+            id="r_sup"
+            value={supId}
+            onChange={setSupId}
+            options={supOpts}
+            emptyLabel="ทุกเจ้าหนี้"
+            notFound="ไม่พบเจ้าหนี้ที่ตรงกับ"
+          />
+        </div>
+      ) : null}
+
+      {active ? (
+        <div className="field rep-clear">
+          <button className="btn btn-g btn-sm" onClick={clearAll}>
+            ล้างตัวกรอง ({active})
+          </button>
+        </div>
+      ) : null}
     </div>
   );
+
+  const groups = [];
+  TABS.forEach((t) => {
+    const g = groups.find((x) => x.name === t.group);
+    if (g) g.items.push(t);
+    else groups.push({ name: t.group, items: [t] });
+  });
 
   return (
     <>
       <div className="tabs" role="tablist">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className="tab"
-            role="tab"
-            aria-selected={t.id === tab}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
+        {groups.map((g) => (
+          <span key={g.name} className="tab-set">
+            <i className="tab-group">{g.name}</i>
+            {g.items.map((t) => (
+              <button
+                key={t.id}
+                className="tab"
+                role="tab"
+                aria-selected={t.id === tab}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </span>
         ))}
       </div>
 
       {tab === "stock" && <StockReport {...{ inv, db, filter, FilterBar, print, toast }} />}
-      {tab === "count" && <CountReport {...{ inv, db, filter, FilterBar, print }} />}
+      {tab === "count" && <CountReport {...{ inv, db, filter, FilterBar, print, toast }} />}
+      {tab === "counts" && <CountDocsReport {...{ inv, db, filter, FilterBar, print, toast }} />}
       {tab === "card" && <StockCard {...{ inv, db, filter, FilterBar, print, toast }} />}
       {tab === "bills" && <BillsReport {...{ inv, db, filter, FilterBar, print, toast }} />}
+      {tab === "ship" && <ShipReport {...{ inv, db, filter, FilterBar, print, toast }} />}
+      {tab === "products" && <ProductsReport {...{ inv, db, filter, FilterBar, print, toast }} />}
+      {tab === "bins" && <BinsReport {...{ inv, db, filter, FilterBar, print, toast }} />}
+      {tab === "customers" && (
+        <PartyReport key="c" kind="customers" {...{ inv, db, filter, FilterBar, print, toast }} />
+      )}
+      {tab === "suppliers" && (
+        <PartyReport key="s" kind="suppliers" {...{ inv, db, filter, FilterBar, print, toast }} />
+      )}
       {tab.startsWith("doc") && (
         <DocReport key={tab} kind={tab.slice(3)} {...{ inv, db, filter, FilterBar, print, toast }} />
       )}
@@ -126,6 +334,719 @@ export default function Reports() {
         <TxnReport key={tab} type={tab} {...{ inv, db, inRange, filter, FilterBar, print, toast }} />
       )}
     </>
+  );
+}
+
+/* ------------------------------------------ ใบตรวจนับที่บันทึกไว้ */
+
+/**
+ * รายงานใบตรวจนับที่ทำไปแล้ว — คนละอย่างกับแท็บ "ใบตรวจนับเปล่า"
+ *   ใบเปล่า      = กระดาษที่พิมพ์ไปกรอกมือ ยังไม่มีข้อมูลอะไร
+ *   ใบที่บันทึกไว้ = เอกสารจริงที่สร้างจากหน้าเตรียมใบตรวจนับ พร้อมผลที่นับได้
+ */
+function CountDocsReport({ inv, db, filter, FilterBar, print, toast }) {
+  const list = useMemo(() => {
+    return (db.stockCounts || [])
+      .filter((c) => {
+        if (filter.from && c.date < filter.from) return false;
+        if (filter.to && c.date > filter.to) return false;
+        if (filter.whId && c.whId !== filter.whId) return false;
+        return filter.match(
+          c.docNo,
+          c.postedDoc,
+          c.by1,
+          c.by2,
+          c.note,
+          c.date,
+          thDate(c.date),
+          inv.whName(c.whId),
+          c.status === "DONE" ? "ปิดแล้ว" : "กำลังนับ"
+        );
+      })
+      .slice()
+      .sort((a, b) => b.ts - a.ts);
+  }, [db.stockCounts, filter, inv]);
+
+  /** สรุปความคืบหน้าและผลต่างของใบหนึ่ง */
+  const sumOf = (c) => {
+    const items = inv.itemsOfCount(c.id);
+    const done = items.filter((i) => i.counted !== null);
+    const diff = done.filter((i) => i.counted !== i.sysQty);
+    const net = diff.reduce((n, i) => n + (i.counted - i.sysQty), 0);
+    return { total: items.length, done: done.length, diff: diff.length, net };
+  };
+
+  const HEAD = ["เลขที่ใบ", "วันที่", "คลัง", "ผู้ตรวจนับ 1", "ผู้ตรวจนับ 2",
+    "รายการทั้งหมด", "นับแล้ว", "มีผลต่าง", "ผลต่างสุทธิ", "สถานะ", "เอกสารปรับปรุง"];
+
+  const rows = () =>
+    list.map((c) => {
+      const g = sumOf(c);
+      return [
+        c.docNo, c.date, inv.whName(c.whId), c.by1, c.by2,
+        g.total, g.done, g.diff, g.net,
+        c.status === "DONE" ? "ปิดแล้ว" : "กำลังนับ",
+        c.postedDoc,
+      ];
+    });
+
+  return (
+    <Card
+      title="ใบตรวจนับที่บันทึกไว้"
+      actions={
+        <>
+          <Badge kind={list.length ? "info" : "gray"}>{list.length} ใบ</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: "รายงานใบตรวจนับสินค้า",
+                subtitle: thDate(filter.from) + " ถึง " + thDate(filter.to) + " · " + list.length + " ใบ",
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        {HEAD.map((h) => (
+                          <th key={h}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows().map((r, i) => (
+                        <tr key={i}>
+                          {r.map((c, j) => (
+                            <td key={j}>{typeof c === "number" ? num(c, 0) : c}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), "ใบตรวจนับที่บันทึกไว้.csv")}
+            disabled={!list.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+      {list.length ? (
+        <div className="doc-scroll" style={{ maxHeight: 520 }}>
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 140 }}>เลขที่ใบ</th>
+                <th style={{ width: 112 }}>วันที่</th>
+                <th style={{ minWidth: 150 }}>คลัง</th>
+                <th style={{ minWidth: 150 }}>ผู้ตรวจนับ</th>
+                <th className="num" style={{ width: 110 }}>นับแล้ว</th>
+                <th className="num" style={{ width: 96 }}>มีผลต่าง</th>
+                <th className="num" style={{ width: 110 }}>ผลต่างสุทธิ</th>
+                <th style={{ minWidth: 150 }}>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((c) => {
+                const g = sumOf(c);
+                return (
+                  <tr key={c.id}>
+                    <td className="code-cell">{c.docNo}</td>
+                    <td>{thDate(c.date)}</td>
+                    <td>{inv.whName(c.whId)}</td>
+                    <td>{[c.by1, c.by2].filter(Boolean).join(" / ") || "—"}</td>
+                    <td className="num">
+                      {num(g.done, 0)} / {num(g.total, 0)}
+                    </td>
+                    <td className="num">{g.diff ? num(g.diff, 0) : "—"}</td>
+                    <td className="num" style={{ color: g.net > 0 ? "var(--ok)" : g.net < 0 ? "var(--err)" : undefined }}>
+                      {g.net ? (g.net > 0 ? "+" : "") + num(g.net, 0) : "—"}
+                    </td>
+                    <td>
+                      <Badge kind={c.status === "DONE" ? "ok" : "warn"}>
+                        {c.status === "DONE" ? "ปิดแล้ว" : "กำลังนับ"}
+                      </Badge>
+                      {c.postedDoc ? <span className="muted"> · {c.postedDoc}</span> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </TableWrap>
+        </div>
+      ) : (
+        <Empty>
+          {(db.stockCounts || []).length
+            ? "ไม่พบใบตรวจนับที่ตรงกับเงื่อนไขที่กรอง"
+            : "ยังไม่มีใบตรวจนับ — สร้างได้ที่เมนู “เตรียมใบตรวจนับ”"}
+        </Empty>
+      )}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------- รายงานการจัดส่ง */
+
+/** รายงานใบขายพร้อมเวลาที่ใช้ในแต่ละขั้นของการจัดส่ง */
+function ShipReport({ inv, db, filter, FilterBar, print, toast }) {
+  const list = useMemo(() => {
+    return (db.invoices || [])
+      .filter((v) => {
+        if (filter.from && v.date < filter.from) return false;
+        if (filter.to && v.date > filter.to) return false;
+        if (filter.custId && v.customerId !== filter.custId) return false;
+        const st = SHIP_STATUS.find((x) => x.id === v.shipStatus);
+        return filter.match(
+          v.docNo,
+          v.custCode,
+          v.custName,
+          v.custProvince,
+          v.custAddress,
+          v.date,
+          thDate(v.date),
+          st ? st.name : v.shipStatus,
+          v.shipFrom ? inv.whName(v.shipFrom) : ""
+        );
+      })
+      .map((v) => ({ v, tl: inv.shipTimeline(v) }))
+      .sort((a, b) => b.v.ts - a.v.ts);
+  }, [db.invoices, db.shipEvents, filter, inv]);
+
+  const HEAD = [
+    "เลขที่เอกสาร", "วันที่", "รหัสลูกค้า", "ชื่อลูกค้า", "จังหวัดที่ส่ง", "คลังต้นทาง",
+    "สถานะปัจจุบัน", "ระยะทาง (กม.)",
+    ...SHIP_STATUS.map((x) => "เวลา " + x.short),
+    ...SHIP_STATUS.slice(1).map((x) => "ใช้เวลาถึง " + x.short),
+    "รวมทั้งกระบวนการ",
+  ];
+
+  const rows = () =>
+    list.map(({ v, tl }) => [
+      v.docNo, v.date, v.custCode, v.custName, v.custProvince,
+      v.shipFrom ? inv.whName(v.shipFrom) : "",
+      (SHIP_STATUS.find((x) => x.id === v.shipStatus) || {}).name || v.shipStatus,
+      v.shipKm === null ? "" : v.shipKm,
+      ...tl.steps.map((x) => (x.ts ? thDateTime(x.ts) : "")),
+      ...tl.steps.slice(1).map((x) => (x.ms ? fmtDuration(x.ms) : "")),
+      tl.totalMs ? fmtDuration(tl.totalMs) : "",
+    ]);
+
+  // ค่าเฉลี่ยของแต่ละช่วง คิดเฉพาะใบที่มีเวลาจริง
+  // ถ้านับใบที่ยังไม่ถึงขั้นนั้นเป็นศูนย์ด้วย ค่าเฉลี่ยจะต่ำกว่าความจริงเสมอ
+  const avgOf = (i) => {
+    const vals = list.map((r) => r.tl.steps[i].ms).filter((ms) => ms > 0);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  };
+
+  return (
+    <Card
+      title="การจัดส่งและเวลาแต่ละขั้น"
+      actions={
+        <>
+          <Badge kind={list.length ? "info" : "gray"}>{list.length} ใบ</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: "รายงานการจัดส่งและเวลาแต่ละขั้น",
+                subtitle: thDate(filter.from) + " ถึง " + thDate(filter.to) + " · " + list.length + " ใบ",
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        {HEAD.map((h) => (
+                          <th key={h}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows().map((r, i) => (
+                        <tr key={i}>
+                          {r.map((c, j) => (
+                            <td key={j}>{c}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), "การจัดส่งและเวลาแต่ละขั้น.csv")}
+            disabled={!list.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+
+      {list.length ? (
+        <>
+          <div className="ship-legend" style={{ marginBottom: 12 }}>
+            {SHIP_STATUS.slice(1).map((st, i) => (
+              <span key={st.id}>
+                <i className="dot" style={{ background: st.color }} />
+                เฉลี่ยถึง{st.short} {fmtDuration(avgOf(i + 1))}
+              </span>
+            ))}
+          </div>
+
+          <div className="doc-scroll" style={{ maxHeight: 520 }}>
+            <TableWrap>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 150 }}>เลขที่เอกสาร</th>
+                  <th style={{ width: 110 }}>วันที่</th>
+                  <th style={{ minWidth: 180 }}>ลูกค้า</th>
+                  <th style={{ minWidth: 130 }}>จังหวัดที่ส่ง</th>
+                  {SHIP_STATUS.map((st) => (
+                    <th key={st.id} style={{ minWidth: 128 }}>
+                      {st.name}
+                    </th>
+                  ))}
+                  <th style={{ minWidth: 120 }}>รวมทั้งกระบวนการ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map(({ v, tl }) => (
+                  <tr key={v.id}>
+                    <td className="code-cell">{v.docNo}</td>
+                    <td>{thDate(v.date)}</td>
+                    <td>
+                      {v.custCode ? v.custCode + " " : ""}
+                      {v.custName}
+                    </td>
+                    <td>{v.custProvince || "—"}</td>
+                    {tl.steps.map((st) => (
+                      <td key={st.id} className={st.ts ? "" : "muted"}>
+                        {st.ts ? (
+                          <span className="tl-cell">
+                            <b>{thTime(st.ts)}</b>
+                            {st.ms ? <em>+{fmtDuration(st.ms)}</em> : null}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    ))}
+                    <td>
+                      <b>{tl.totalMs ? fmtDuration(tl.totalMs) : "—"}</b>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+          </div>
+        </>
+      ) : (
+        <Empty>
+          {(db.invoices || []).length
+            ? "ไม่พบเอกสารที่ตรงกับเงื่อนไขที่กรอง"
+            : "ยังไม่มีใบขาย — ออกเอกสารที่เมนู “ขายสินค้าและบริการ” ก่อน"}
+        </Empty>
+      )}
+    </Card>
+  );
+}
+
+/* --------------------------------------------------- ทะเบียนสินค้า */
+
+function ProductsReport({ inv, db, filter, FilterBar, print, toast }) {
+  const list = useMemo(
+    () =>
+      db.products
+        .filter((p) => {
+          if (filter.productId && p.id !== filter.productId) return false;
+          return filter.match(p.code, p.name, p.unit, p.cat, p.barcode, p.note);
+        })
+        .slice()
+        .sort((a, b) => a.code.localeCompare(b.code, "th")),
+    [db.products, filter]
+  );
+
+  const HEAD = ["รหัสสินค้า", "ชื่อสินค้า", "หน่วย", "หมวดหมู่", "ราคา", "จุดสั่งซื้อ",
+    "คงเหลือรวม", "บาร์โค๊ด", "คลังประจำ", "ที่เก็บประจำ"];
+
+  const rows = () =>
+    list.map((p) => [
+      p.code, p.name, p.unit, p.cat, p.price, p.min,
+      inv.stockTotal(p.id), p.barcode,
+      p.defWhId ? inv.whName(p.defWhId) : "",
+      p.defLocId ? inv.locName(p.defLocId) : "",
+    ]);
+
+  return (
+    <Card
+      title="ทะเบียนสินค้า"
+      actions={
+        <>
+          <Badge kind={list.length ? "info" : "gray"}>{list.length} รายการ</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: "ทะเบียนสินค้า",
+                subtitle: "ทั้งหมด " + list.length + " รายการ · ณ วันที่ " + thDate(todayISO()),
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ลำดับ</th>
+                        {HEAD.map((h) => (
+                          <th key={h}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows().map((r, i) => (
+                        <tr key={i}>
+                          <td>{i + 1}</td>
+                          {r.map((c, j) => (
+                            <td key={j}>{typeof c === "number" ? num(c) : c}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), "ทะเบียนสินค้า.csv")}
+            disabled={!list.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+      {list.length ? (
+        <div className="doc-scroll" style={{ maxHeight: 520 }}>
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ width: 110 }}>รหัสสินค้า</th>
+                <th style={{ minWidth: 200 }}>ชื่อสินค้า</th>
+                <th style={{ width: 80 }}>หน่วย</th>
+                <th style={{ minWidth: 120 }}>หมวดหมู่</th>
+                <th className="num" style={{ width: 100 }}>ราคา</th>
+                <th className="num" style={{ width: 100 }}>จุดสั่งซื้อ</th>
+                <th className="num" style={{ width: 110 }}>คงเหลือรวม</th>
+                <th style={{ minWidth: 140 }}>บาร์โค๊ด</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((p) => {
+                const q = inv.stockTotal(p.id);
+                return (
+                  <tr key={p.id}>
+                    <td className="code-cell">{p.code}</td>
+                    <td>{p.name}</td>
+                    <td>{p.unit}</td>
+                    <td>{p.cat}</td>
+                    <td className="num">{num(p.price, 2)}</td>
+                    <td className="num">{num(p.min, 0)}</td>
+                    {/* ต่ำกว่าจุดสั่งซื้อให้เห็นทันทีในตารางเดียวกัน ไม่ต้องไปเปิดอีกหน้า */}
+                    <td className="num" style={q < p.min ? { color: "var(--err)", fontWeight: 700 } : undefined}>
+                      {num(q, 0)}
+                    </td>
+                    <td>{p.barcode || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </TableWrap>
+        </div>
+      ) : (
+        <Empty>ไม่พบสินค้าที่ตรงกับเงื่อนไขที่กรอง</Empty>
+      )}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------ คลังและช่องเก็บ */
+
+/**
+ * ผังคลังและช่องเก็บแบบเป็นตาราง พร้อมของที่วางอยู่จริงในแต่ละช่อง
+ *
+ * หน้าผังที่เก็บสินค้าดูเป็นภาพได้ทีละคลัง หน้านี้ดูรวมทุกคลังและพิมพ์ออกไปได้
+ * ใช้ตอนไปเดินตรวจของหน้างานว่าช่องไหนควรมีอะไรอยู่บ้าง
+ */
+function BinsReport({ inv, db, filter, FilterBar, print, toast }) {
+  const list = useMemo(() => {
+    const out = [];
+    db.warehouses.forEach((w) => {
+      if (filter.whId && w.id !== filter.whId) return;
+      inv.locsOf(w.id).forEach((l) => {
+        if (filter.locId && l.id !== filter.locId) return;
+
+        const items = inv.placementsIn(l.id);
+        const names = items.map((x) => inv.prodName(x.productId));
+        if (!filter.match(w.code, w.name, w.province, l.code, l.name, l.zone, l.note, ...names)) {
+          return;
+        }
+        out.push({
+          w,
+          l,
+          items: items.length,
+          qty: items.reduce((n, x) => n + x.qty, 0),
+          names,
+        });
+      });
+    });
+    return out;
+  }, [db.warehouses, db.locations, db.placements, filter, inv]);
+
+  const HEAD = ["รหัสคลัง", "ชื่อคลัง", "จังหวัด", "รหัสช่องเก็บ", "ชื่อช่องเก็บ",
+    "โซน", "แถว", "คอลัมน์", "ความจุ", "จำนวนสินค้า", "รวมจำนวนของ", "สินค้าที่วางอยู่"];
+
+  const rows = () =>
+    list.map((r) => [
+      r.w.code, r.w.name, r.w.province,
+      r.l.code, r.l.name, r.l.zone, r.l.row, r.l.col, r.l.capacity,
+      r.items, r.qty, r.names.join(", "),
+    ]);
+
+  return (
+    <Card
+      title="คลังและช่องเก็บ"
+      actions={
+        <>
+          <Badge kind={list.length ? "info" : "gray"}>{list.length} ช่อง</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: "รายงานคลังและช่องเก็บสินค้า",
+                subtitle:
+                  (filter.whId ? inv.whName(filter.whId) : "ทุกคลัง") +
+                  " · " + list.length + " ช่อง · ณ วันที่ " + thDate(todayISO()),
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ลำดับ</th>
+                        <th>คลัง</th>
+                        <th>ช่องเก็บ</th>
+                        <th>โซน</th>
+                        <th style={{ textAlign: "right" }}>จำนวนสินค้า</th>
+                        <th style={{ textAlign: "right" }}>รวมจำนวนของ</th>
+                        <th>สินค้าที่วางอยู่</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((r, i) => (
+                        <tr key={r.l.id}>
+                          <td>{i + 1}</td>
+                          <td>{r.w.name}</td>
+                          <td>{r.l.code}{r.l.name ? " — " + r.l.name : ""}</td>
+                          <td>{r.l.zone}</td>
+                          <td style={{ textAlign: "right" }}>{num(r.items, 0)}</td>
+                          <td style={{ textAlign: "right" }}>{num(r.qty, 0)}</td>
+                          <td>{r.names.join(", ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), "คลังและช่องเก็บ.csv")}
+            disabled={!list.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+      {list.length ? (
+        <div className="doc-scroll" style={{ maxHeight: 520 }}>
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 160 }}>คลัง</th>
+                <th style={{ width: 110 }}>รหัสช่องเก็บ</th>
+                <th style={{ minWidth: 150 }}>ชื่อช่องเก็บ</th>
+                <th style={{ width: 70 }}>โซน</th>
+                <th className="num" style={{ width: 100 }}>ความจุ</th>
+                <th className="num" style={{ width: 110 }}>จำนวนสินค้า</th>
+                <th className="num" style={{ width: 120 }}>รวมจำนวนของ</th>
+                <th style={{ minWidth: 220 }}>สินค้าที่วางอยู่</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((r) => (
+                <tr key={r.l.id}>
+                  <td>{r.w.name}</td>
+                  <td className="code-cell">{r.l.code}</td>
+                  <td>{r.l.name || "—"}</td>
+                  <td>{r.l.zone}</td>
+                  <td className="num">{r.l.capacity ? num(r.l.capacity, 0) : "—"}</td>
+                  <td className="num">{r.items ? num(r.items, 0) : "—"}</td>
+                  {/* ของเกินความจุที่ตั้งไว้ ต้องเห็นทันทีตอนกวาดตา ไม่ใช่ต้องมานั่งเทียบเอง */}
+                  <td
+                    className="num"
+                    style={
+                      r.l.capacity && r.qty > r.l.capacity
+                        ? { color: "var(--err)", fontWeight: 700 }
+                        : undefined
+                    }
+                  >
+                    {r.qty ? num(r.qty, 0) : "—"}
+                  </td>
+                  <td className="muted">{r.names.join(", ") || "ว่าง"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        </div>
+      ) : (
+        <Empty>ไม่พบช่องเก็บที่ตรงกับเงื่อนไขที่กรอง</Empty>
+      )}
+    </Card>
+  );
+}
+
+/* -------------------------------------- ทะเบียนลูกค้า / เจ้าหนี้ */
+
+const PARTY_CFG = {
+  customers: { name: "ทะเบียนลูกค้า", who: "ลูกค้า", key: "customers", idKey: "custId" },
+  suppliers: { name: "ทะเบียนเจ้าหนี้", who: "เจ้าหนี้", key: "suppliers", idKey: "supId" },
+};
+
+/**
+ * ทะเบียนคู่ค้า — โครงเดียวกันทั้งลูกค้าและเจ้าหนี้
+ * เพราะสองตารางนี้มีคอลัมน์เหมือนกันทุกช่อง ต่างกันแค่ทิศทางของการค้า
+ */
+function PartyReport({ inv, db, kind, filter, FilterBar, print, toast }) {
+  const cfg = PARTY_CFG[kind];
+
+  const list = useMemo(() => {
+    const only = filter[cfg.idKey];
+    return (db[cfg.key] || [])
+      .filter((c) => {
+        if (only && c.id !== only) return false;
+        return filter.match(
+          c.code, c.name, c.phone, c.taxId, c.kind, c.branch,
+          c.address, c.subdistrict, c.district, c.province, c.postcode
+        );
+      })
+      .slice()
+      .sort((a, b) => a.code.localeCompare(b.code, "th"));
+  }, [db, cfg, filter]);
+
+  const HEAD = ["รหัส", "ชื่อ" + cfg.who, "ประเภท", "เลขผู้เสียภาษี", "สาขา",
+    "ที่อยู่", "ตำบล / แขวง", "อำเภอ / เขต", "จังหวัด", "รหัสไปรษณีย์", "เบอร์โทร"];
+
+  const rows = () =>
+    list.map((c) => [
+      c.code, c.name, c.kind, c.taxId, c.branch,
+      c.address, c.subdistrict, c.district, c.province, c.postcode, c.phone,
+    ]);
+
+  return (
+    <Card
+      title={cfg.name}
+      actions={
+        <>
+          <Badge kind={list.length ? "info" : "gray"}>{list.length} ราย</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: cfg.name,
+                subtitle: "ทั้งหมด " + list.length + " ราย · ณ วันที่ " + thDate(todayISO()),
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ลำดับ</th>
+                        <th>รหัส</th>
+                        <th>ชื่อ{cfg.who}</th>
+                        <th>ที่อยู่</th>
+                        <th>จังหวัด</th>
+                        <th>เบอร์โทร</th>
+                        <th>เลขผู้เสียภาษี</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((c, i) => (
+                        <tr key={c.id}>
+                          <td>{i + 1}</td>
+                          <td>{c.code}</td>
+                          <td>{c.name}</td>
+                          <td>{customerAddress(c)}</td>
+                          <td>{c.province}</td>
+                          <td>{c.phone}</td>
+                          <td>{c.taxId}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), cfg.name + ".csv")}
+            disabled={!list.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+      {list.length ? (
+        <div className="doc-scroll" style={{ maxHeight: 520 }}>
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ width: 100 }}>รหัส</th>
+                <th style={{ minWidth: 200 }}>ชื่อ{cfg.who}</th>
+                <th style={{ minWidth: 120 }}>ประเภท</th>
+                <th style={{ minWidth: 240 }}>ที่อยู่</th>
+                <th style={{ minWidth: 130 }}>จังหวัด</th>
+                <th style={{ minWidth: 120 }}>เบอร์โทร</th>
+                <th style={{ minWidth: 140 }}>เลขผู้เสียภาษี</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((c) => (
+                <tr key={c.id}>
+                  <td className="code-cell">{c.code}</td>
+                  <td>{c.name}</td>
+                  <td>{c.kind || "—"}</td>
+                  <td>{customerAddress(c) || "—"}</td>
+                  <td>{c.province || "—"}</td>
+                  <td>{c.phone || "—"}</td>
+                  <td>{c.taxId || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        </div>
+      ) : (
+        <Empty>
+          {(db[cfg.key] || []).length
+            ? "ไม่พบ" + cfg.who + "ที่ตรงกับเงื่อนไขที่กรอง"
+            : "ยังไม่มีข้อมูล" + cfg.who}
+        </Empty>
+      )}
+    </Card>
   );
 }
 
@@ -140,12 +1061,21 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
           if (filter.whId && s.whId !== filter.whId) return false;
           if (filter.locId && s.locId !== filter.locId) return false;
           if (filter.productId) {
-            return inv.itemsOfSale(s.id).some((i) => i.productId === filter.productId);
+            if (!inv.itemsOfSale(s.id).some((i) => i.productId === filter.productId)) return false;
           }
-          return true;
+          // ค้นจากค่าที่อยู่บนหน้าจอนี้จริง ๆ รวมชื่อสินค้าในบิลด้วย
+          // เพราะคนมักจำได้ว่า "บิลที่ขายน้ำยางข้น" มากกว่าจำเลขที่บิล
+          return filter.match(
+            s.docNo,
+            s.customer,
+            s.date,
+            thDate(s.date),
+            inv.whName(s.whId),
+            ...inv.itemsOfSale(s.id).map((i) => inv.prodName(i.productId))
+          );
         })
         .sort((a, b) => b.ts - a.ts),
-    [db.sales, db.saleItems, filter.from, filter.to, filter.whId, filter.locId, filter.productId, inv]
+    [db.sales, db.saleItems, filter, inv]
   );
 
   const totalSales = bills.reduce((s, b) => s + b.total, 0);
@@ -245,7 +1175,11 @@ function StockReport({ inv, db, filter, FilterBar, print, toast }) {
   const rows = useMemo(
     () =>
       db.products
-        .filter((p) => !filter.productId || p.id === filter.productId)
+        .filter((p) => {
+          if (filter.productId && p.id !== filter.productId) return false;
+          // ค้นจากค่าที่แสดงบนตารางนี้: รหัส ชื่อ หน่วย หมวด และบาร์โค๊ด
+          return filter.match(p.code, p.name, p.unit, p.cat, p.barcode);
+        })
         .map((p) => {
           const q = filter.locId
             ? inv.placedIn(p.id, filter.locId)
@@ -254,7 +1188,7 @@ function StockReport({ inv, db, filter, FilterBar, print, toast }) {
               : inv.stockTotal(p.id);
           return { p, q, v: q * p.price };
         }),
-    [db.products, filter.productId, filter.whId, filter.locId, db.placements, inv]
+    [db.products, filter, db.placements, inv]
   );
 
   const totalQty = rows.reduce((s, r) => s + r.q, 0);
@@ -368,7 +1302,7 @@ function StockReport({ inv, db, filter, FilterBar, print, toast }) {
 }
 
 /* ------------------------------------------------- ใบตรวจนับสินค้า */
-function CountReport({ inv, db, filter, FilterBar, print }) {
+function CountReport({ inv, db, filter, FilterBar, print, toast }) {
   const whId = filter.whId || db.warehouses[0].id;
   const w = inv.wh(whId);
 
@@ -595,8 +1529,26 @@ function TxnReport({ type, inv, db, inRange, filter, FilterBar, print, toast }) 
   const isTransfer = type === "TRANSFER";
 
   const list = useMemo(
-    () => db.txns.filter((t) => t.type === type && inRange(t)).sort((a, b) => a.ts - b.ts),
-    [db.txns, type, filter.from, filter.to, filter.whId, filter.productId] // eslint-disable-line react-hooks/exhaustive-deps
+    () =>
+      db.txns
+        .filter((t) => {
+          if (t.type !== type || !inRange(t)) return false;
+          const p = inv.prod(t.productId);
+          return filter.match(
+            t.docNo,
+            t.ref,
+            t.note,
+            p ? p.code : "",
+            inv.prodName(t.productId),
+            t.date,
+            thDate(t.date),
+            inv.whName(t.whId),
+            t.whTo ? inv.whName(t.whTo) : "",
+            t.user
+          );
+        })
+        .sort((a, b) => a.ts - b.ts),
+    [db.txns, type, filter, inv] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const totalQty = list.reduce((s, t) => s + Math.abs(t.qty), 0);
@@ -766,6 +1718,7 @@ const DOC_KINDS_REPORT = {
     rows: (db) => db.invoices || [],
     code: (v) => v.custCode,
     partyName: (v) => v.custName,
+    partyId: (v) => v.customerId,
   },
   PURCHASE: {
     name: "ใบซื้อสินค้าและบริการ",
@@ -773,6 +1726,7 @@ const DOC_KINDS_REPORT = {
     rows: (db) => db.purchases || [],
     code: (v) => v.supCode,
     partyName: (v) => v.supName,
+    partyId: (v) => v.supplierId,
   },
   PURRET: {
     name: "ใบส่งคืนสินค้า",
@@ -780,6 +1734,7 @@ const DOC_KINDS_REPORT = {
     rows: (db) => db.purchaseReturns || [],
     code: (v) => v.supCode,
     partyName: (v) => v.supName,
+    partyId: (v) => v.supplierId,
   },
 };
 
@@ -787,12 +1742,27 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
   const cfg = DOC_KINDS_REPORT[kind];
 
   const list = useMemo(() => {
+    const partyId = cfg.party === "ลูกค้า" ? filter.custId : filter.supId;
+
     return cfg
       .rows(db)
       .filter((v) => {
         if (filter.from && v.date < filter.from) return false;
         if (filter.to && v.date > filter.to) return false;
-        return true;
+        // กดเลือกคู่ค้าจากรายการ = กรองด้วยรหัสจริง ไม่ใช่เทียบชื่อที่พิมพ์มา
+        if (partyId && cfg.partyId(v) !== partyId) return false;
+        return filter.match(
+          v.docNo,
+          v.refNo,
+          v.purDocNo,
+          cfg.code(v),
+          cfg.partyName(v),
+          v.date,
+          thDate(v.date),
+          v.note,
+          v.user,
+          v.total
+        );
       })
       .slice()
       .sort((a, b) => b.ts - a.ts);

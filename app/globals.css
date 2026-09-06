@@ -2252,3 +2252,37 @@ label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }
   flex-wrap: wrap;
   margin-top: 2px;
 }
+
+/* ---------- แถบแท็บแบบแบ่งกลุ่ม (หน้ารายงาน) ---------- */
+
+/* แท็บเยอะจนหากันไม่เจอ จึงคั่นเป็นกลุ่มตามงาน แทนที่จะเรียงยาวเป็นแถวเดียว */
+.tab-set { display: inline-flex; align-items: center; }
+.tab-set + .tab-set { border-left: 1px solid var(--border); margin-left: 6px; padding-left: 6px; }
+.tab-group {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+  padding: 0 8px 0 2px;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* ---------- แถบตัวกรองของหน้ารายงาน ---------- */
+
+/* ช่องที่แสดงเปลี่ยนไปตามแท็บ จึงใช้ grid ที่ไหลเองแทนการวางตำแหน่งตายตัว */
+.rep-filter {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 11px;
+  align-items: end;
+  margin-bottom: 15px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--border);
+}
+.rep-filter .span2 { grid-column: span 2; }
+@media (max-width: 720px) {
+  .rep-filter .span2 { grid-column: span 1; }
+}
+.rep-clear { display: flex; align-items: flex-end; }

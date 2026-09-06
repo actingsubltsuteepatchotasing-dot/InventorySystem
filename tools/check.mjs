@@ -218,18 +218,67 @@ head("3. ชื่อที่ส่งเป็น prop ถูกประก�
     return names;
   }
 
+  /**
+   * ตัดไฟล์เป็นบล็อกของฟังก์ชันที่เริ่มต้นคอลัมน์ 0 (คอมโพเนนต์แต่ละตัว)
+   *
+   * ต้องดูทีละฟังก์ชัน ไม่ใช่ทั้งไฟล์รวดเดียว เพราะไฟล์หนึ่งมีหลายคอมโพเนนต์
+   * คอมโพเนนต์ A เรียก useToast() ไว้ ไม่ได้แปลว่าคอมโพเนนต์ B ในไฟล์เดียวกันมี toast ใช้
+   * (บั๊กจริงที่เจอ: แท็บใบตรวจนับในหน้ารายงานส่ง toast={toast} โดยไม่ได้รับ prop นั้นมา
+   *  การตรวจแบบทั้งไฟล์มองไม่เห็น เพราะคอมโพเนนต์หลักในไฟล์เดียวกันประกาศ toast ไว้)
+   */
+  function blocksOf(src) {
+    const lines = src.split("\n");
+    const out = [];
+    let cur = null;
+
+    // ไม่นับปีกกาหาจุดจบ เพราะปีกกาที่อยู่ในข้อความหรือใน JSX จะทำให้นับเพี้ยน
+    // แล้วทั้งไฟล์จะกลายเป็นบล็อกเดียว ซึ่งเท่ากับกลับไปตรวจแบบทั้งไฟล์เหมือนเดิม
+    // ใช้ "จบเมื่อเจอประกาศตัวถัดไปที่เริ่มคอลัมน์ 0" แทน ซึ่งตรงกับรูปแบบของโปรเจกต์นี้
+    const START = /^(export\s+default\s+)?(export\s+)?(async\s+)?function\s+[A-Za-z_$]/;
+    const NEXT = /^(export\b|const\b|let\b|var\b|class\b|function\b|async\s+function\b)/;
+
+    lines.forEach((line, i) => {
+      if (cur && NEXT.test(line)) {
+        out.push(cur);
+        cur = null;
+      }
+      if (!cur && START.test(line)) cur = { start: i, text: "" };
+      if (cur) cur.text += line + "\n";
+    });
+    if (cur) out.push(cur);
+    return out;
+  }
+
   let n = 0;
   for (const f of FILES) {
     const s = read(f);
-    const have = declared(s);
-    for (const m of s.matchAll(/\s([a-zA-Z][\w]*)=\{([A-Za-z_$][\w$]*)\}/g)) {
-      const used = m[2];
-      if (GLOBALS.has(used) || have.has(used)) continue;
-      n++;
-      bad(f + ":" + s.slice(0, m.index).split("\n").length + " ใช้ " + m[1] + "={" + used + "} แต่ไม่ได้ประกาศ " + used);
+
+    const blocks = blocksOf(s);
+
+    // ชื่อระดับไฟล์ = ทุกอย่างที่เหลือหลังตัดตัวฟังก์ชันออกไป
+    //
+    // ตัดด้วยการลบ "ตัวฟังก์ชัน" ทิ้ง ไม่ใช่กรองเอาเฉพาะบรรทัดที่ขึ้นต้นคอลัมน์ 0
+    // เพราะการกรองแบบนั้นพลาดสองทาง: import หลายบรรทัดจะเหลือแค่บรรทัด "import {"
+    // และบรรทัด signature อย่าง function Foo({ toast }) จะทำให้ toast
+    // กลายเป็นชื่อระดับไฟล์ ซึ่งเป็นเหตุผลที่บั๊กจริงหลุดการตรวจไปตั้งแต่แรก
+    let rest = s;
+    blocks.forEach((b) => {
+      rest = rest.replace(b.text, "\n");
+    });
+    const moduleLevel = declared(rest);
+
+    for (const b of blocks) {
+      const have = new Set([...moduleLevel, ...declared(b.text)]);
+      for (const m of b.text.matchAll(/\s([a-zA-Z][\w]*)=\{([A-Za-z_$][\w$]*)\}/g)) {
+        const used = m[2];
+        if (GLOBALS.has(used) || have.has(used)) continue;
+        n++;
+        const line = b.start + b.text.slice(0, m.index).split("\n").length;
+        bad(f + ":" + line + " ใช้ " + m[1] + "={" + used + "} แต่ไม่ได้ประกาศไว้ในฟังก์ชันนี้");
+      }
     }
   }
-  if (!n) ok("ไม่พบ prop ที่ส่งชื่อที่ไม่มีอยู่จริง");
+  if (!n) ok("ไม่พบ prop ที่ส่งชื่อที่ไม่มีอยู่จริง (ตรวจแยกทีละฟังก์ชัน)");
 }
 
 /* ------------------------------------------------------------------ 4 */
@@ -243,7 +292,9 @@ head("4. หัวตารางตรงกับแถวข้อมูล")
   // ช่องที่ "มีบ้างไม่มีบ้าง" = บรรทัดขึ้นต้นด้วย { เช่น {cond ? <th/> : null}
   //   นับเป็นตัวเลขตายตัวไม่ได้ คืน null แล้วข้ามแถวนั้นไป
   const countRow = (row, tag) => {
-    const open = new RegExp("<" + tag + "[\\s>/]");
+    // ท้ายบรรทัดก็นับด้วย เพราะช่องที่มี attribute หลายตัวจะเขียน <td ไว้บรรทัดเดียวโดด ๆ
+    // แล้วขึ้นบรรทัดใหม่ให้ attribute ซึ่งเป็นรูปแบบที่ prettier จัดให้เอง
+    const open = new RegExp("<" + tag + "([\\s>/]|$)");
     let cols = 0;
     for (const raw of row.split("\n")) {
       const line = raw.trim();
@@ -394,6 +445,75 @@ head("8. ตัวแปรสีใน CSS ถูกประกาศไว้
   ];
   if (missing.length) bad("ใช้ตัวแปรที่ไม่มีอยู่: " + missing.join(", "));
   else ok("ตัวแปรสีที่ใช้แบบไม่มีค่าสำรอง ถูกประกาศครบ (" + defined.size + " ตัว)");
+}
+
+/* ------------------------------------------------------------------ 9 */
+head("9. แท็บรายงานใช้ตัวกรองตรงกับที่ประกาศไว้");
+{
+  // แท็บบอกว่ามีช่องค้นหา แต่คอมโพเนนต์ไม่ได้เอาไปใช้ = ช่องที่พิมพ์แล้วไม่มีอะไรเกิดขึ้น
+  // ซึ่งแย่กว่าไม่มีช่องเลย เพราะคนใช้จะสรุปว่า "ค้นแล้วไม่เจอ = ไม่มีข้อมูล"
+  const src = read("components/views/Reports.js");
+
+  const COMPONENT = {
+    stock: "StockReport", card: "StockCard", count: "CountReport", counts: "CountDocsReport",
+    bills: "BillsReport", ship: "ShipReport", products: "ProductsReport", bins: "BinsReport",
+    customers: "PartyReport", suppliers: "PartyReport",
+    RECEIVE: "TxnReport", ISSUE: "TxnReport", TRANSFER: "TxnReport",
+    ADJUST: "TxnReport", SALE: "TxnReport",
+    docINVOICE: "DocReport", docPURCHASE: "DocReport", docPURRET: "DocReport",
+  };
+
+  /** ตัวฟังก์ชัน — ตัดถึง function/const ตัวถัดไปที่เริ่มคอลัมน์ 0 */
+  function bodyOf(name) {
+    const at = src.indexOf("\nfunction " + name + "(");
+    if (at < 0) return "";
+    const rest = src.slice(at + 1);
+    const end = rest.search(/\n(function|const|export) /);
+    return end < 0 ? rest : rest.slice(0, end);
+  }
+
+  const tabs = [...src.matchAll(/\{ id: "(\w+)", label: "([^"]+)".*?needs: \[([^\]]*)\]/g)].map(
+    (m) => ({
+      id: m[1],
+      label: m[2],
+      needs: m[3].replace(/["\s]/g, "").split(",").filter(Boolean),
+    })
+  );
+
+  let n = 0;
+  tabs.forEach((t) => {
+    const comp = COMPONENT[t.id];
+    if (!comp) {
+      bad("แท็บ " + t.label + " ไม่มีคอมโพเนนต์ผูกไว้");
+      n++;
+      return;
+    }
+    const body = bodyOf(comp);
+    if (!body) {
+      bad("ไม่พบคอมโพเนนต์ " + comp + " ของแท็บ " + t.label);
+      n++;
+      return;
+    }
+
+    const usesMatch = /filter\.match\(/.test(body);
+    const usesParty = /filter\.custId|filter\.supId|cfg\.idKey|partyId/.test(body);
+
+    if (t.needs.includes("text") !== usesMatch) {
+      bad(
+        t.label + " — " +
+          (t.needs.includes("text")
+            ? "มีช่องค้นหาแต่ " + comp + " ไม่ได้ใช้ filter.match"
+            : "ไม่มีช่องค้นหาแต่ " + comp + " ใช้ filter.match")
+      );
+      n++;
+    }
+    if ((t.needs.includes("customer") || t.needs.includes("supplier")) && !usesParty) {
+      bad(t.label + " — มีช่องเลือกคู่ค้า แต่ " + comp + " ไม่ได้กรองด้วยรหัสคู่ค้า");
+      n++;
+    }
+  });
+
+  if (!n) ok("ทุกแท็บใช้ตัวกรองตรงกับที่ประกาศไว้ (" + tabs.length + " แท็บ)");
 }
 
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
