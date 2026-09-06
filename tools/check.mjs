@@ -908,5 +908,52 @@ head("16. ฟอร์มพิมพ์ที่ออกแบบเองใ�
   }
 }
 
+head("17. ไม่มีชื่อซ้ำที่ทำให้ทั้งไฟล์ใช้ไม่ได้");
+{
+  /*
+   * ประกาศชื่อเดิมซ้ำในไฟล์เดียวกัน = SyntaxError ทั้งไฟล์
+   *   "Identifier 'x' has already been declared"
+   * ไม่ใช่แค่ฟังก์ชันนั้นพัง แต่ทุกหน้าจอที่ import ไฟล์นั้นพังตามหมด
+   * และถ้าเป็นตอน build บนเซิร์ฟเวอร์ จะ build ไม่ผ่าน เว็บที่ใช้งานอยู่จะค้าง
+   * อยู่กับรุ่นเก่า ฟีเจอร์ใหม่ที่เขียนไปแล้วจึงไม่โผล่ ทั้งที่โค้ดมีอยู่จริง
+   * (เกิดขึ้นจริงกับ salesReady ที่ประกาศสองความหมายใน lib/api.js — ดูรอบ 73)
+   *
+   * ส่วนคีย์ซ้ำในวัตถุเดียวกันไม่ใช่ error แต่ตัวหลังทับตัวหน้าเงียบ ๆ
+   * ซึ่งอันตรายกว่า เพราะไม่มีอะไรเตือนเลย
+   */
+  const files = [...walk("lib"), ...walk("components")];
+  let n = 0;
+
+  files.forEach((rel) => {
+    const src = read(rel);
+
+    const names = [...src.matchAll(/^(?:export )?(?:const|let|function|class) (\w+)/gm)].map(
+      (m) => m[1]
+    );
+    const dup = [...new Set(names.filter((x, i) => names.indexOf(x) !== i))];
+    if (dup.length) {
+      bad(rel + " ประกาศชื่อซ้ำในไฟล์เดียวกัน: " + dup.join(", "));
+      n++;
+    }
+  });
+
+  // คีย์ซ้ำในวัตถุที่ store แจกให้หน้าจอ — ตัวหลังทับตัวหน้าโดยไม่มีใครรู้
+  const store = read("lib/store.js");
+  // เอาเฉพาะตัววัตถุ ไม่รวมรายการ deps ที่ต่อท้าย ไม่งั้นชื่อเดียวกันจะถูกนับเป็นซ้ำ
+  const from = store.indexOf("const value = ");
+  const END = String.fromCharCode(10) + "    }),";
+  const valueObj = store.slice(from, store.indexOf(END, from));
+  const keys = [...valueObj.matchAll(/^ {6}(\w+)[:,]/gm)].map((m) => m[1]);
+  const dupKeys = [...new Set(keys.filter((x, i) => keys.indexOf(x) !== i))];
+  if (dupKeys.length) {
+    bad("lib/store.js แจกค่าชื่อซ้ำให้หน้าจอ (ตัวหลังทับตัวหน้า): " + dupKeys.join(", "));
+    n++;
+  }
+
+  if (!n) {
+    ok("ตรวจ " + files.length + " ไฟล์ · ค่าที่ store แจก " + keys.length + " ตัว ไม่มีชื่อซ้ำ");
+  }
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);

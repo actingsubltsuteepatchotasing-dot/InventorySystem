@@ -137,7 +137,7 @@ export default function Salespersons() {
       p.note,
     ]);
 
-  if (!inv.salesReady) {
+  if (!inv.salespersonsReady) {
     return <SetupNotice feature="หน้าจอกำหนดพนักงานขาย" tables={["salespersons"]} />;
   }
 
