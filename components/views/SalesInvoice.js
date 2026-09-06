@@ -10,7 +10,7 @@
 // ตารางสินค้าใช้โครงเดียวกับหน้ารับ/เบิก/โอน (เลือกสินค้า คลัง ที่เก็บ จำนวน)
 // เพิ่มมาสามคอลัมน์คือ ราคาต่อหน่วย ส่วนลดการค้า และรวมเงิน
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { SHIP_START, SHIP_STATUS, VAT_PERCENT } from "@/lib/constants";
@@ -48,6 +48,7 @@ export default function SalesInvoice() {
   const [saving, setSaving] = useState(false);
   const [date, setDate] = useState(todayISO);
   const [custId, setCustId] = useState("");
+  const [salesId, setSalesId] = useState("");
   const [vatRate, setVatRate] = useState(String(VAT_PERCENT));
   const [billDiscount, setBillDiscount] = useState("");
   const [note, setNote] = useState("");
@@ -58,6 +59,27 @@ export default function SalesInvoice() {
   );
 
   const cust = customers.find((c) => c.id === custId) || null;
+
+  /** พนักงานขายที่ยังใช้งานอยู่ — คนที่ลาออกแล้วไม่ควรขึ้นให้เลือกในใบใหม่ */
+  const sellers = useMemo(
+    () =>
+      (db.salespersons || [])
+        .filter((p) => p.active)
+        .sort((a, b) => a.code.localeCompare(b.code, "th")),
+    [db.salespersons]
+  );
+  const sales = sellers.find((p) => p.id === salesId) || null;
+
+  /*
+   * เลือกลูกค้าแล้วเติมพนักงานประจำของลูกค้ารายนั้นให้เอง
+   * เติมเฉพาะตอนที่ยังไม่ได้เลือกเอง ไม่ทับของที่คนกรอกเลือกไว้แล้ว
+   * เพราะบางใบคนอื่นเป็นคนปิดการขายแทนคนประจำ
+   */
+  useEffect(() => {
+    if (!cust || salesId) return;
+    if (cust.salesId && sellers.some((p) => p.id === cust.salesId)) setSalesId(cust.salesId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [custId]);
 
   /**
    * หนึ่งบรรทัด = สินค้าหนึ่งรายการที่ขาย
@@ -200,6 +222,11 @@ export default function SalesInvoice() {
       custProvince: cust.province || "",
       custTaxId: cust.taxId || "",
       custBranch: cust.branch || "",
+      // พนักงานขายเก็บทั้งรหัสอ้างอิงและรหัส/ชื่อแบบคัดลอกไว้ เหตุผลเดียวกับข้อมูลลูกค้า
+      // เอกสารต้องคงข้อความเดิม ณ วันที่ออก ต่อให้คนนั้นลาออกหรือเปลี่ยนชื่อทีหลัง
+      salesId: sales ? sales.id : "",
+      salesCode: sales ? sales.code : "",
+      salesName: sales ? sales.name : "",
       vatRate: totals.rate,
       itemsTotal: totals.itemsTotal,
       billDiscount: totals.discount,
@@ -344,6 +371,20 @@ export default function SalesInvoice() {
               notFound="ไม่พบลูกค้าที่ตรงกับ"
             />
           </div>
+          <div className="field">
+            <label className="lbl" htmlFor="iv_sales">พนักงานขาย</label>
+            {/* เลือกลูกค้าแล้วเติมพนักงานประจำของลูกค้ารายนั้นให้เอง แต่เปลี่ยนเองได้
+                เพราะบางใบคนอื่นเป็นคนปิดการขายแทน */}
+            <SearchSelect
+              id="iv_sales"
+              value={salesId}
+              onChange={setSalesId}
+              options={sellers.map((p) => ({ value: p.id, code: p.code, label: p.name }))}
+              emptyLabel="— ไม่ระบุ —"
+              notFound="ไม่พบพนักงานขายที่ตรงกับ"
+            />
+          </div>
+
           <div className="field">
             {/* ชื่อมาจากรหัสที่เลือกเสมอ พิมพ์ทับเองไม่ได้ ไม่งั้นชื่อกับรหัสจะไม่ตรงกัน */}
             <label className="lbl" htmlFor="iv_cname">ชื่อลูกค้า</label>

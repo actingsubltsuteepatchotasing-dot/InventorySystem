@@ -2320,3 +2320,56 @@ label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }
   color: var(--fg-faint);
   margin-top: 2px;
 }
+
+/* ---------- แถบความคืบหน้าเทียบเป้าขาย ---------- */
+.tg-bar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+}
+.tg-bar i {
+  display: block;
+  height: 9px;
+  min-width: 3px;
+  border-radius: 999px;
+  background: var(--warn);
+  transition: width 0.3s;
+}
+/* ถึงเป้าแล้วเปลี่ยนเป็นเขียว เห็นได้ทันทีตอนกวาดตาดูทั้งตาราง */
+.tg-bar i.on { background: var(--ok); }
+.tg-bar b { flex: 0 0 auto; font-size: 12.5px; min-width: 42px; text-align: right; }
+/* พื้นหลังของราง วาดด้วย gradient แทนการซ้อนสองชั้น จะได้ไม่ต้องเพิ่ม element */
+.tg-bar { background: linear-gradient(var(--bg), var(--bg)) no-repeat left center / 100% 9px; }
+
+/* ---------- Quick View (เน้นมือถือ) ---------- */
+.quick-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+/* ตัวเลขใหญ่พอให้อ่านจากระยะแขนโดยไม่ต้องซูม */
+.quick-big {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 11px;
+}
+.qb {
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--brand);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+.qb span { display: block; font-size: 12.5px; color: var(--fg-muted); }
+.qb b { display: block; font-size: 25px; line-height: 1.25; margin: 3px 0 2px; }
+.qb em { display: block; font-style: normal; font-size: 12px; color: var(--fg-faint); }
+.qb.ok { border-left-color: var(--ok); }
+.qb.ok b { color: var(--ok); }
+.qb.warn { border-left-color: var(--warn); }
+.qb.warn b { color: var(--warn); }
+
+@media (max-width: 520px) {
+  .qb b { font-size: 22px; }
+}

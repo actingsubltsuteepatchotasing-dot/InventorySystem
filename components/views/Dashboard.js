@@ -27,7 +27,7 @@ import { useInv } from "@/lib/store";
 import { stockMap } from "@/lib/db";
 import { DASH_SOURCES, buildWidgets, layoutRows, sourceOf } from "@/lib/dashWidgets";
 import { monthsAgoISO, num, thDate, todayISO } from "@/lib/format";
-import { BarChart, HBarChart, LineChart, Legend } from "../Charts";
+import { BarChart, DonutChart, HBarChart, LineChart, Legend } from "../Charts";
 import { IcAdjust, IcBox, IcCart, IcChart, IcMap, IcReport } from "../Icons";
 import { Badge, Card, Empty, Kpi, SearchSelect, TableWrap } from "../ui";
 
@@ -51,6 +51,43 @@ const ICONS = {
 };
 
 const KEY = "ultraerp.dash.";
+
+/**
+ * รูปแบบกราฟที่เลือกได้ของข้อมูลแต่ละชนิด
+ *
+ * ไม่ใช่ทุกชนิดเปลี่ยนเป็นทุกแบบได้ ขึ้นกับว่าข้อมูลมีรูปร่างแบบไหน:
+ *   ข้อมูลรายเดือน (bar) มีหลายชุดได้ จึงเป็นแท่งหรือเส้น
+ *     แต่เป็นโดนัทไม่ได้ถ้ามีมากกว่าหนึ่งชุด เพราะโดนัทแสดงส่วนแบ่งของก้อนเดียว
+ *   ข้อมูลจัดอันดับ (hbar) เป็นก้อนเดียวเสมอ จึงเป็นได้ทั้งสามแบบ
+ *
+ * โดนัทเหมาะกับ "ส่วนแบ่งของทั้งหมด" ไม่เหมาะกับการเทียบค่าที่ใกล้เคียงกัน
+ * จึงไม่ตั้งเป็นค่าเริ่มต้นให้ ต้องเลือกเอง
+ */
+const STYLES = [
+  { id: "bar", name: "แท่ง" },
+  { id: "line", name: "เส้น" },
+  { id: "hbar", name: "แท่งนอน" },
+  { id: "donut", name: "โดนัท" },
+];
+
+function stylesFor(d) {
+  if (d.kind === "bar") {
+    return d.series && d.series.length === 1 ? ["bar", "line", "donut"] : ["bar", "line"];
+  }
+  if (d.kind === "hbar") return ["hbar", "bar", "donut"];
+  if (d.kind === "line") return ["line", "bar"];
+  return [];
+}
+
+/** ข้อมูลรายเดือนหลายชุด แปลงเป็นรายการก้อนเดียวไม่ได้ จึงใช้ชุดแรก */
+const asItems = (d) =>
+  d.kind === "hbar"
+    ? d.items
+    : d.labels.map((l, i) => ({
+        label: l,
+        value: (d.series && d.series[0] ? d.series[0].data[i] : d.data[i]) || 0,
+        color: (d.series && d.series[0] && d.series[0].color) || d.color || "var(--brand-l)",
+      }));
 
 const readPick = (sourceId, fallback) => {
   try {
@@ -96,6 +133,8 @@ export default function Dashboard({ onNavigate }) {
   const [sourceId, setSourceId] = useState(DASH_SOURCES[0].id);
   const [picked, setPicked] = useState(() => allIds(DASH_SOURCES[0]));
   const [setup, setSetup] = useState(false);
+  // รูปแบบกราฟที่เลือกไว้ แยกรายการ์ด จำในเครื่องเหมือนของที่ติ๊กเลือก
+  const [styles, setStyles] = useState({});
 
   // ค่าเริ่มต้น 6 เดือนล่าสุด เท่ากับกราฟที่เคยแสดงไว้เดิม
   const [from, setFrom] = useState(() => monthsAgoISO(5));
@@ -108,6 +147,12 @@ export default function Dashboard({ onNavigate }) {
     const s = sourceOf(id) || DASH_SOURCES[0];
     setSourceId(id);
     setPicked(readPick(id, allIds(s)));
+    try {
+      const raw = localStorage.getItem(KEY + "styles");
+      if (raw) setStyles(JSON.parse(raw) || {});
+    } catch (e) {
+      // อ่านไม่ได้ก็ใช้รูปแบบตั้งต้นของแต่ละการ์ดไปก่อน
+    }
   }, []);
 
   const source = sourceOf(sourceId) || DASH_SOURCES[0];
@@ -121,6 +166,16 @@ export default function Dashboard({ onNavigate }) {
       localStorage.setItem(KEY + "source", id);
     } catch (e) {
       // เก็บไม่ได้ก็ใช้งานต่อได้ แค่เปิดใหม่แล้วกลับไปหน้าตั้งต้น
+    }
+  }
+
+  function setStyle(widgetId, style) {
+    const next = { ...styles, [widgetId]: style };
+    setStyles(next);
+    try {
+      localStorage.setItem(KEY + "styles", JSON.stringify(next));
+    } catch (e) {
+      // เก็บไม่ได้ก็ใช้งานต่อได้ แค่เปิดใหม่แล้วกลับไปรูปแบบตั้งต้น
     }
   }
 
@@ -276,7 +331,13 @@ export default function Dashboard({ onNavigate }) {
             className={row.per === 4 ? "grid g4" : row.per === 2 ? "grid g2" : "stack"}
           >
             {row.items.map((w) => (
-              <Widget key={w.id} widget={w} onNavigate={onNavigate} />
+              <Widget
+                key={w.id}
+                widget={w}
+                style={styles[w.id]}
+                onStyle={(v) => setStyle(w.id, v)}
+                onNavigate={onNavigate}
+              />
             ))}
           </div>
         ))
@@ -292,8 +353,60 @@ export default function Dashboard({ onNavigate }) {
 }
 
 /** วาดการ์ดหนึ่งใบตามชนิดที่ได้มา */
-function Widget({ widget, onNavigate }) {
+function Widget({ widget, style, onStyle, onNavigate }) {
   const d = widget.data;
+  const allowed = stylesFor(d);
+  // เลือกไว้แล้วแต่ชนิดนี้เปลี่ยนเป็นแบบนั้นไม่ได้ ให้ถอยไปใช้รูปแบบตั้งต้นของมัน
+  const view = allowed.includes(style) ? style : allowed[0] || d.kind;
+
+  /** ปุ่มเปลี่ยนรูปแบบกราฟ มีเฉพาะการ์ดที่เปลี่ยนได้จริง */
+  const picker =
+    allowed.length > 1 ? (
+      <div className="cs-tabs" style={{ marginBottom: 0 }}>
+        {STYLES.filter((x) => allowed.includes(x.id)).map((x) => (
+          <button
+            key={x.id}
+            className={"cs-tab" + (view === x.id ? " on" : "")}
+            onClick={() => onStyle(x.id)}
+            title={"แสดงเป็นกราฟ" + x.name}
+          >
+            {x.name}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
+  /** วาดกราฟตามรูปแบบที่เลือก โดยแปลงรูปร่างข้อมูลให้ตรงกับที่กราฟนั้นต้องการ */
+  function chartBody() {
+    if (view === "donut") return <DonutChart items={asItems(d)} />;
+    if (view === "hbar") return <HBarChart items={asItems(d)} />;
+    if (view === "line") {
+      const items = asItems(d);
+      return (
+        <LineChart
+          labels={items.map((x) => x.label)}
+          data={items.map((x) => x.value)}
+          color={items[0] ? items[0].color : undefined}
+        />
+      );
+    }
+    const items = asItems(d);
+    return (
+      <>
+        <BarChart
+          labels={d.kind === "bar" ? d.labels : items.map((x) => x.label)}
+          series={
+            d.kind === "bar"
+              ? d.series
+              : [{ name: widget.name, color: items[0] ? items[0].color : "var(--brand-l)", data: items.map((x) => x.value) }]
+          }
+        />
+        {d.kind === "bar" ? (
+          <Legend items={d.series.map((se) => ({ name: se.name, color: se.color }))} />
+        ) : null}
+      </>
+    );
+  }
 
   if (d.kind === "kpi") {
     const Icon = ICONS[d.icon] || IcChart;
@@ -308,47 +421,11 @@ function Widget({ widget, onNavigate }) {
     );
   }
 
-  if (d.kind === "bar") {
+  if (d.kind === "bar" || d.kind === "line" || d.kind === "hbar") {
+    const has = d.kind === "hbar" ? d.items.length : d.labels.length;
     return (
-      <Card title={widget.name} actions={<Badge>{d.labels.length} เดือน</Badge>}>
-        {d.labels.length ? (
-          <>
-            <div className="chart">
-              <BarChart labels={d.labels} series={d.series} />
-            </div>
-            <Legend items={d.series.map((s) => ({ name: s.name, color: s.color }))} />
-          </>
-        ) : (
-          <Empty>ช่วงเวลาที่เลือกไม่มีเดือนให้แสดง</Empty>
-        )}
-      </Card>
-    );
-  }
-
-  if (d.kind === "line") {
-    return (
-      <Card title={widget.name}>
-        {d.labels.length ? (
-          <div className="chart">
-            <LineChart labels={d.labels} data={d.data} color={d.color} />
-          </div>
-        ) : (
-          <Empty>ยังไม่มีข้อมูลในช่วงนี้</Empty>
-        )}
-      </Card>
-    );
-  }
-
-  if (d.kind === "hbar") {
-    return (
-      <Card title={widget.name} actions={<Badge>{d.items.length} รายการ</Badge>}>
-        {d.items.length ? (
-          <div className="chart">
-            <HBarChart items={d.items} />
-          </div>
-        ) : (
-          <Empty>ยังไม่มีข้อมูลในช่วงนี้</Empty>
-        )}
+      <Card title={widget.name} actions={picker}>
+        {has ? <div className="chart">{chartBody()}</div> : <Empty>ยังไม่มีข้อมูลในช่วงนี้</Empty>}
       </Card>
     );
   }

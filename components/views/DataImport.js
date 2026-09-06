@@ -23,7 +23,7 @@ import { useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { SHIP_START } from "@/lib/constants";
-import { IMPORT_SETS, headOf, sampleOf, setOf } from "@/lib/importSets";
+import { IMPORT_SETS, headOf, keyOf, sampleOf, setOf } from "@/lib/importSets";
 import { localISO, num, thDate, uid } from "@/lib/format";
 import { readTable } from "@/lib/xlsxRead";
 import { downloadCSV } from "@/lib/csv";
@@ -110,6 +110,21 @@ export default function DataImport() {
   const existing = useMemo(() => {
     const pick = {
       products: (d) => (d.products || []).map((x) => x.code),
+      salespersons: (d) => (d.salespersons || []).map((x) => x.code),
+      // เป้าใช้ "งวด+มิติ" เป็นตัวกันซ้ำ เพราะเป้าไม่มีรหัสของตัวเอง
+      // ตั้งเป้าซ้ำงวดและมิติเดิมคือความผิดพลาด ไม่ใช่การตั้งเป้าเพิ่ม
+      targets: (d) =>
+        (d.salesTargets || []).map((t) => {
+          const sp = (d.salespersons || []).find((x) => x.id === t.salesId);
+          return keyOf(set, {
+            year: t.year,
+            month: t.month,
+            salesCode: sp ? sp.code : "",
+            grp: t.grp,
+            brand: t.brand,
+            kind: t.kind,
+          });
+        }),
       customers: (d) => (d.customers || []).map((x) => x.code),
       suppliers: (d) => (d.suppliers || []).map((x) => x.code),
       warehouses: (d) => (d.warehouses || []).map((x) => x.code),
@@ -206,7 +221,8 @@ export default function DataImport() {
           value[f.id] = f.type === "date" ? parseDate(raw) : f.type === "num" ? parseNum(raw) : raw;
         });
 
-        const keyRaw = pick(r, set.key);
+        // ชุดที่ใช้หลายช่องรวมกันเป็นกุญแจ ประกอบจากค่าที่แปลงแล้ว ไม่ใช่หยิบช่องเดียว
+        const keyRaw = set.keyFields ? keyOf(set, value) : pick(r, set.key);
         const keyLow = keyRaw.trim().toLowerCase();
 
         // หาช่องบังคับที่ยังว่างหรือแปลงไม่ได้ บอกเป็นชื่อช่อง ไม่ใช่รหัสช่อง
@@ -299,6 +315,44 @@ export default function DataImport() {
         branch: v.branch,
       };
       return set.id === "customers" ? inv.saveCustomer(party) : inv.saveSupplier(party);
+    }
+
+    if (set.id === "salespersons") {
+      return inv.saveSalesperson({
+        id: uid(),
+        code: v.code,
+        name: v.name,
+        phone: v.phone,
+        note: v.note,
+        active: true,
+        user: who,
+        ts: Date.now(),
+      });
+    }
+
+    if (set.id === "targets") {
+      // รหัสพนักงานต้องมีอยู่จริง ไม่งั้นเป้าจะลอยไม่ผูกกับใคร
+      // และเป็นข้อผิดพลาดที่มองไม่เห็นจนกว่าจะไปดูรายงานแล้วตัวเลขไม่ตรง
+      const sp = (db.salespersons || []).find(
+        (x) => x.code.toLowerCase() === String(v.salesCode || "").trim().toLowerCase()
+      );
+      if (v.salesCode && !sp) {
+        throw new Error("ไม่พบรหัสพนักงานขาย " + v.salesCode + " ในทะเบียน");
+      }
+      return inv.saveTarget({
+        id: uid(),
+        year: Number(v.year) || 0,
+        month: Number(v.month) || 0,
+        salesId: sp ? sp.id : "",
+        grp: v.grp,
+        brand: v.brand,
+        kind: v.kind,
+        amount: Number(v.amount) || 0,
+        qty: Number(v.qty) || 0,
+        note: "นำเข้าจากไฟล์ " + fileName,
+        user: who,
+        ts: Date.now(),
+      });
     }
 
     if (set.id === "warehouses") {

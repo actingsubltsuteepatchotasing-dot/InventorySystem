@@ -322,6 +322,21 @@ export default function Customers() {
               />
             </div>
             <div className="field">
+              <label className="lbl" htmlFor="cf_sales">พนักงานขายประจำ</label>
+              {/* ตั้งไว้แล้วหน้าขายจะเติมให้เองตอนเลือกลูกค้ารายนี้ */}
+              <SearchSelect
+                id="cf_sales"
+                value={form.salesId || ""}
+                onChange={(v) => set("salesId", v)}
+                options={(db.salespersons || [])
+                  .filter((p) => p.active)
+                  .map((p) => ({ value: p.id, code: p.code, label: p.name }))}
+                emptyLabel="— ไม่ระบุ —"
+                notFound="ไม่พบพนักงานขายที่ตรงกับ"
+              />
+            </div>
+
+            <div className="field">
               <label className="lbl" htmlFor="cf_kind">ประเภทลูกค้า</label>
               <select
                 className="sel"

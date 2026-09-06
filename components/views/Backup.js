@@ -53,7 +53,9 @@ const PARTS = [
   { key: "stockCountItems", name: "รายการในใบตรวจนับ" },
   { key: "docGroups", name: "กลุ่มเอกสาร" },
   { key: "perms", name: "สิทธิการใช้งานหน้าจอ" },
-  { key: "sqlConnections", name: "การเชื่อมต่อ SQL Server" },
+  { key: "sqlConnections", name: "การเชื่อมต่อฐานข้อมูลภายนอก" },
+  { key: "salespersons", name: "พนักงานขาย" },
+  { key: "salesTargets", name: "เป้าขาย" },
 ];
 
 const stamp = () =>

@@ -723,7 +723,8 @@ head("14. ชุดข้อมูลนำเข้า Excel ครบถ้ว
   const screens = [...constants.matchAll(/\{ id: "(\w+)",\s+group:/g)].map((m) => m[1]);
   const ids = [...sets.matchAll(/^    id: "(\w+)",$/gm)].map((m) => m[1]);
   const targets = [...sets.matchAll(/^    screen: "(\w+)",$/gm)].map((m) => m[1]);
-  const keys = [...sets.matchAll(/^    key: "(\w+)",$/gm)].map((m) => m[1]);
+  // ตัวกันซ้ำบอกได้สองแบบ: ช่องเดียว (key) หรือหลายช่องรวมกัน (keyFields)
+  const keys = [...sets.matchAll(/^    (?:key|keyFields): /gm)].map((m) => m[0]);
 
   let n = 0;
   if (ids.length !== targets.length || ids.length !== keys.length) {
@@ -741,6 +742,32 @@ head("14. ชุดข้อมูลนำเข้า Excel ครบถ้ว
   ids.forEach((id) => {
     if (!new RegExp('set\\.id === "' + id + '"').test(view)) {
       bad("ชุด " + id + " ไม่มีโค้ดบันทึกในหน้านำเข้า");
+      n++;
+    }
+  });
+
+  // ทุกช่องที่ใช้เป็นกุญแจ ต้องเป็นช่องที่มีอยู่จริงในชุดนั้น
+  // ไม่งั้นกุญแจจะว่างเปล่าเสมอ แล้วทุกแถวจะถูกมองว่าซ้ำกันหมด
+  sets.split(/^  \{$/m).slice(1).forEach((b) => {
+    const id = (b.match(/id: "(\w+)"/) || [])[1] || "(ไม่ทราบ)";
+    const fields = [...b.matchAll(/\{ id: "(\w+)", name:/g)].map((m) => m[1]);
+    const single = (b.match(/^    key: "(\w+)",$/m) || [])[1];
+    const multi = (b.match(/^    keyFields: \[([^\]]*)\],$/m) || [])[1];
+
+    if (single && !fields.includes(single)) {
+      bad("ชุด " + id + " ใช้ช่อง " + single + " เป็นตัวกันซ้ำ แต่ไม่มีช่องนั้นในชุด");
+      n++;
+    }
+    if (multi) {
+      const list = (multi.match(/"(\w+)"/g) || []).map((x) => x.replace(/"/g, ""));
+      const gone = list.filter((f) => !fields.includes(f));
+      if (gone.length) {
+        bad("ชุด " + id + " ใช้ช่องที่ไม่มีอยู่เป็นตัวกันซ้ำ: " + gone.join(", "));
+        n++;
+      }
+    }
+    if (!single && !multi) {
+      bad("ชุด " + id + " ไม่ได้บอกว่าใช้อะไรกันซ้ำ");
       n++;
     }
   });

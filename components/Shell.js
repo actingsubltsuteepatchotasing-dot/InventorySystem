@@ -40,6 +40,9 @@ import Password from "./views/Password";
 import Users from "./views/Users";
 import SqlServer from "./views/SqlServer";
 import DataImport from "./views/DataImport";
+import Salespersons from "./views/Salespersons";
+import Targets from "./views/Targets";
+import QuickView from "./views/QuickView";
 import CountPrep from "./views/CountPrep";
 import CountScan from "./views/CountScan";
 import ShipScan from "./views/ShipScan";
@@ -48,7 +51,10 @@ import Backup from "./views/Backup";
 const NAV = [
   {
     group: "ภาพรวม",
-    items: [{ id: "dash", Icon: IcDash, title: "แดชบอร์ด", sub: "ภาพรวมสินค้าคงคลัง" }],
+    items: [
+      { id: "quick", Icon: IcChart, title: "Quick View (มือถือ)", sub: "ยอดขายเทียบเป้า ดูเร็วบนมือถือ" },
+      { id: "dash", Icon: IcDash, title: "แดชบอร์ด", sub: "ภาพรวมสินค้าคงคลัง" },
+    ],
   },
   {
     group: "ทำรายการ",
@@ -74,6 +80,7 @@ const NAV = [
     items: [
       { id: "pos", Icon: IcCart, title: "ขายสินค้า (POS)", sub: "ยิงบาร์โค๊ด ขาย และออกใบเสร็จ" },
       { id: "invoice", Icon: IcReport, title: "ขายสินค้าและบริการ", sub: "ออกใบกำกับภาษีเต็มรูปแบบ" },
+      { id: "targets", Icon: IcChart, title: "กำหนดเป้าขาย", sub: "ตั้งเป้าและเทียบกับยอดจริง" },
     ],
   },
   {
@@ -103,6 +110,7 @@ const NAV = [
       { id: "users", Icon: IcPin, title: "เพิ่มผู้ใช้งาน", sub: "สร้างบัญชีเข้าระบบด้วยอีเมล" },
       { id: "sqlserver", Icon: IcData, title: "เชื่อมต่อฐานข้อมูลภายนอก", sub: "SQL Server / MySQL / Access" },
       { id: "dataimport", Icon: IcDownload, title: "นำเข้าข้อมูลจาก Excel", sub: "เลือกหน้าจอแล้วโหลดไฟล์เข้ามา" },
+      { id: "salespersons", Icon: IcPin, title: "กำหนดพนักงานขาย", sub: "รหัสและชื่อพนักงานขาย" },
       { id: "password", Icon: IcPin, title: "เปลี่ยนรหัสผ่าน", sub: "ตั้งรหัสผ่านใหม่ของบัญชีตัวเอง" },
       { id: "backup", Icon: IcData, title: "สำรองข้อมูล", sub: "สำรองทั้งหมดและกู้คืนกลับมา" },
       { id: "perms", Icon: IcData, title: "กำหนดสิทธิการใช้งาน", sub: "เลือกว่าหน้าจอไหนแสดงและแก้ไขได้" },
@@ -377,6 +385,7 @@ export default function Shell() {
 
         <div className="content">
           <SetupBanner />
+          {activeView === "quick" && <QuickView />}
           {activeView === "dash" && <Dashboard onNavigate={navigate} />}
           {activeView === "receive" && <TxnScreen key="receive" type="RECEIVE" />}
           {activeView === "issue" && <TxnScreen key="issue" type="ISSUE" />}
@@ -397,6 +406,8 @@ export default function Shell() {
           {activeView === "users" && <Users />}
           {activeView === "sqlserver" && <SqlServer />}
           {activeView === "dataimport" && <DataImport />}
+          {activeView === "salespersons" && <Salespersons />}
+          {activeView === "targets" && <Targets />}
           {activeView === "password" && <Password />}
           {activeView === "billimport" && <BillImport />}
           {activeView === "countprep" && <CountPrep />}

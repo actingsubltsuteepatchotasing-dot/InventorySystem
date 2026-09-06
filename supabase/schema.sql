@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 22 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 24 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
@@ -162,6 +162,20 @@ end
 $$;
 
 create index if not exists txns_loc_idx on public.txns (loc_id);
+
+-- ------------------------------------------- การจัดกลุ่มสินค้า
+-- กลุ่ม / ยี่ห้อ / ประเภท แยกกันสามช่อง ไม่ยัดรวมเป็นช่องเดียว
+-- เพราะเป้าขายกำหนดแยกรายมิติได้ (เป้าของยี่ห้อหนึ่ง คนละอันกับเป้าของกลุ่มหนึ่ง)
+-- ถ้าเก็บรวมกันจะแยกไม่ออกว่าคำไหนคือมิติไหน
+--
+-- เป็นข้อความอิสระ ไม่ทำเป็นตารางอ้างอิง เพราะรายชื่อพวกนี้เปลี่ยนบ่อยตามสินค้าที่เข้ามา
+-- และหน้าจอเลือกจากค่าที่เคยใช้ได้อยู่แล้ว (datalist) จึงไม่ต้องมีหน้าจัดการอีกหน้า
+alter table public.products add column if not exists grp   text not null default '';
+alter table public.products add column if not exists brand text not null default '';
+alter table public.products add column if not exists kind  text not null default '';
+
+create index if not exists products_brand_idx on public.products (brand) where brand <> '';
+create index if not exists products_grp_idx   on public.products (grp)   where grp   <> '';
 
 -- ------------------------------------------- คลังและที่เก็บประจำของสินค้า
 -- ใช้เป็นค่าตั้งต้นบนหน้าจอ ไม่ได้บังคับว่าสินค้าต้องอยู่ที่นั่นเท่านั้น
@@ -1241,6 +1255,91 @@ end
 $cnt_loc$;
 
 -- ============================================================================
+-- พนักงานขาย
+-- ----------------------------------------------------------------------------
+-- ใช้ผูกกับใบขายและกับลูกค้า เพื่อดูยอดขายรายคนและตั้งเป้าขายรายคน
+--
+-- ความยาวจำกัดตามที่ตกลงไว้: รหัสไม่เกิน 50 ตัวอักษร ชื่อไม่เกิน 200
+-- บังคับที่ฐานข้อมูลด้วย ไม่ใช่บังคับแค่ที่หน้าจอ
+-- เพราะข้อมูลเข้ามาได้หลายทาง (หน้าจอ · นำเข้าจาก Excel · กู้คืนไฟล์สำรอง)
+-- ถ้าบังคับแค่หน้าจอเดียว ทางอื่นจะเล็ดลอดเข้ามาได้
+create table if not exists public.salespersons (
+  id         text primary key,
+  code       text not null,
+  name       text not null,
+  phone      text not null default '',
+  note       text not null default '',
+  active     boolean not null default true,
+  user_name  text not null default '',
+  ts         bigint not null,
+  created_at timestamptz not null default now(),
+
+  constraint salespersons_code_len check (char_length(code) between 1 and 50),
+  constraint salespersons_name_len check (char_length(name) between 1 and 200)
+);
+
+create unique index if not exists salespersons_code_uniq on public.salespersons (lower(code));
+
+-- ผูกพนักงานขายกับใบขายและกับลูกค้า
+-- ใบขายเก็บทั้ง id และรหัส/ชื่อแบบคัดลอกไว้ (snapshot) เหตุผลเดียวกับข้อมูลลูกค้า
+-- เอกสารต้องคงข้อความเดิม ณ วันที่ออก ต่อให้พนักงานคนนั้นลาออกหรือเปลี่ยนชื่อทีหลัง
+alter table public.invoices  add column if not exists sales_id   text;
+alter table public.invoices  add column if not exists sales_code text not null default '';
+alter table public.invoices  add column if not exists sales_name text not null default '';
+alter table public.customers add column if not exists sales_id   text;
+
+do $sales_fk$
+begin
+  alter table public.invoices drop constraint if exists invoices_sales_fk;
+  alter table public.invoices add constraint invoices_sales_fk
+    foreign key (sales_id) references public.salespersons (id) on delete set null;
+
+  alter table public.customers drop constraint if exists customers_sales_fk;
+  alter table public.customers add constraint customers_sales_fk
+    foreign key (sales_id) references public.salespersons (id) on delete set null;
+end
+$sales_fk$;
+
+create index if not exists invoices_sales_idx on public.invoices (sales_id);
+
+-- ============================================================================
+-- เป้าขาย (Target)
+-- ----------------------------------------------------------------------------
+-- หนึ่งแถวคือ "เป้าของงวดหนึ่ง ในมิติหนึ่ง"
+--
+-- มิติที่ระบุได้: พนักงานขาย · กลุ่มสินค้า · ยี่ห้อสินค้า · ประเภทสินค้า
+-- ช่องไหนเว้นว่าง = ไม่จำกัดมิตินั้น (เป้ารวมของทุกคน / ทุกยี่ห้อ)
+--
+-- ทำไมไม่แยกเป็นตารางต่อมิติ:
+--   เป้าจริงมักผสมกัน เช่น "เป้าของสมชาย เฉพาะยี่ห้อ A เดือนกันยายน"
+--   ถ้าแยกตาราง จะรวมเงื่อนไขข้ามตารางไม่ได้โดยไม่เขียนโค้ดพิเศษทุกครั้ง
+--
+-- month = 0 หมายถึงเป้าทั้งปี ไม่ใช่เดือนศูนย์
+--   เก็บเป็นเลขเดียวแทนที่จะมีคอลัมน์ "ชนิดงวด" แยก เพราะงวดมีแค่สองแบบ
+--   และการเทียบ month = 0 อ่านง่ายกว่าการเช็คธงสองชั้น
+create table if not exists public.sales_targets (
+  id         text primary key,
+  year       int not null,
+  month      int not null default 0,
+  sales_id   text references public.salespersons (id) on delete cascade,
+  grp        text not null default '',
+  brand      text not null default '',
+  kind       text not null default '',
+  amount     numeric not null default 0,
+  qty        numeric not null default 0,
+  note       text not null default '',
+  user_name  text not null default '',
+  ts         bigint not null,
+  created_at timestamptz not null default now(),
+
+  constraint sales_targets_year  check (year between 2000 and 2100),
+  constraint sales_targets_month check (month between 0 and 12),
+  constraint sales_targets_amount check (amount >= 0 and qty >= 0)
+);
+
+create index if not exists sales_targets_period_idx on public.sales_targets (year, month);
+
+-- ============================================================================
 -- การเชื่อมต่อ SQL Server ที่บันทึกไว้
 -- ----------------------------------------------------------------------------
 -- เก็บ "ค่าที่ใช้ต่อ" ไม่ใช่ตัวการเชื่อมต่อ — เว็บในเบราว์เซอร์ต่อ SQL Server ตรง ๆ ไม่ได้
@@ -1343,7 +1442,8 @@ begin
     'doc_groups', 'customers', 'company', 'invoices', 'invoice_items',
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
-    'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections'
+    'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
+    'salespersons', 'sales_targets'
   ]
   loop
     seq := 'public.' || t || '_row_order_seq';
@@ -1406,6 +1506,8 @@ grant all privileges on table public.stock_counts      to authenticated;
 grant all privileges on table public.stock_count_items to authenticated;
 grant all privileges on table public.ship_events        to authenticated;
 grant all privileges on table public.sql_connections    to authenticated;
+grant all privileges on table public.salespersons       to authenticated;
+grant all privileges on table public.sales_targets      to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -1428,7 +1530,8 @@ begin
     'doc_groups', 'customers', 'company', 'invoices', 'invoice_items',
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
-    'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections'
+    'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
+    'salespersons', 'sales_targets'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1443,7 +1546,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 22 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 24 ตารางแล้ว';
 end
 $$;
 
@@ -1503,6 +1606,7 @@ from (values
   ('doc_groups'), ('customers'), ('company'), ('invoices'), ('invoice_items'),
   ('screen_perms'), ('suppliers'), ('purchases'), ('purchase_items'),
   ('purchase_returns'), ('purchase_return_items'),
-  ('stock_counts'), ('stock_count_items'), ('ship_events'), ('sql_connections')
+  ('stock_counts'), ('stock_count_items'), ('ship_events'), ('sql_connections'),
+  ('salespersons'), ('sales_targets')
 ) as x(name)
 order by x.name;

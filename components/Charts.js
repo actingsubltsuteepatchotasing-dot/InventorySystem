@@ -155,6 +155,104 @@ export function HBarChart({ items }) {
   );
 }
 
+/**
+ * กราฟโดนัท — ใช้ดูสัดส่วนว่าอะไรกินส่วนแบ่งเท่าไร
+ *
+ * เหมาะกับ "ส่วนแบ่งของทั้งหมด" ไม่เหมาะกับการเทียบค่าที่ใกล้เคียงกัน
+ * เพราะตาคนเทียบมุมของวงกลมได้แย่กว่าเทียบความยาวของแท่งมาก
+ * จึงเขียนตัวเลขและเปอร์เซ็นต์กำกับไว้ทุกชิ้น ไม่ให้ต้องกะเอาจากมุม
+ *
+ * เกิน 8 ชิ้นจะยุบส่วนที่เหลือเป็น "อื่น ๆ" ชิ้นเดียว
+ * เพราะชิ้นบาง ๆ สิบกว่าชิ้นอ่านไม่ออกและสีจะซ้ำกันจนแยกไม่ได้
+ */
+export function DonutChart({ items, max = 8 }) {
+  const clean = (items || []).filter((i) => Number(i.value) > 0);
+  const sorted = clean.slice().sort((a, b) => b.value - a.value);
+
+  const shown = sorted.slice(0, max);
+  const rest = sorted.slice(max);
+  if (rest.length) {
+    shown.push({
+      label: "อื่น ๆ (" + rest.length + " รายการ)",
+      value: rest.reduce((s, x) => s + x.value, 0),
+      color: "#9AA5A0",
+    });
+  }
+
+  const total = shown.reduce((s, x) => s + x.value, 0);
+  if (!total) return null;
+
+  const W = 760;
+  const H = 300;
+  const cx = 150;
+  const cy = H / 2;
+  const R = 108;
+  const r = 62;
+
+  // วาดทีละชิ้นด้วย path arc — ไม่ใช้ stroke-dasharray เพราะคุมช่องว่างระหว่างชิ้นยาก
+  let at = -Math.PI / 2; // เริ่มที่ตำแหน่งสิบสองนาฬิกา ตาคนเริ่มอ่านตรงนั้น
+  const arcs = shown.map((it) => {
+    const frac = it.value / total;
+    const a0 = at;
+    const a1 = at + frac * Math.PI * 2;
+    at = a1;
+
+    const big = a1 - a0 > Math.PI ? 1 : 0;
+    const p = (ang, rad) => [cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad];
+    const [x0, y0] = p(a0, R);
+    const [x1, y1] = p(a1, R);
+    const [x2, y2] = p(a1, r);
+    const [x3, y3] = p(a0, r);
+
+    // ชิ้นเดียวเต็มวง วาดเป็น arc ไม่ได้ (จุดเริ่มกับจุดจบทับกัน) ใช้วงแหวนแทน
+    const d =
+      frac >= 0.9999
+        ? "M " + (cx - R) + " " + cy +
+          " a " + R + " " + R + " 0 1 0 " + R * 2 + " 0 a " + R + " " + R + " 0 1 0 " + -R * 2 + " 0 " +
+          "M " + (cx - r) + " " + cy +
+          " a " + r + " " + r + " 0 1 1 " + r * 2 + " 0 a " + r + " " + r + " 0 1 1 " + -r * 2 + " 0"
+        : "M " + x0 + " " + y0 +
+          " A " + R + " " + R + " 0 " + big + " 1 " + x1 + " " + y1 +
+          " L " + x2 + " " + y2 +
+          " A " + r + " " + r + " 0 " + big + " 0 " + x3 + " " + y3 + " Z";
+
+    return { ...it, d, frac };
+  });
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
+      {arcs.map((a, i) => (
+        <path key={i} d={a.d} fill={a.color || "var(--brand)"} fillRule="evenodd">
+          <title>{`${a.label}: ${num(a.value, 0)} (${num(a.frac * 100, 1)}%)`}</title>
+        </path>
+      ))}
+
+      <text x={cx} y={cy - 4} textAnchor="middle" fontSize="13" fill="#5C6B62">
+        รวม
+      </text>
+      <text x={cx} y={cy + 18} textAnchor="middle" fontSize="17" fontWeight="700" fill="#16211B">
+        {num(total, 0)}
+      </text>
+
+      {/* คำอธิบายอยู่ข้าง ๆ พร้อมตัวเลข ไม่ให้ต้องกะสัดส่วนจากมุมเอง */}
+      {arcs.map((a, i) => {
+        const y = 34 + i * 28;
+        return (
+          <g key={"l" + i}>
+            <rect x={310} y={y - 11} width={13} height={13} rx={3} fill={a.color || "var(--brand)"} />
+            <text x={332} y={y} fontSize="12.5" fill="#16211B">
+              {ellipsis(a.label, 30)}
+            </text>
+            <text x={W - 10} y={y} textAnchor="end" fontSize="12.5" fill="#5C6B62">
+              {num(a.value, 0)} · {num(a.frac * 100, 1)}%
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 /** คำอธิบายสีของกราฟ */
 export function Legend({ items }) {
   return (

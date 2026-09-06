@@ -35,6 +35,9 @@ export default function ProductForm({ productId, onClose }) {
           name: "",
           unit: "",
           cat: "",
+          grp: "",
+          brand: "",
+          kind: "",
           price: 0,
           min: 0,
           barcode: "",
@@ -52,6 +55,18 @@ export default function ProductForm({ productId, onClose }) {
   const stockLeft = productId ? inv.stockTotal(productId) : 0;
 
   const cats = useMemo(() => Array.from(new Set(db.products.map((p) => p.cat))), [db.products]);
+
+  /*
+   * ค่าที่เคยใช้ของสามมิติ ใช้ทำรายการให้เลือกซ้ำได้โดยไม่ต้องมีหน้าจัดการแยกอีกหน้า
+   * รายชื่อพวกนี้เปลี่ยนบ่อยตามสินค้าที่เข้ามา การมีตารางอ้างอิงจะกลายเป็นภาระ
+   */
+  const usedIn = (f) =>
+    Array.from(new Set(db.products.map((p) => p[f]).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, "th")
+    );
+  const grps = useMemo(() => usedIn("grp"), [db.products]); // eslint-disable-line react-hooks/exhaustive-deps
+  const brands = useMemo(() => usedIn("brand"), [db.products]); // eslint-disable-line react-hooks/exhaustive-deps
+  const kinds = useMemo(() => usedIn("kind"), [db.products]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   async function handleFile(file) {
@@ -96,6 +111,9 @@ export default function ProductForm({ productId, onClose }) {
       name,
       unit,
       cat: String(form.cat).trim() || "ทั่วไป",
+      grp: String(form.grp || "").trim(),
+      brand: String(form.brand || "").trim(),
+      kind: String(form.kind || "").trim(),
       price: parseFloat(form.price) || 0,
       min: parseFloat(form.min) || 0,
       barcode: String(form.barcode).trim(),
@@ -199,6 +217,61 @@ export default function ProductForm({ productId, onClose }) {
           />
           <datalist id="catList">
             {cats.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </div>
+
+        {/* สามมิตินี้ใช้ตั้งเป้าขายแยกรายกลุ่ม รายยี่ห้อ และรายประเภทได้
+            เลือกจากที่เคยใช้หรือพิมพ์ใหม่ก็ได้ในช่องเดียวกัน */}
+        <div className="field">
+          <label className="lbl" htmlFor="e_grp">กลุ่มสินค้า</label>
+          <input
+            className="inp"
+            id="e_grp"
+            list="grpList"
+            value={form.grp || ""}
+            onChange={(e) => set("grp", e.target.value)}
+            placeholder="เช่น วัตถุดิบ"
+          />
+          <datalist id="grpList">
+            {grps.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <span className="hint">ใช้ตั้งเป้าขายแยกรายกลุ่มได้</span>
+        </div>
+
+        <div className="field">
+          <label className="lbl" htmlFor="e_brand">ยี่ห้อสินค้า</label>
+          <input
+            className="inp"
+            id="e_brand"
+            list="brandList"
+            value={form.brand || ""}
+            onChange={(e) => set("brand", e.target.value)}
+            placeholder="เช่น ตราช้าง"
+          />
+          <datalist id="brandList">
+            {brands.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <span className="hint">ใช้กรองที่ Quick View และตั้งเป้าขายรายยี่ห้อ</span>
+        </div>
+
+        <div className="field">
+          <label className="lbl" htmlFor="e_kind">ประเภทสินค้า</label>
+          <input
+            className="inp"
+            id="e_kind"
+            list="kindList"
+            value={form.kind || ""}
+            onChange={(e) => set("kind", e.target.value)}
+            placeholder="เช่น สินค้าสำเร็จรูป"
+          />
+          <datalist id="kindList">
+            {kinds.map((c) => (
               <option key={c} value={c} />
             ))}
           </datalist>
