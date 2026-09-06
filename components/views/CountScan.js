@@ -21,16 +21,33 @@ import { useInv } from "@/lib/store";
 import { findByScan } from "@/lib/db";
 import { num, thDate } from "@/lib/format";
 import { useToast } from "../Toast";
+import { usePrint } from "../Print";
 import { IcClose } from "../Icons";
-import { Badge, Card, Empty, SearchSelect } from "../ui";
+import { Badge, Card, Empty, ExportPair, PrintPair, SearchSelect } from "../ui";
 import SetupNotice from "../SetupNotice";
+
+/**
+ * ตัวกรองรายการในใบ
+ *
+ * ตั้งต้นที่ "ทั้งหมด" เพื่อให้เห็นรายการทั้งใบตามที่เตรียมไว้
+ * ของที่ยังไม่ได้นับมีขอบกะพริบอยู่แล้ว จึงหาเจอได้โดยไม่ต้องกรองก่อน
+ * ส่วนตัวกรองอื่นไว้ใช้ตอนไล่เก็บของที่เหลือ หรือตอนทวนเฉพาะบรรทัดที่ผลต่างไม่เป็นศูนย์
+ */
+const FILTERS = [
+  { id: "all", name: "ทั้งหมด" },
+  { id: "todo", name: "ยังไม่ได้นับ" },
+  { id: "done", name: "นับแล้ว" },
+  { id: "diff", name: "มีผลต่าง" },
+];
 
 export default function CountScan() {
   const inv = useInv();
   const perm = inv.perm("countscan");
   const { db } = inv;
   const toast = useToast();
+  const print = usePrint();
 
+  const [filter, setFilter] = useState("all");
   const [countId, setCountId] = useState("");
   const [code, setCode] = useState("");
   const [target, setTarget] = useState(null); // รายการที่กำลังกรอกจำนวน
@@ -38,6 +55,11 @@ export default function CountScan() {
   const [busy, setBusy] = useState(false);
   const [cam, setCam] = useState(false);
   const [camErr, setCamErr] = useState("");
+
+  // กล่องกรอกจำนวนถูกเปิดมาจากการสแกนหรือจากการกดในรายการ
+  // ถ้ามาจากการสแกน พอกดตกลงต้องเปิดกล้องต่อทันที (คนกำลังไล่นับอยู่)
+  // ถ้ามาจากการกดในรายการ ห้ามเปิดกล้องใส่ เพราะเขากำลังไล่ดูรายการอยู่
+  const fromScan = useRef(false);
 
   const codeRef = useRef(null);
   const qtyRef = useRef(null);
@@ -58,6 +80,15 @@ export default function CountScan() {
 
   const done = items.filter((i) => i.counted !== null).length;
   const left = items.length - done;
+  const diffCount = items.filter((i) => i.counted !== null && i.counted !== i.sysQty).length;
+
+  /** รายการที่จะแสดงตามตัวกรองที่เลือก */
+  const shown = useMemo(() => {
+    if (filter === "todo") return items.filter((i) => i.counted === null);
+    if (filter === "done") return items.filter((i) => i.counted !== null);
+    if (filter === "diff") return items.filter((i) => i.counted !== null && i.counted !== i.sysQty);
+    return items;
+  }, [items, filter]);
 
   // เหลือใบเดียวก็เลือกให้เลย คนถือมือถือจะได้ไม่ต้องกดอะไรก่อนเริ่มนับ
   useEffect(() => {
@@ -157,6 +188,7 @@ export default function CountScan() {
     }
 
     const pick = mine.find((i) => i.counted === null) || mine[0];
+    fromScan.current = true;
     stopCam();
     setTarget(pick);
     setQty(pick.counted === null ? "" : String(pick.counted));
@@ -182,8 +214,7 @@ export default function CountScan() {
       setTarget(null);
       setQty("");
       // กลับไปสแกนตัวถัดไปทันที ไม่ต้องกดปุ่มอะไรอีก
-      if (canScan) setCam(true);
-      else setTimeout(() => codeRef.current && codeRef.current.focus(), 60);
+      backToScan();
     } catch (e) {
       toast("บันทึกไม่สำเร็จ: " + e.message, "err");
     } finally {
@@ -191,11 +222,17 @@ export default function CountScan() {
     }
   }
 
+  /** ปิดกล่องกรอกจำนวนแล้วพาไปสแกนตัวถัดไป ถ้าเข้ามาทางการสแกน */
+  function backToScan() {
+    if (!fromScan.current) return;
+    if (canScan) setCam(true);
+    else setTimeout(() => codeRef.current && codeRef.current.focus(), 60);
+  }
+
   function skip() {
     setTarget(null);
     setQty("");
-    if (canScan) setCam(true);
-    else setTimeout(() => codeRef.current && codeRef.current.focus(), 60);
+    backToScan();
   }
 
   if (!inv.countsReady) {
@@ -218,6 +255,78 @@ export default function CountScan() {
 
   /** ชื่อช่องเก็บแบบที่คนเดินนับอ่านแล้วรู้ว่าต้องไปยืนตรงไหน */
   const binName = (locId) => (locId ? inv.locName(locId) : "ไม่ระบุที่เก็บ");
+
+  /* ------------------------------------------------- รายงานผลการนับ */
+
+  const REPORT_HEAD = [
+    "ลำดับ", "รหัสสินค้า", "รายการสินค้า", "หน่วย", "คลังสินค้า", "ที่เก็บ",
+    "ยอดในระบบ", "นับได้จริง", "ผลต่าง", "สถานะ",
+  ];
+
+  /**
+   * แถวของรายงาน — ใช้ทั้งพิมพ์และส่งออก ไฟล์กับกระดาษจะได้ตรงกันเสมอ
+   *
+   * รายการที่ยังไม่ได้นับเว้นช่องจำนวนกับผลต่างไว้ว่าง ไม่ใส่ 0
+   * เพราะ 0 แปลว่า "นับแล้วไม่เจอของ" ซึ่งคนละความหมายกับ "ยังไม่ได้นับ"
+   */
+  const reportRows = (list) =>
+    list.map((i, n) => {
+      const pp = inv.prod(i.productId);
+      const counted = i.counted !== null;
+      return [
+        n + 1,
+        pp ? pp.code : "",
+        inv.prodName(i.productId),
+        pp ? pp.unit : "",
+        inv.whName(i.whId),
+        binName(i.locId),
+        i.sysQty,
+        counted ? i.counted : "",
+        counted ? i.counted - i.sysQty : "",
+        counted ? (i.counted === i.sysQty ? "ตรวจนับแล้ว" : "ตรวจนับแล้ว (มีผลต่าง)") : "ยังไม่ได้นับ",
+      ];
+    });
+
+  const reportName = () =>
+    "ผลการตรวจนับ-" + (sheet ? sheet.docNo : "") +
+    (filter === "all" ? "" : "-" + (FILTERS.find((f) => f.id === filter) || {}).name);
+
+  function printReport() {
+    if (!sheet) return;
+    print({
+      title: "รายงานผลการตรวจนับสินค้า " + sheet.docNo,
+      subtitle:
+        inv.whName(sheet.whId) + " · วันที่ " + thDate(sheet.date) +
+        " · ผู้ตรวจนับ " + (sheet.by1 || "-") + (sheet.by2 ? " และ " + sheet.by2 : "") +
+        " · นับแล้ว " + num(done, 0) + " จาก " + num(items.length, 0) + " รายการ" +
+        " · มีผลต่าง " + num(diffCount, 0) + " รายการ" +
+        (filter === "all" ? "" : " · แสดงเฉพาะ " + (FILTERS.find((f) => f.id === filter) || {}).name),
+      body: (
+        <table>
+          <thead>
+            <tr>
+              {REPORT_HEAD.map((h, i) => (
+                <th key={h} style={i >= 6 && i <= 8 ? { textAlign: "right" } : undefined}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {reportRows(shown).map((r, i) => (
+              <tr key={i}>
+                {r.map((v, j) => (
+                  <td key={j} style={j >= 6 && j <= 8 ? { textAlign: "right" } : undefined}>
+                    {typeof v === "number" ? num(v, 0) : v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ),
+    });
+  }
 
   return (
     <div className="stack count-scan">
@@ -391,33 +500,105 @@ export default function CountScan() {
         </div>
       ) : null}
 
+      {/* รายการทั้งใบ พร้อมสถานะการนับ — เป็นทั้งหน้าจอทำงานและตัวรายงาน */}
       {sheet && !target ? (
-        <Card title="ที่ยังไม่ได้นับ" actions={<Badge>{num(left, 0)} รายการ</Badge>}>
-          {left ? (
-            <ul className="cs-left">
-              {items
-                .filter((i) => i.counted === null)
-                .slice(0, 40)
-                .map((i) => {
-                  const pp = inv.prod(i.productId);
-                  return (
-                    <li key={i.id}>
-                      <b>{pp ? pp.code : ""}</b>
-                      <span>{inv.prodName(i.productId)}</span>
-                      <em>{binName(i.locId)}</em>
-                    </li>
-                  );
-                })}
-              {left > 40 ? (
-                <li>
-                  <span className="muted">
-                    …และอีก {num(left - 40, 0)} รายการ — สแกนไปเรื่อย ๆ รายการจะสั้นลงเอง
-                  </span>
-                </li>
-              ) : null}
+        <Card
+          title="รายการในใบตรวจนับ"
+          actions={
+            <>
+              <Badge kind="ok">นับแล้ว {num(done, 0)}</Badge>
+              <Badge kind={left ? "warn" : "gray"}>ยังไม่นับ {num(left, 0)}</Badge>
+              <Badge kind={diffCount ? "err" : "gray"}>ผลต่าง {num(diffCount, 0)}</Badge>
+              <PrintPair
+                onPrint={printReport}
+                toast={toast}
+                disabled={!shown.length}
+                label="พิมพ์รายงาน"
+              />
+              <ExportPair
+                onExport={(save) =>
+                  save(REPORT_HEAD, reportRows(shown), reportName() + ".csv")
+                }
+                disabled={!shown.length}
+                toast={toast}
+              />
+            </>
+          }
+        >
+          <div className="cs-tabs">
+            {FILTERS.map((f) => {
+              const n =
+                f.id === "todo" ? left : f.id === "done" ? done : f.id === "diff" ? diffCount : items.length;
+              return (
+                <button
+                  key={f.id}
+                  className={"cs-tab" + (filter === f.id ? " on" : "")}
+                  onClick={() => setFilter(f.id)}
+                >
+                  {f.name} <b>{num(n, 0)}</b>
+                </button>
+              );
+            })}
+          </div>
+
+          {shown.length ? (
+            <ul className="cs-list">
+              {shown.map((i) => {
+                const pp = inv.prod(i.productId);
+                const counted = i.counted !== null;
+                const diff = counted ? i.counted - i.sysQty : 0;
+                return (
+                  <li
+                    key={i.id}
+                    className={"cs-item" + (counted ? (diff ? " diff" : " done") : " todo")}
+                  >
+                    {/* กดที่รายการเพื่อนับหรือแก้ตัวเลข ไม่ต้องเดินกลับไปสแกนใหม่
+                        เผื่อกรณีบาร์โค๊ดที่ตัวสินค้าฉีกจนอ่านไม่ออก */}
+                    <button
+                      className="cs-item-btn"
+                      onClick={() => {
+                        fromScan.current = false;
+                        stopCam();
+                        setTarget(i);
+                        setQty(counted ? String(i.counted) : "");
+                        setTimeout(() => qtyRef.current && qtyRef.current.focus(), 60);
+                      }}
+                      disabled={!perm.edit}
+                    >
+                      <div className="cs-item-top">
+                        <b>{pp ? pp.code : ""}</b>
+                        <span className="cs-item-name">{inv.prodName(i.productId)}</span>
+                        <Badge kind={counted ? (diff ? "err" : "ok") : "warn"}>
+                          {counted ? (diff ? "มีผลต่าง" : "ตรวจนับแล้ว") : "ยังไม่ได้นับ"}
+                        </Badge>
+                      </div>
+                      <div className="cs-item-where">
+                        {inv.whName(i.whId)} · {binName(i.locId)}
+                      </div>
+                      <div className="cs-item-nums">
+                        <span>
+                          ในระบบ <b>{num(i.sysQty, 0)}</b>
+                        </span>
+                        <span>
+                          นับได้ <b>{counted ? num(i.counted, 0) : "—"}</b>
+                        </span>
+                        <span className={diff > 0 ? "up" : diff < 0 ? "down" : ""}>
+                          ผลต่าง <b>{counted ? (diff > 0 ? "+" : "") + num(diff, 0) : "—"}</b>
+                        </span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
-            <Empty>นับครบทุกรายการแล้ว — กลับไปปิดใบที่หน้า “เตรียมใบตรวจนับ”</Empty>
+            <Empty>
+              {filter === "todo"
+                ? "นับครบทุกรายการแล้ว — กลับไปปิดใบที่หน้า “เตรียมใบตรวจนับ”"
+                : filter === "diff"
+                  ? "ยังไม่มีรายการที่นับได้ไม่ตรงกับยอดในระบบ"
+                  : "ไม่มีรายการในกลุ่มนี้"}
+            </Empty>
           )}
         </Card>
       ) : null}

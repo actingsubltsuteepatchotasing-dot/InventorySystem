@@ -1676,7 +1676,7 @@ tr.row-active > td:first-child {
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--card);
+  background: var(--surface);
   font-family: inherit;
   font-size: 13px;
   text-align: left;
@@ -1694,7 +1694,7 @@ tr.row-active > td:first-child {
   place-items: center;
   font-size: 11.5px;
   font-weight: 700;
-  background: var(--bg-soft);
+  background: var(--bg);
   color: var(--fg-muted);
 }
 /* ขั้นที่ผ่านมาแล้วยังเห็นว่าเดินมาถึงไหน ไม่ใช่เห็นแค่ขั้นปัจจุบัน */
@@ -1710,7 +1710,7 @@ tr.row-active > td:first-child {
 
 /* ตารางกำหนดสิทธิการใช้งาน */
 .perm-group > td {
-  background: var(--bg-soft);
+  background: var(--bg);
   font-weight: 700;
   font-size: 11.5px;
   letter-spacing: 0.06em;
@@ -1782,7 +1782,7 @@ tr.row-active > td:first-child {
   border: 1.5px solid var(--border);
   border-left: 5px solid var(--c);
   border-radius: 11px;
-  background: var(--card);
+  background: var(--surface);
   font-family: inherit;
   font-size: 14.5px;
   text-align: left;
@@ -1790,7 +1790,7 @@ tr.row-active > td:first-child {
   color: var(--fg);
   transition: border-color 0.15s, background 0.15s, transform 0.08s;
 }
-.scan-opt:hover:not(:disabled) { background: var(--bg-soft); }
+.scan-opt:hover:not(:disabled) { background: var(--surface-2); }
 /* ปุ่มใหญ่ กดง่ายตอนมือถือของอยู่ และเด้งนิดหนึ่งให้รู้ว่ากดติดแล้ว */
 .scan-opt:active:not(:disabled) { transform: scale(0.985); }
 .scan-opt .no {
@@ -1808,7 +1808,7 @@ tr.row-active > td:first-child {
 .scan-opt .nm { font-weight: 600; }
 .scan-opt.past .no { opacity: 0.4; }
 .scan-opt.past .nm { opacity: 0.6; }
-.scan-opt.now { border-color: var(--c); background: var(--bg-soft); }
+.scan-opt.now { border-color: var(--c); background: var(--surface-2); }
 .scan-opt .tag {
   margin-left: auto;
   font-size: 11.5px;
@@ -1844,7 +1844,7 @@ tr.row-active > td:first-child {
   border: 1px solid var(--border);
   border-radius: 11px;
   padding: 11px 13px;
-  background: var(--bg-soft);
+  background: var(--surface-2);
 }
 .pv-head { margin-bottom: 8px; }
 .pv-head b { display: block; font-size: 13.5px; }
@@ -1944,7 +1944,7 @@ label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }
 .cs-progress {
   height: 8px;
   border-radius: 999px;
-  background: var(--bg-soft);
+  background: var(--bg);
   overflow: hidden;
   margin-top: 10px;
 }
@@ -2000,7 +2000,7 @@ label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }
 .cs-card {
   width: 100%;
   max-width: 520px;
-  background: var(--card);
+  background: var(--surface);
   border-radius: 16px;
   padding: 18px;
   box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.28);
@@ -2019,16 +2019,90 @@ label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }
 .cs-actions { display: flex; gap: 10px; }
 .cs-actions .btn { flex: 1; }
 
-/* รายการที่ยังไม่ได้นับ */
-.cs-left { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
-.cs-left li {
+/* ตัวกรองรายการ — เป็นปุ่มใหญ่พอให้กดด้วยนิ้วโป้ง ไม่ใช่แท็บบาง ๆ แบบบนคอม */
+.cs-tabs {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 7px 2px;
-  border-bottom: 1px solid var(--border);
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 11px;
+  -webkit-overflow-scrolling: touch;
 }
-.cs-left li:last-child { border-bottom: 0; }
-.cs-left b { flex: 0 0 auto; color: var(--fg-faint); font-size: 12px; }
-.cs-left span { flex: 1; }
-.cs-left em { font-style: normal; font-size: 12px; color: var(--fg-faint); }
+.cs-tab {
+  flex: 0 0 auto;
+  padding: 9px 13px;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cs-tab b { font-weight: 700; color: var(--fg); }
+.cs-tab.on {
+  border-color: var(--brand);
+  background: var(--brand-50);
+  color: var(--brand-d);
+}
+.cs-tab.on b { color: inherit; }
+
+/* รายการในใบตรวจนับ — การ์ดต่อหนึ่งบรรทัด อ่านง่ายบนจอแคบกว่าตารางเลื่อนข้าง */
+.cs-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cs-item {
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--border);
+  border-radius: 11px;
+  overflow: hidden;
+}
+/* ยังไม่ได้นับ = ขอบส้มกะพริบเบา ๆ ให้สะดุดตาตอนกวาดสายตาหาของที่เหลือ
+   กะพริบเฉพาะขอบ ไม่ใช่ทั้งการ์ด ตัวหนังสือจะได้ยังอ่านได้ตลอด */
+.cs-item.todo { border-left-color: var(--warn); animation: cs-todo 1.6s ease-in-out infinite; }
+@keyframes cs-todo {
+  0%, 100% { border-left-color: var(--warn); }
+  50%      { border-left-color: var(--border); }
+}
+.cs-item.done { border-left-color: var(--ok); }
+.cs-item.diff { border-left-color: var(--err); }
+
+.cs-item-btn {
+  display: block;
+  width: 100%;
+  padding: 11px 13px;
+  border: 0;
+  background: var(--surface);
+  font-family: inherit;
+  text-align: left;
+  color: var(--fg);
+  cursor: pointer;
+}
+.cs-item-btn:disabled { cursor: default; opacity: 0.75; }
+.cs-item-top { display: flex; align-items: center; gap: 8px; }
+.cs-item-top > b { flex: 0 0 auto; font-size: 12px; color: var(--fg-faint); }
+.cs-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-item-where { font-size: 12px; color: var(--fg-faint); margin-top: 3px; }
+.cs-item-nums {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 7px;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+.cs-item-nums b { font-size: 14.5px; color: var(--fg); }
+.cs-item-nums .up b { color: var(--ok); }
+.cs-item-nums .down b { color: var(--err); }
+
+/* คนที่ตั้งค่าเครื่องให้ลดการเคลื่อนไหว ไม่ควรโดนขอบกะพริบใส่ */
+@media (prefers-reduced-motion: reduce) {
+  .cs-item.todo { animation: none; }
+}
