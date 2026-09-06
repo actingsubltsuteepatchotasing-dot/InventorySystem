@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
-import { SHIP_STATUS, VAT_PERCENT } from "@/lib/constants";
+import { SHIP_START, SHIP_STATUS, VAT_PERCENT } from "@/lib/constants";
 import {
   customerAddress,
   defaultBinOf,
@@ -207,7 +207,7 @@ export default function SalesInvoice() {
       vat: totals.vat,
       total: totals.total,
       note: note.trim(),
-      shipStatus: "PACKING",
+      shipStatus: SHIP_START,
       shipFrom: filled[0].whId,
       shipNote: "",
       shipTs: 0,

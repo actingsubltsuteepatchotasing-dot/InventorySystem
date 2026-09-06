@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 import { SHIP_STATUS } from "@/lib/constants";
 import { num, thDate, thDateTime } from "@/lib/format";
 import { geocodeAddress, roadDistance } from "@/lib/geo";
@@ -38,6 +39,7 @@ export default function Shipping() {
   const perm = inv.perm("shipping");
   const { db } = inv;
   const toast = useToast();
+  const { user } = useAuth();
 
   const scanRef = useRef(null);
   const [term, setTerm] = useState("");
@@ -114,12 +116,21 @@ export default function Shipping() {
 
     setBusy(true);
     try {
-      await inv.setInvoiceShip(id, {
-        shipStatus: status,
-        shipFrom: target.shipFrom,
-        shipNote: target.shipNote,
-        shipTs: Date.now(),
-      });
+      await inv.setInvoiceShip(
+        id,
+        {
+          shipStatus: status,
+          shipFrom: target.shipFrom,
+          shipNote: target.shipNote,
+          shipTs: Date.now(),
+        },
+        // บอกด้วยว่าเปลี่ยนมาจากหน้าไหน รายงานเวลาจะได้แยกออกว่าเดินสถานะจากที่ใด
+        {
+          docNo: target.docNo,
+          station: "หน้าการจัดส่งสินค้า",
+          user: user && user.email ? user.email : "",
+        }
+      );
       toast(target.docNo + " → " + statusOf(status).name, "ok");
     } catch (e) {
       toast("เปลี่ยนสถานะไม่สำเร็จ: " + e.message, "err");

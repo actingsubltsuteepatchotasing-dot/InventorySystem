@@ -15,10 +15,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
 import { SHIP_STATUS } from "@/lib/constants";
-import { num, thDate, thDateTime, todayISO } from "@/lib/format";
+import { fmtDuration, num, thDate, thDateTime, thTime, todayISO } from "@/lib/format";
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
-import { Badge, Card, Empty, ExportPair, SearchSelect, TableWrap } from "../ui";
+import { usePrint } from "../Print";
+import { Badge, Card, Empty, ExportPair, PrintPair, SearchSelect, TableWrap } from "../ui";
 import SetupNotice from "../SetupNotice";
 
 const statusOf = (id) => SHIP_STATUS.find((s) => s.id === id) || SHIP_STATUS[0];
@@ -76,6 +77,12 @@ export default function ShipStatus() {
   const inv = useInv();
   const { db } = inv;
   const toast = useToast();
+  const print = usePrint();
+
+  // กระดาน = ดูว่าตอนนี้ของอยู่ไหน · เวลาแต่ละขั้น = ดูย้อนหลังว่าช่วงไหนช้า
+  // เป็นคนละคำถามกัน จึงแยกเป็นสองมุมมองแทนที่จะยัดคอลัมน์เวลาเข้าไปในกระดาน
+  // ซึ่งจะทำให้ตารางกว้างจนกวาดตาดูสถานะไม่ได้ ซึ่งเป็นงานหลักของหน้านี้
+  const [view, setView] = useState("board");
 
   const scanRef = useRef(null);
   const [term, setTerm] = useState("");
@@ -252,6 +259,64 @@ export default function ShipStatus() {
     if (scanRef.current) scanRef.current.focus();
   }
 
+  /* ------------------------------------------ รายงานเวลาแต่ละขั้นตอน */
+
+  /** เวลาที่เข้าแต่ละขั้นและเวลาที่ใช้ในช่วงนั้น ของทุกใบที่กรองอยู่ */
+  const timing = useMemo(
+    () => rows.map((v) => ({ v, tl: inv.shipTimeline(v) })),
+    [rows, inv]
+  );
+
+  const TIME_HEAD = [
+    "เลขที่เอกสาร", "วันที่เอกสาร", "รหัสลูกค้า", "ชื่อลูกค้า", "จังหวัดที่ส่ง",
+    ...SHIP_STATUS.map((s) => s.name),
+    ...SHIP_STATUS.slice(1).map((s) => "ใช้เวลาถึง " + s.short),
+    "รวมทั้งกระบวนการ",
+  ];
+
+  const timeRows = () =>
+    timing.map(({ v, tl }) => [
+      v.docNo, v.date, v.custCode, v.custName, v.custProvince,
+      ...tl.steps.map((s) => (s.ts ? thDateTime(s.ts) : "")),
+      ...tl.steps.slice(1).map((s) => (s.ms ? fmtDuration(s.ms) : "")),
+      tl.totalMs ? fmtDuration(tl.totalMs) : "",
+    ]);
+
+  function printTiming() {
+    print({
+      title: "รายงานเวลาแต่ละขั้นตอนของการจัดส่ง",
+      subtitle:
+        (searching ? "ค้นหา: " + term : "ช่วงวันที่ " + thDate(from) + " ถึง " + thDate(to)) +
+        " · " + rows.length + " ใบ" +
+        (province ? " · จังหวัด " + province : "") +
+        (status ? " · สถานะ " + statusOf(status).name : ""),
+      body: (
+        <table>
+          <thead>
+            <tr>
+              {TIME_HEAD.map((h) => (
+                <th key={h}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {timeRows().map((r, i) => (
+              <tr key={i}>
+                {r.map((c, j) => (
+                  <td key={j}>{c}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ),
+    });
+  }
+
+  function exportTiming(save) {
+    save(TIME_HEAD, timeRows(), "เวลาแต่ละขั้นตอนการจัดส่ง.csv");
+  }
+
   function exportFile(save) {
     save(
       ["เลขที่เอกสาร", "วันที่เอกสาร", "รหัสลูกค้า", "ชื่อลูกค้า", "จังหวัดที่ส่ง",
@@ -292,7 +357,19 @@ export default function ShipStatus() {
             <button className="btn btn-p btn-sm" onClick={manualPull} disabled={refreshing}>
               {refreshing ? "กำลังอัพเดท…" : "อัพเดทข้อมูล"}
             </button>
-            <ExportPair onExport={exportFile} disabled={!rows.length} toast={toast} />
+            {view === "board" ? (
+              <ExportPair onExport={exportFile} disabled={!rows.length} toast={toast} />
+            ) : (
+              <>
+                <PrintPair
+                  onPrint={printTiming}
+                  toast={toast}
+                  disabled={!rows.length}
+                  label="พิมพ์รายงาน"
+                />
+                <ExportPair onExport={exportTiming} disabled={!rows.length} toast={toast} />
+              </>
+            )}
             {filtering ? (
               <button className="btn btn-g btn-sm" onClick={clearFilters}>
                 ล้างตัวกรอง
@@ -381,6 +458,21 @@ export default function ShipStatus() {
           </div>
         </div>
 
+        <div className="cs-tabs" style={{ marginBottom: 10 }}>
+          <button
+            className={"cs-tab" + (view === "board" ? " on" : "")}
+            onClick={() => setView("board")}
+          >
+            กระดานสถานะ
+          </button>
+          <button
+            className={"cs-tab" + (view === "time" ? " on" : "")}
+            onClick={() => setView("time")}
+          >
+            เวลาแต่ละขั้นตอน
+          </button>
+        </div>
+
         {/* สีของแต่ละสถานะ บอกไว้ครั้งเดียว ในตารางจะได้ดูแค่จุดสีก็รู้ */}
         <div className="ship-legend" style={{ marginBottom: 12 }}>
           {SHIP_STATUS.map((s) => (
@@ -391,7 +483,7 @@ export default function ShipStatus() {
           ))}
         </div>
 
-        {rows.length ? (
+        {rows.length && view === "board" ? (
           /* เลื่อนในกรอบของตัวเอง หัวตารางค้างอยู่ กระดานที่มีเป็นร้อยใบจึงยังกวาดตาดูได้ */
           <div className="doc-scroll" style={{ maxHeight: 520 }}>
           <TableWrap>
@@ -433,6 +525,59 @@ export default function ShipStatus() {
               ))}
             </tbody>
           </TableWrap>
+          </div>
+        ) : rows.length ? (
+          <div className="doc-scroll" style={{ maxHeight: 520 }}>
+            <TableWrap>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 150 }}>เลขที่เอกสาร</th>
+                  <th style={{ width: 110 }}>วันที่</th>
+                  <th style={{ minWidth: 180 }}>ลูกค้า</th>
+                  <th style={{ minWidth: 130 }}>จังหวัดที่ส่ง</th>
+                  {SHIP_STATUS.map((s) => (
+                    <th key={s.id} style={{ minWidth: 128 }}>
+                      {s.name}
+                    </th>
+                  ))}
+                  <th style={{ minWidth: 120 }}>รวมทั้งกระบวนการ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {timing.map(({ v, tl }, i) => (
+                  <tr
+                    key={v.id}
+                    className="row-in"
+                    style={{ animationDelay: Math.min(i, 12) * 22 + "ms" }}
+                  >
+                    <td className="code-cell">{v.docNo}</td>
+                    <td>{thDate(v.date)}</td>
+                    <td>
+                      {v.custCode ? v.custCode + " " : ""}
+                      {v.custName}
+                    </td>
+                    <td>{v.custProvince || "—"}</td>
+                    {/* ช่องหนึ่งบอกสองอย่าง: เข้าขั้นนี้เมื่อไร และใช้เวลาจากขั้นก่อนหน้าเท่าไร
+                        แยกเป็นสองคอลัมน์ต่อขั้นจะได้ตารางกว้าง 11 คอลัมน์ซึ่งอ่านไม่ไหว */}
+                    {tl.steps.map((s) => (
+                      <td key={s.id} className={s.ts ? "" : "muted"}>
+                        {s.ts ? (
+                          <span className="tl-cell">
+                            <b>{thTime(s.ts)}</b>
+                            {s.ms ? <em>+{fmtDuration(s.ms)}</em> : null}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    ))}
+                    <td>
+                      <b>{tl.totalMs ? fmtDuration(tl.totalMs) : "—"}</b>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
           </div>
         ) : (
           <Empty>

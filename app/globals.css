@@ -2106,3 +2106,149 @@ label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   .cs-item.todo { animation: none; }
 }
+
+/* ---------- สถานีสแกนจัดส่ง ---------- */
+
+/* เลือกจุดที่ยืนอยู่ — การ์ดใหญ่กดง่ายทั้งบนคอมและมือถือ */
+.station-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.station-opt {
+  position: relative;
+  display: block;
+  padding: 13px 15px;
+  border: 1.5px solid var(--border);
+  border-left: 5px solid var(--c);
+  border-radius: 11px;
+  background: var(--surface);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg);
+}
+.station-opt:hover { background: var(--surface-2); }
+/* จุดที่เลือกอยู่ต้องเห็นชัดจากอีกฝั่งห้อง เพราะยิงผิดจุดคือข้อมูลเวลาผิดทั้งใบ */
+.station-opt.on {
+  border-color: var(--c);
+  box-shadow: inset 0 0 0 1.5px var(--c);
+  background: var(--surface-2);
+}
+.station-opt b { display: block; font-size: 14.5px; }
+.station-opt span { display: block; font-size: 12px; color: var(--fg-faint); margin-top: 2px; }
+.station-opt em {
+  display: block;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c);
+  margin-top: 6px;
+}
+/* จำนวนใบที่รออยู่ที่จุดนั้น ช่วยให้รู้ว่าควรไปยืนจุดไหนก่อน */
+.station-n {
+  position: absolute;
+  top: 11px;
+  right: 12px;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 22px;
+  padding: 2px 7px;
+  text-align: center;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg-muted);
+}
+.station-opt.on .station-n { background: var(--c); color: #fff; }
+
+/* ช่องรับการยิง — ตัวโตเพราะคนยิงยืนห่างจอ */
+.scan-box { font-size: 19px; padding: 15px 16px; letter-spacing: 0.02em; font-weight: 600; }
+
+/* ผลของใบล่าสุด — อ่านออกจากระยะหนึ่งเมตร */
+.scan-result {
+  margin-top: 12px;
+  padding: 15px 17px;
+  border-radius: 12px;
+  border-left: 6px solid var(--border);
+  background: var(--surface-2);
+}
+.scan-result b { display: block; font-size: 24px; line-height: 1.25; }
+.scan-result span { display: block; font-size: 14px; color: var(--fg-muted); margin-top: 2px; }
+.scan-result em {
+  display: block;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 7px;
+}
+.scan-result.ok { border-left-color: var(--ok); background: var(--ok-bg); }
+.scan-result.ok b { color: var(--ok); }
+.scan-result.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.scan-result.warn em { color: var(--warn); }
+.scan-result.err { border-left-color: var(--err); background: var(--err-bg); }
+.scan-result.err b { color: var(--err); }
+.scan-result.idle b { color: var(--fg-faint); font-size: 19px; }
+
+/* คิวงานและรายการที่ยิงไปแล้ว */
+.scan-queue { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.scan-queue li {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 8px 2px 8px 10px;
+  border-left: 4px solid var(--c, var(--border));
+  border-bottom: 1px solid var(--border);
+}
+.scan-queue li:last-child { border-bottom: 0; }
+.scan-queue li.more { border-left-color: transparent; color: var(--fg-faint); justify-content: center; }
+.scan-queue b { flex: 0 0 auto; font-size: 12.5px; }
+.scan-queue span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-queue em { font-style: normal; font-size: 11.5px; color: var(--fg-faint); }
+.scan-queue i { font-style: normal; font-size: 11.5px; color: var(--fg-faint); flex: 0 0 auto; }
+
+/* เส้นเวลาของใบเดียว */
+.tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.tl li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border-left: 5px solid var(--border);
+  background: var(--surface-2);
+  opacity: 0.55;
+}
+/* ขั้นที่ผ่านแล้วเด่นกว่าขั้นที่ยังไม่ถึง จะได้เห็นทันทีว่าไปถึงไหน */
+.tl li.on { opacity: 1; border-left-color: var(--c); }
+.tl b { flex: 0 0 150px; font-size: 13.5px; }
+.tl span { flex: 1; font-size: 13px; color: var(--fg-muted); }
+.tl em { font-style: normal; font-size: 12.5px; font-weight: 700; color: var(--fg-muted); }
+
+/* เวลาแต่ละขั้นในตารางกระดานสถานะ */
+.tl-cell { display: inline-flex; flex-direction: column; }
+.tl-cell b { font-size: 12.5px; font-weight: 600; }
+.tl-cell em { font-style: normal; font-size: 11px; color: var(--fg-faint); }
+
+/* สองคอลัมน์บนจอกว้าง เรียงลงมาบนจอแคบ */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+/* ---------- การดึงบิลอัตโนมัติ ---------- */
+
+/* แถวที่มีปัญหาต้องเห็นชัดตอนกวาดตาดูก่อนกดดึงเข้าระบบ */
+.row-bad > td { background: var(--err-bg); }
+
+/* ---------- เปลี่ยนรหัสผ่าน ---------- */
+.pw-form { max-width: 420px; display: grid; gap: 12px; }
+.pw-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}

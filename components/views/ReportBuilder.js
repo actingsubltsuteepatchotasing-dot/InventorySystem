@@ -26,11 +26,18 @@ import { usePrint } from "../Print";
 import { IcPlus, IcTrash } from "../Icons";
 import { Badge, Card, Empty, ExportPair, PrintPair, SearchSelect, TableWrap } from "../ui";
 
-/** ค่าที่ส่งให้ตัวแปลงข้อมูล เผื่อบางชุดต้องแปลงรหัสเป็นชื่อ */
-const EXTRA = {
+/**
+ * ค่าที่ส่งให้ตัวแปลงข้อมูล เผื่อบางชุดต้องแปลงรหัสเป็นชื่อ หรือคำนวณเพิ่ม
+ *
+ * รับ inv เข้ามาเพราะบางชุด (เวลาแต่ละขั้นของการจัดส่ง) ต้องอ่านเหตุการณ์จากฐานข้อมูล
+ * ไม่ใช่แค่แปลงรหัสที่มีอยู่ในแถวนั้นอยู่แล้ว
+ */
+const extraOf = (inv) => ({
   payName: (id) => (PAY_METHODS.find((m) => m.id === id) || { name: id }).name,
   shipName: (id) => (SHIP_STATUS.find((s) => s.id === id) || { name: id }).name,
-};
+  whName: (id) => inv.whName(id),
+  shipTimeline: (v) => inv.shipTimeline(v),
+});
 
 /**
  * ตัวคั่นคีย์ของกลุ่ม — ใช้อักขระควบคุมที่พิมพ์ไม่ได้
@@ -72,7 +79,7 @@ export default function ReportBuilder() {
   }
 
   const rows = useMemo(() => {
-    const all = ds.rows(db, inv, EXTRA);
+    const all = ds.rows(db, inv, extraOf(inv));
     if (ds.noDate) return all;
     return all.filter((r) => {
       if (from && r.date < from) return false;

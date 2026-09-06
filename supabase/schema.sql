@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 20 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 21 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
@@ -526,15 +526,56 @@ alter table public.invoices add column if not exists cust_lng    double precisio
 alter table public.invoices add column if not exists ship_km     numeric;
 alter table public.invoices add column if not exists ship_km_at  bigint;
 
--- สถานะจัดส่งเพิ่ม PACKED (จัดสินค้าเสร็จแล้ว) คั่นระหว่างกำลังจัดกับส่งแล้ว
--- ประกาศเป็น do block เพราะฐานข้อมูลเดิมมี constraint ชุดสามสถานะอยู่แล้ว
+-- สถานะจัดส่ง 5 ขั้น — หนึ่งขั้นคือหนึ่งจุดที่มีคนรับช่วงต่อ
+--   WAIT      ใบเพิ่งออกจากหน้าขาย ยังไม่ถึงมือคลัง
+--   PACKING   ใบถึงจุดจัดสินค้าแล้ว
+--   PACKED    คลังหยิบของครบแล้ว รอขนส่ง
+--   SHIPPED   ของออกจากคลังไปกับขนส่ง
+--   DELIVERED ลูกค้ารับของแล้ว
+-- ประกาศเป็น do block เพราะฐานข้อมูลเดิมมี constraint ชุดเก่าอยู่แล้ว
 do $ship_status$
 begin
   alter table public.invoices drop constraint if exists invoices_ship_status;
   alter table public.invoices add constraint invoices_ship_status
-    check (ship_status in ('PACKING', 'PACKED', 'SHIPPED', 'DELIVERED'));
+    check (ship_status in ('WAIT', 'PACKING', 'PACKED', 'SHIPPED', 'DELIVERED'));
+
+  -- ใบใหม่เริ่มที่ "รอส่งจัดสินค้า" ไม่ใช่ "รอจัดสินค้า"
+  -- เพราะช่วงที่ใบยังไม่ถึงคลังก็เป็นเวลาที่ต้องวัดเหมือนกัน
+  alter table public.invoices alter column ship_status set default 'WAIT';
 end
 $ship_status$;
+
+-- ============================================================================
+-- บันทึกการเดินสถานะจัดส่ง (ship_events)
+-- ----------------------------------------------------------------------------
+-- หนึ่งแถวคือ "ใบนี้เข้าสถานะนี้ เมื่อเวลานี้ ที่จุดนี้ โดยคนนี้"
+--
+-- ทำไมไม่เก็บเวลาเป็นคอลัมน์ในตาราง invoices (packed_at, shipped_at, ...):
+--   1. ของตีกลับหรือยิงผิดจุดแล้วย้อนสถานะเกิดขึ้นจริงในงาน
+--      ถ้าเป็นคอลัมน์เดียวจะถูกเขียนทับ ประวัติหายไปเงียบ ๆ
+--   2. เพิ่มขั้นตอนใหม่ทีหลังต้องไปเพิ่มคอลัมน์ ซึ่งต้องแก้ทั้งสาย
+--   3. อยากรู้ว่า "ใครยิง" กับ "ยิงที่จุดไหน" ด้วย ไม่ใช่แค่เวลา
+-- เก็บเป็นเหตุการณ์จึงคำนวณเวลาแต่ละขั้นย้อนหลังได้ และตรวจสอบได้ว่าใครทำ
+--
+-- invoices.ship_status ยังเก็บสถานะปัจจุบันไว้เหมือนเดิม
+-- เพราะกระดานสถานะกรองด้วยสถานะปัจจุบันตลอด ถ้าต้องไล่หาจากเหตุการณ์ทุกครั้งจะช้า
+create table if not exists public.ship_events (
+  id         text primary key,
+  invoice_id text not null references public.invoices (id) on delete cascade,
+  doc_no     text not null default '',
+  status     text not null,
+  station    text not null default '',
+  note       text not null default '',
+  user_name  text not null default '',
+  ts         bigint not null,
+  created_at timestamptz not null default now(),
+
+  constraint ship_events_status
+    check (status in ('WAIT', 'PACKING', 'PACKED', 'SHIPPED', 'DELIVERED'))
+);
+
+create index if not exists ship_events_inv_idx on public.ship_events (invoice_id);
+create index if not exists ship_events_ts_idx  on public.ship_events (ts);
 
 -- เลขที่เอกสารห้ามซ้ำ เพราะเป็นตัวที่ยิงบาร์โค๊ดค้นหาที่หน้าจัดส่ง
 create unique index if not exists invoices_doc_no_key on public.invoices (doc_no);
@@ -1242,6 +1283,7 @@ grant all privileges on table public.purchase_returns  to authenticated;
 grant all privileges on table public.purchase_return_items to authenticated;
 grant all privileges on table public.stock_counts      to authenticated;
 grant all privileges on table public.stock_count_items to authenticated;
+grant all privileges on table public.ship_events        to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -1264,7 +1306,7 @@ begin
     'doc_groups', 'customers', 'company', 'invoices', 'invoice_items',
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
-    'stock_counts', 'stock_count_items'
+    'stock_counts', 'stock_count_items', 'ship_events'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1279,7 +1321,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 20 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 21 ตารางแล้ว';
 end
 $$;
 
@@ -1339,6 +1381,6 @@ from (values
   ('doc_groups'), ('customers'), ('company'), ('invoices'), ('invoice_items'),
   ('screen_perms'), ('suppliers'), ('purchases'), ('purchase_items'),
   ('purchase_returns'), ('purchase_return_items'),
-  ('stock_counts'), ('stock_count_items')
+  ('stock_counts'), ('stock_count_items'), ('ship_events')
 ) as x(name)
 order by x.name;
