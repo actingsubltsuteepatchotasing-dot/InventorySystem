@@ -453,6 +453,16 @@ table { border-collapse: collapse; width: 100%; }
 .nav-group svg { flex: 0 0 auto; transition: transform 0.2s; }
 /* ลูกศรชี้ลงตอนกางอยู่ พลิกขึ้นเมื่อหุบ ให้รู้ว่ากดแล้วเกิดอะไร */
 .nav-group.folded svg { transform: rotate(-90deg); }
+/* ตัวเลขบอกว่ากลุ่มที่หุบอยู่ซ่อนกี่หน้าไว้ ไม่งั้นเมนูใหม่ในกลุ่มที่หุบจะไม่มีใครเห็น */
+.nav-count {
+  margin-left: auto;
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-weight: 700;
+}
 .nav-item {
   display: flex;
   align-items: center;
