@@ -1888,3 +1888,7 @@ tr.row-active > td:first-child {
   font-size: 13.5px;
   cursor: pointer;
 }
+
+/* ปุ่มที่เป็น label ครอบ input file — ต้องทำให้ดูเหมือนปุ่มปกติ */
+label.btn { cursor: pointer; }
+label.btn.is-off { opacity: 0.55; cursor: default; pointer-events: none; }

@@ -36,6 +36,7 @@ import PurchaseInvoice from "./views/PurchaseInvoice";
 import PurchaseReturn from "./views/PurchaseReturn";
 import ReportBuilder from "./views/ReportBuilder";
 import StockCount from "./views/StockCount";
+import Backup from "./views/Backup";
 
 const NAV = [
   {
@@ -84,6 +85,7 @@ const NAV = [
       { id: "docgroups", Icon: IcReport, title: "การกำหนดกลุ่มเอกสาร", sub: "รูปแบบเลขที่เอกสารแบบรันนิ่ง" },
       { id: "whsetup", Icon: IcData, title: "กำหนดคลังและที่เก็บ", sub: "เพิ่ม แก้ไข และลบคลังกับช่องเก็บ" },
       { id: "company", Icon: IcBox, title: "ข้อมูลกิจการ", sub: "ผู้ออกใบกำกับภาษี" },
+      { id: "backup", Icon: IcData, title: "สำรองข้อมูล", sub: "สำรองทั้งหมดและกู้คืนกลับมา" },
       { id: "perms", Icon: IcData, title: "กำหนดสิทธิการใช้งาน", sub: "เลือกว่าหน้าจอไหนแสดงและแก้ไขได้" },
     ],
   },
@@ -374,6 +376,7 @@ export default function Shell() {
           {activeView === "suppliers" && <Suppliers />}
           {activeView === "stockcount" && <StockCount />}
           {activeView === "builder" && <ReportBuilder />}
+          {activeView === "backup" && <Backup />}
           {activeView === "perms" && <Permissions />}
           {activeView === "shipping" && <Shipping />}
           {activeView === "company" && <Company />}
