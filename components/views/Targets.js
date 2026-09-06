@@ -37,7 +37,7 @@ function yearOptions() {
   return [now - 2, now - 1, now, now + 1, now + 2];
 }
 
-export default function Targets() {
+export default function Targets({ onNavigate }) {
   const inv = useInv();
   const perm = inv.perm("targets");
   const { db } = inv;
@@ -202,6 +202,17 @@ export default function Targets() {
         title={form.id ? "แก้ไขเป้าขาย" : "ตั้งเป้าขายใหม่"}
         actions={
           <>
+            {/* เป้าขายทั้งปีมักมีหลายสิบแถว การกรอกทีละแถวช้ากว่าทำในไฟล์แล้วโหลดเข้ามามาก
+                จึงพาไปหน้านำเข้าข้อมูลให้เลย ไม่ต้องให้ไปหาเมนูเอง */}
+            {onNavigate ? (
+              <button
+                className="btn btn-o btn-sm"
+                onClick={() => onNavigate("dataimport", "targets")}
+                title="ไปหน้านำเข้าข้อมูลจาก Excel แล้วเลือกชุด “เป้าขาย”"
+              >
+                โหลดจาก Excel
+              </button>
+            ) : null}
             {form.id ? (
               <button className="btn btn-g btn-sm" onClick={() => setForm(BLANK)}>
                 ตั้งเป้าใหม่

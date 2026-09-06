@@ -85,14 +85,18 @@ export function parseNum(raw) {
   return Number.isFinite(n) ? n : 0;
 }
 
-export default function DataImport() {
+export default function DataImport({ startSet }) {
   const inv = useInv();
   const perm = inv.perm("dataimport");
   const { db } = inv;
   const toast = useToast();
   const { user } = useAuth();
 
-  const [setId, setSetId] = useState(IMPORT_SETS[0].id);
+  // ชุดตั้งต้น: มาจากปุ่มของหน้าอื่น (เช่น "โหลดจาก Excel" ที่หน้ากำหนดเป้าขาย)
+  // ถ้าส่งชื่อชุดที่ไม่มีอยู่จริงมา ให้ถอยไปใช้ชุดแรกแทนการขึ้นหน้าว่าง
+  const [setId, setSetId] = useState(
+    () => (IMPORT_SETS.some((s) => s.id === startSet) ? startSet : IMPORT_SETS[0].id)
+  );
   const [rows, setRows] = useState([]);
   const [fileName, setFileName] = useState("");
   const [headRow, setHeadRow] = useState(0);

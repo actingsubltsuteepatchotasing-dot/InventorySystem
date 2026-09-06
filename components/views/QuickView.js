@@ -21,6 +21,7 @@ import { compare, valuesOf } from "@/lib/targets";
 import { monthsAgoISO, num, thDate, todayISO } from "@/lib/format";
 import { BarChart, DonutChart, HBarChart, Legend } from "../Charts";
 import { Badge, Card, Empty, SearchSelect, TableWrap } from "../ui";
+import SetupNotice from "../SetupNotice";
 
 /** ช่วงเวลาที่ใช้บ่อยตอนดูบนมือถือ */
 const QUICK = [
@@ -37,7 +38,7 @@ const CHARTS = [
   { id: "donut", name: "กราฟโดนัท" },
 ];
 
-export default function QuickView() {
+export default function QuickView({ onNavigate }) {
   const inv = useInv();
   const perm = inv.perm("quick");
   const { db } = inv;
@@ -148,9 +149,32 @@ export default function QuickView() {
   const mainItems = brand ? data.bySales : data.byBrand;
   const mainTitle = brand ? "ยอดขายแยกตามพนักงานขาย" : "ยอดขายแยกตามยี่ห้อสินค้า";
 
+  /*
+   * ฐานข้อมูลยังไม่มีตารางของฟีเจอร์นี้ = บอกให้ชัดว่าต้องทำอะไร
+   *
+   * เดิมหน้านี้แสดงตัวเลขศูนย์เฉย ๆ ซึ่งดูไม่ออกว่าเป็นเพราะยังไม่มีข้อมูล
+   * หรือเพราะระบบยังไม่พร้อม คนใช้จึงเข้าใจว่าหน้าจอนี้ยังไม่ได้ทำ
+   */
+  if (!inv.targetsReady) {
+    return <SetupNotice feature="หน้าจอ Quick View" tables={["sales_targets", "salespersons"]} />;
+  }
+
   return (
     <div className="stack quick">
-      <Card title="ดูยอดขาย">
+      <Card
+        title="ดูยอดขาย"
+        actions={
+          onNavigate ? (
+            <button
+              className="btn btn-o btn-sm"
+              onClick={() => onNavigate("targets")}
+              title="ไปหน้ากำหนดเป้าขาย"
+            >
+              ตั้งเป้าขาย
+            </button>
+          ) : null
+        }
+      >
         <div className="quick-filters">
           <div className="field">
             <label className="lbl" htmlFor="q_from">ตั้งแต่วันที่</label>

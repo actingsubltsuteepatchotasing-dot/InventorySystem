@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useInv } from "@/lib/store";
-import { PERMS_SCREEN } from "@/lib/constants";
+import { APP_BUILD, PERMS_SCREEN } from "@/lib/constants";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "./Toast";
 import {
@@ -163,6 +163,8 @@ export default function Shell() {
    * เพราะลำดับกลุ่มเปลี่ยนได้เมื่อเพิ่มเมนูใหม่ แล้วจะไปหุบผิดกลุ่ม
    */
   const [folded, setFolded] = useState([]);
+  // ชุดข้อมูลตั้งต้นของหน้านำเข้าข้อมูล มาจากปุ่มทางลัดของหน้าอื่น
+  const [importSet, setImportSet] = useState("");
 
   useEffect(() => {
     setFolded(readFolded());
@@ -267,8 +269,16 @@ export default function Shell() {
   const email = user && user.email ? user.email : "ผู้ใช้";
   const initials = email.slice(0, 2).toUpperCase();
 
-  function navigate(id) {
+  /**
+   * เปลี่ยนหน้าจอ
+   *
+   * arg = ค่าเริ่มต้นที่ส่งต่อให้หน้าปลายทาง (ตอนนี้ใช้กับหน้านำเข้าข้อมูลเท่านั้น)
+   * เพื่อให้ปุ่ม "โหลดจาก Excel" ที่หน้าอื่นพามาถึงชุดข้อมูลที่ต้องการได้เลย
+   * ไม่ต้องให้คนใช้มาเลือกชุดเองอีกที ซึ่งเลือกผิดชุดได้ง่าย
+   */
+  function navigate(id, arg) {
     setView(id);
+    setImportSet(arg || "");
     setMenuOpen(false);
     window.scrollTo(0, 0);
 
@@ -358,7 +368,10 @@ export default function Shell() {
               <b>{db.locations.length} ที่เก็บ</b>
             </div>
             <div className="side-meta" style={{ marginTop: 4, opacity: 0.75 }}>
-              เวอร์ชัน 2.0 · ข้อมูลอยู่บน Supabase
+              เวอร์ชัน {APP_BUILD}
+            </div>
+            <div className="side-meta" style={{ marginTop: 2, opacity: 0.75 }}>
+              ข้อมูลอยู่บน Supabase
             </div>
           </div>
         </div>
@@ -387,7 +400,7 @@ export default function Shell() {
 
         <div className="content">
           <SetupBanner />
-          {activeView === "quick" && <QuickView />}
+          {activeView === "quick" && <QuickView onNavigate={navigate} />}
           {activeView === "dash" && <Dashboard onNavigate={navigate} />}
           {activeView === "receive" && <TxnScreen key="receive" type="RECEIVE" />}
           {activeView === "issue" && <TxnScreen key="issue" type="ISSUE" />}
@@ -407,10 +420,10 @@ export default function Shell() {
           {activeView === "shipscan" && <ShipScan />}
           {activeView === "users" && <Users />}
           {activeView === "sqlserver" && <SqlServer />}
-          {activeView === "dataimport" && <DataImport />}
+          {activeView === "dataimport" && <DataImport startSet={importSet} />}
           {activeView === "salespersons" && <Salespersons />}
           {activeView === "printforms" && <PrintForms />}
-          {activeView === "targets" && <Targets />}
+          {activeView === "targets" && <Targets onNavigate={navigate} />}
           {activeView === "password" && <Password />}
           {activeView === "billimport" && <BillImport />}
           {activeView === "countprep" && <CountPrep />}
