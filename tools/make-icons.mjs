@@ -82,10 +82,14 @@ const HEX = (h) => [
   parseInt(h.slice(5, 7), 16),
 ];
 
-const RING = HEX(MARK.ring);
+const BG = HEX(MARK.bg);
+const EDGE = HEX(MARK.edge);
+
+/** ระยะจากศูนย์กลางกรอบ ใช้แยกพื้น ขอบ และนอกวงกลม */
+const radius = (x, y) => Math.hypot(x - 32, y - 32);
 
 /** อยู่ในวงกลมพื้นหลังหรือไม่ (viewBox 64x64, ศูนย์กลาง 32,32 รัศมี 31) */
-const inCircle = (x, y) => (x - 32) ** 2 + (y - 32) ** 2 <= 31 * 31;
+const inCircle = (x, y) => radius(x, y) <= 31;
 
 /**
  * สีของจุดหนึ่งในพิกัด viewBox
@@ -96,9 +100,13 @@ function colorAt(x, y, fullBleed) {
   const mark = markColorAt(x, y);
   if (mark) return [...HEX(mark), 255];
 
-  // ตราวางบนพื้นวงกลมสีเขียว เพื่อให้อ่านออกทั้งบนหน้าจอโฮมสว่างและมืด
-  if (fullBleed || inCircle(x, y)) return [...RING, 255];
-  return null;
+  // พื้นขาวเพื่อให้ทั้งเปลวไฟและลูกศรตัดกับพื้นชัด (พื้นเขียวทำให้ลูกศรจมหาย)
+  // ขอบจาง ๆ ด้านนอกสุด กันไอคอนกลืนไปกับหน้าจอโฮมที่พื้นหลังสว่าง
+  if (fullBleed) return [...BG, 255];
+  const r = radius(x, y);
+  if (r > 31) return null;
+  if (r > 30) return [...EDGE, 255];
+  return [...BG, 255];
 }
 
 /**
@@ -134,7 +142,7 @@ function render(size, opts = {}) {
           let c = null;
           if (fullBleed) {
             // นอกกรอบโลโก้ยังเป็นพื้นสีเขียว เพราะ maskable ต้องเต็มสี่เหลี่ยม
-            c = vx < 0 || vx > 64 || vy < 0 || vy > 64 ? [...RING, 255] : colorAt(vx, vy, true);
+            c = vx < 0 || vx > 64 || vy < 0 || vy > 64 ? [...BG, 255] : colorAt(vx, vy, true);
           } else if (vx >= 0 && vx <= 64 && vy >= 0 && vy <= 64) {
             c = colorAt(vx, vy, false);
           }
@@ -232,7 +240,7 @@ console.log("  ico     " + icoSizes.join("/") + "px  app/favicon.ico");
 /*
  * รูปพรีวิวตอนแชร์ลิงก์ (Open Graph) 1200x630
  *
- * วาดเป็นพื้นเขียวกับตราสัญลักษณ์ตรงกลาง ไม่มีตัวหนังสือ
+ * วาดเป็นพื้นขาวกับตราสัญลักษณ์ตรงกลาง ไม่มีตัวหนังสือ
  * เพราะสคริปต์นี้ไม่มีตัววาดฟอนต์ และการวาดตัวอักษรเองทีละเส้น
  * จะได้ผลที่แย่กว่าไม่มีเลย — ชื่อโปรแกรมมีอยู่ในหัวข้อของลิงก์อยู่แล้ว
  */
@@ -240,7 +248,7 @@ console.log("  ico     " + icoSizes.join("/") + "px  app/favicon.ico");
   const W = 1200;
   const H = 630;
   const rgba = Buffer.alloc(W * H * 4);
-  const ring = HEX(MARK.ring);
+  const bg = HEX(MARK.bg);
   const scale = 420 / 64; // ตรากว้าง 420 พิกเซลกลางภาพ
   const offX = (W - 64 * scale) / 2;
   const offY = (H - 64 * scale) / 2;
@@ -271,9 +279,9 @@ console.log("  ico     " + icoSizes.join("/") + "px  app/favicon.ico");
       const n = SS * SS;
       const i = (py * W + px) * 4;
       const w = hit / n; // สัดส่วนที่โดนตรา ใช้ผสมกับพื้นหลังให้ขอบเนียน
-      rgba[i] = Math.round((hit ? r / hit : 0) * w + ring[0] * (1 - w));
-      rgba[i + 1] = Math.round((hit ? g / hit : 0) * w + ring[1] * (1 - w));
-      rgba[i + 2] = Math.round((hit ? b / hit : 0) * w + ring[2] * (1 - w));
+      rgba[i] = Math.round((hit ? r / hit : 0) * w + bg[0] * (1 - w));
+      rgba[i + 1] = Math.round((hit ? g / hit : 0) * w + bg[1] * (1 - w));
+      rgba[i + 2] = Math.round((hit ? b / hit : 0) * w + bg[2] * (1 - w));
       rgba[i + 3] = 255;
     }
   }

@@ -311,7 +311,7 @@ export default function Shell() {
     <div className="app">
       <aside className={"sidebar" + (menuOpen ? " open" : "")}>
         <div className="brand">
-          <Logo size={36} bg="rgba(255,255,255,.14)" />
+          <Logo size={36} bg="#ffffff" />
           <div className="brand-txt">
             <strong>One for All Ultra</strong>
             <span>OFAU · หนึ่งเดียวเพื่อทุกสิ่ง</span>

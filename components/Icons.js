@@ -134,7 +134,7 @@ export const IcPrint = (p) => (
 export function Logo({ size = 36, bg = "" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      {bg ? <circle cx="32" cy="32" r="31" fill={bg} /> : null}
+      {bg ? <circle cx="32" cy="32" r="31" fill={bg} stroke={MARK.edge} strokeWidth="0.8" /> : null}
       {/* ลูกศรอยู่ล่างสุด เปลวไฟทับด้านบน ลำดับเดียวกับ markColorAt ใน lib/logo.js */}
       <polyline
         points={pointsOf(ARROW_PATH)}
