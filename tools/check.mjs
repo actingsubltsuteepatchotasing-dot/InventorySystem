@@ -974,5 +974,75 @@ head("17. ไม่มีชื่อซ้ำที่ทำให้ทั้�
   }
 }
 
+head("18. คู่มือการใช้งานครอบคลุมทุกหน้าจอ");
+{
+  /*
+   * คู่มือที่ตามโค้ดไม่ทันคือข้อมูลผิดที่คนเชื่อ ซึ่งแย่กว่าไม่มีคู่มือ
+   * เพิ่มหน้าจอใหม่แล้วลืมเขียนคู่มือ ตรวจตรงนี้จะไม่ผ่าน
+   * และลิงก์ในคู่มือที่ชี้ไปหน้าที่ไม่มีอยู่จริง กดแล้วจะไม่มีอะไรเกิดขึ้น
+   */
+  const guide = read("lib/guide.js");
+  const constants = read("lib/constants.js");
+  let n = 0;
+
+  const screens = [...constants.matchAll(/\{ id: "(\w+)",\s+group:/g)].map((m) => m[1]);
+  const permsScreen = (constants.match(/PERMS_SCREEN\s*=\s*"([^"]+)"/) || [])[1];
+  const all = permsScreen && !screens.includes(permsScreen) ? [...screens, permsScreen] : screens;
+
+  // รหัสหน้าจอที่คู่มือเขียนถึง — คีย์ของ GUIDES อยู่ต้นบรรทัดที่เยื้องสองช่อง
+  const body = guide.slice(guide.indexOf("export const GUIDES = {"));
+  const documented = [...body.matchAll(/^  (\w+): \{$/gm)].map((m) => m[1]);
+
+  const missing = all.filter((id) => !documented.includes(id));
+  if (missing.length) {
+    bad("หน้าจอที่ยังไม่มีคู่มือ: " + missing.join(", "));
+    n++;
+  }
+
+  const extra = documented.filter((id) => !all.includes(id));
+  if (extra.length) {
+    bad("คู่มือเขียนถึงหน้าจอที่ไม่มีแล้ว: " + extra.join(", "));
+    n++;
+  }
+
+  // ทุกหน้าจอในคู่มือต้องมีครบสี่ส่วน ไม่งั้นการ์ดจะโหว่
+  const blocks = [...body.matchAll(/^  (\w+): \{([\s\S]*?)^  \},$/gm)];
+  const thin = blocks
+    .filter(([, , b]) => !/what:/.test(b) || !/how: \[/.test(b) || !/from:/.test(b) || !/next:/.test(b))
+    .map(([, id]) => id);
+  if (thin.length) {
+    bad("คู่มือไม่ครบส่วน (ต้องมี what / how / from / next): " + thin.join(", "));
+    n++;
+  }
+
+  // ลิงก์ทุกเส้นต้องชี้ไปหน้าจอที่มีอยู่จริง
+  const linked = new Set();
+  [...guide.matchAll(/(?:from|next): \[([^\]]*)\]/g)].forEach((m) => {
+    m[1].split(",").map((x) => x.trim().replace(/"/g, "")).filter(Boolean).forEach((x) => linked.add(x));
+  });
+  [...guide.matchAll(/screen: "(\w+)"/g)].forEach((m) => linked.add(m[1]));
+
+  const broken = [...linked].filter((id) => !all.includes(id));
+  if (broken.length) {
+    bad("ลิงก์ในคู่มือชี้ไปหน้าจอที่ไม่มีอยู่จริง: " + broken.join(", "));
+    n++;
+  }
+
+  // สายงานต้องมีขั้นตอนจริง ไม่ใช่ประกาศชื่อไว้เฉย ๆ
+  const flows = [...guide.matchAll(/\n    id: "(\w+)",\n    name: "([^"]+)"/g)].map((m) => m[2]);
+  const stepCount = (guide.match(/\{ screen: "/g) || []).length;
+  if (!flows.length || stepCount < flows.length * 3) {
+    bad("สายงานมี " + flows.length + " สาย แต่มีขั้นตอนรวมแค่ " + stepCount + " ขั้น");
+    n++;
+  }
+
+  if (!n) {
+    ok(
+      "คู่มือครบ " + documented.length + " หน้าจอ · " + flows.length + " สายงาน · " +
+        stepCount + " ขั้นตอน · ลิงก์ทุกเส้นชี้ไปหน้าที่มีจริง"
+    );
+  }
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);

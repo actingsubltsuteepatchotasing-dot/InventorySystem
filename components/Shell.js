@@ -46,6 +46,7 @@ import CustomerKinds from "./views/CustomerKinds";
 import PrintForms from "./views/PrintForms";
 import Targets from "./views/Targets";
 import QuickView from "./views/QuickView";
+import Guide from "./views/Guide";
 import Leads from "./views/Leads";
 import Deals from "./views/Deals";
 import Activities from "./views/Activities";
@@ -59,6 +60,7 @@ const NAV = [
   {
     group: "ภาพรวม",
     items: [
+      { id: "guide", Icon: IcReport, title: "วิธีการใช้งาน", sub: "แต่ละหน้าจอทำงานยังไง เชื่อมกันตรงไหน" },
       { id: "quick", Icon: IcChart, title: "Quick View (มือถือ)", sub: "ยอดขายเทียบเป้า ดูเร็วบนมือถือ" },
       { id: "dash", Icon: IcDash, title: "แดชบอร์ด", sub: "ภาพรวมสินค้าคงคลัง" },
     ],
@@ -425,6 +427,7 @@ export default function Shell() {
 
         <div className="content">
           <SetupBanner />
+          {activeView === "guide" && <Guide onNavigate={navigate} />}
           {activeView === "quick" && <QuickView onNavigate={navigate} />}
           {activeView === "deals" && <Deals onNavigate={navigate} />}
           {activeView === "activities" && <Activities />}
