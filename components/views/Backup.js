@@ -58,6 +58,9 @@ const PARTS = [
   { key: "productTerms", name: "กลุ่ม/ยี่ห้อ/ประเภทสินค้า" },
   { key: "salesTargets", name: "เป้าขาย" },
   { key: "printForms", name: "ฟอร์มพิมพ์" },
+  { key: "crmLeads", name: "ลูกค้าเป้าหมาย" },
+  { key: "crmDeals", name: "โอกาสการขาย" },
+  { key: "crmActivities", name: "บันทึกกิจกรรม" },
 ];
 
 const stamp = () =>
@@ -84,7 +87,7 @@ export default function Backup() {
 
   /** ข้อมูลทั้งชุดที่จะเขียนลงไฟล์ */
   function snapshot() {
-    const out = { savedAt: Date.now(), app: "Ultra ERP" };
+    const out = { savedAt: Date.now(), app: "One for All Ultra" };
     PARTS.forEach((p) => {
       out[p.key] = db[p.key] || [];
     });

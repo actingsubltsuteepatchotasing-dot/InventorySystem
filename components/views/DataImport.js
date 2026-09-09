@@ -131,6 +131,7 @@ export default function DataImport({ startSet }) {
     const pick = {
       products: (d) => (d.products || []).map((x) => x.code),
       salespersons: (d) => (d.salespersons || []).map((x) => x.code),
+      leads: (d) => (d.crmLeads || []).map((x) => x.code),
       // รหัสซ้ำข้ามมิติได้ กุญแจจึงเป็น "มิติ + รหัส" ไม่ใช่รหัสอย่างเดียว
       terms: (d) =>
         (d.productTerms || []).map((t) => keyOf(set, { dim: t.dim, code: t.code })),
@@ -338,6 +339,29 @@ export default function DataImport({ startSet }) {
         branch: v.branch,
       };
       return set.id === "customers" ? inv.saveCustomer(party) : inv.saveSupplier(party);
+    }
+
+    if (set.id === "leads") {
+      // ต้องติดต่อกลับได้อย่างน้อยทางหนึ่ง กติกาเดียวกับหน้าจอ
+      if (!String(v.phone || "").trim() && !String(v.email || "").trim()) {
+        throw new Error("ต้องมีเบอร์โทรหรืออีเมลอย่างน้อยหนึ่งอย่าง");
+      }
+      return inv.saveLead({
+        id: uid(),
+        code: v.code,
+        name: v.name,
+        contact: v.contact,
+        phone: v.phone,
+        email: v.email,
+        province: v.province,
+        source: v.source,
+        status: "NEW",
+        salesId: "",
+        customerId: "",
+        note: v.note,
+        user: who,
+        ts: Date.now(),
+      });
     }
 
     if (set.id === "terms") {

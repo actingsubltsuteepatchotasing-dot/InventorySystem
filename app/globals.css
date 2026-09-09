@@ -606,6 +606,21 @@ table { border-collapse: collapse; width: 100%; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .stack { display: flex; flex-direction: column; gap: 16px; }
 
+/* แถบสัดส่วนเล็กในตาราง — อ่านคู่กับตัวเลขในแถวเดียวกัน จึงไม่ต้องมีแกนหรือป้าย */
+.bar-mini {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  min-width: 80px;
+}
+.bar-mini span {
+  display: block;
+  height: 100%;
+  background: var(--brand-l);
+}
+
 /* ---------- KPI ---------- */
 .kpi {
   background: var(--surface);

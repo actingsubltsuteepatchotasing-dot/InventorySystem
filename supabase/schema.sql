@@ -1,5 +1,5 @@
 -- ============================================================================
--- Ultra ERP — ระบบควบคุมสินค้าคงคลัง
+-- One for All Ultra — ระบบควบคุมสินค้าคงคลัง
 -- Schema สำหรับ Supabase — รันไฟล์นี้ใน SQL Editor ของโปรเจกต์ Supabase
 --
 -- ไฟล์เดียวจบทุกขั้นตอน — ไม่ต้องรันไฟล์อื่นอีก
@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 26 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 29 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
@@ -1494,6 +1494,123 @@ end
 $sql_kind$;
 
 -- ============================================================================
+-- งานลูกค้าสัมพันธ์ (CRM) — เฟส 1
+-- ----------------------------------------------------------------------------
+-- สามตารางนี้ตอบคำถามคนละข้อกัน จึงไม่ยุบรวมกัน:
+--   crm_leads      ใครที่ยังไม่ใช่ลูกค้า แต่สนใจอยู่
+--   crm_deals      โอกาสการขายที่กำลังไล่ปิด อยู่ขั้นไหน มูลค่าเท่าไร
+--   crm_activities คุยอะไรกันไปแล้วบ้าง และนัดครั้งถัดไปเมื่อไร
+--
+-- ไม่สร้างตารางลูกค้าใหม่ — ใช้ customers ที่มีอยู่
+--   ลูกค้าที่ซื้อแล้วกับผู้สนใจที่ยังไม่ซื้อ ต้องอยู่คนละตาราง
+--   เพราะ customers ถูกอ้างโดยใบขายแบบ restrict และมีรหัสลูกค้าที่ห้ามซ้ำ
+--   ถ้าเอาผู้สนใจไปใส่ปนกัน ทะเบียนลูกค้าจริงจะเต็มไปด้วยรายชื่อที่ไม่เคยซื้อ
+--   และรายงานทุกตัวที่นับ "จำนวนลูกค้า" จะเพี้ยนทันที
+create table if not exists public.crm_leads (
+  id          text primary key,
+  code        text not null,
+  name        text not null,
+  contact     text not null default '',
+  phone       text not null default '',
+  email       text not null default '',
+  province    text not null default '',
+  source      text not null default '',
+  status      text not null default 'NEW',
+  sales_id    text references public.salespersons (id) on delete set null,
+  -- แปลงเป็นลูกค้าแล้วชี้ไปที่ทะเบียนลูกค้า เพื่อตามรอยได้ว่ามาจากผู้สนใจรายไหน
+  customer_id text references public.customers (id) on delete set null,
+  note        text not null default '',
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint crm_leads_status
+    check (status in ('NEW', 'WORKING', 'QUALIFIED', 'CONVERTED', 'DROPPED'))
+);
+
+create unique index if not exists crm_leads_code_key on public.crm_leads (lower(code));
+create index if not exists crm_leads_status_idx on public.crm_leads (status);
+
+-- โอกาสการขาย
+-- ----------------------------------------------------------------------------
+-- ผูกได้ทั้งกับลูกค้าในทะเบียนและกับผู้สนใจ เพราะของจริงคุยกันก่อนเปิดเป็นลูกค้าเสมอ
+--
+-- จงใจไม่ใส่ check ว่า "ต้องมีอย่างน้อยหนึ่งอย่าง"
+--   ทั้งสองคอลัมน์เป็น on delete set null ถ้าใส่ check ไว้
+--   วันที่ลบผู้สนใจทิ้ง ฐานข้อมูลจะพยายามตั้งค่า null แล้วชน check
+--   ผลคือ "ลบผู้สนใจไม่ได้" พร้อม error ที่อ่านไม่รู้เรื่องว่าเกี่ยวอะไรกับดีล
+--   การบังคับกรอกอยู่ที่หน้าจอแทน ซึ่งบอกสาเหตุได้ตรงกว่า
+--
+-- amount เก็บมูลค่าที่คาด ไม่ใช่ยอดขายจริง ยอดจริงอยู่ในใบขาย
+-- ปิดดีลว่าชนะแล้วไม่สร้างใบขายให้เอง เพราะใบขายตัดสต็อกจริง
+-- ต้องให้คนตรวจก่อนเสมอ หน้าจอจึงแค่พาไปหน้าขายพร้อมข้อมูล
+create table if not exists public.crm_deals (
+  id          text primary key,
+  code        text not null,
+  name        text not null,
+  customer_id text references public.customers (id) on delete set null,
+  lead_id     text references public.crm_leads (id) on delete set null,
+  party_name  text not null default '',
+  amount      numeric not null default 0,
+  stage       text not null default 'NEW',
+  probability numeric not null default 0,
+  open_date   date not null,
+  expect_date date,
+  close_date  date,
+  sales_id    text references public.salespersons (id) on delete set null,
+  source      text not null default '',
+  lost_reason text not null default '',
+  note        text not null default '',
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint crm_deals_stage
+    check (stage in ('NEW', 'QUALIFY', 'PROPOSAL', 'NEGOTIATE', 'WON', 'LOST')),
+  constraint crm_deals_prob check (probability >= 0 and probability <= 100),
+  constraint crm_deals_amount check (amount >= 0)
+);
+
+create unique index if not exists crm_deals_code_key on public.crm_deals (lower(code));
+create index if not exists crm_deals_stage_idx on public.crm_deals (stage);
+create index if not exists crm_deals_cust_idx  on public.crm_deals (customer_id);
+
+-- บันทึกกิจกรรม (โทร / เข้าพบ / อีเมล / Line)
+-- ----------------------------------------------------------------------------
+-- หนึ่งแถวคือ "ติดต่อกันหนึ่งครั้ง" เก็บเป็นประวัติ ไม่เขียนทับของเดิม
+-- ด้วยเหตุผลเดียวกับ ship_events: อยากรู้ว่าทำอะไรไปแล้วบ้าง ไม่ใช่แค่สถานะล่าสุด
+--
+-- next_date คือนัดครั้งถัดไป ใช้ทำรายการ "ต้องตามวันนี้"
+-- ไม่ได้ทำเป็นตารางนัดหมายแยก เพราะนัดเกิดจากการติดต่อครั้งก่อนเสมอ
+-- แยกตารางแล้วต้องคอยผูกกันเอง และจะมีนัดที่ลอยไม่รู้ว่ามาจากการคุยครั้งไหน
+create table if not exists public.crm_activities (
+  id          text primary key,
+  kind        text not null default 'CALL',
+  date        date not null,
+  customer_id text references public.customers (id) on delete set null,
+  lead_id     text references public.crm_leads (id) on delete set null,
+  deal_id     text references public.crm_deals (id) on delete set null,
+  party_name  text not null default '',
+  subject     text not null default '',
+  result      text not null default '',
+  next_date   date,
+  next_note   text not null default '',
+  sales_id    text references public.salespersons (id) on delete set null,
+  note        text not null default '',
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint crm_activities_kind
+    check (kind in ('CALL', 'VISIT', 'EMAIL', 'LINE', 'QUOTE', 'OTHER'))
+);
+
+create index if not exists crm_activities_date_idx on public.crm_activities (date);
+create index if not exists crm_activities_next_idx on public.crm_activities (next_date);
+create index if not exists crm_activities_cust_idx on public.crm_activities (customer_id);
+create index if not exists crm_activities_deal_idx on public.crm_activities (deal_id);
+
+-- ============================================================================
 -- สิทธิการใช้งานหน้าจอ
 -- ----------------------------------------------------------------------------
 -- หนึ่งแถวคือหนึ่งหน้าจอ ไม่มีแถว = ยังไม่ได้จำกัดสิทธิ ใช้ได้เต็มทุกอย่าง
@@ -1539,7 +1656,8 @@ begin
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
-    'salespersons', 'sales_targets', 'print_forms', 'product_terms'
+    'salespersons', 'sales_targets', 'print_forms', 'product_terms',
+    'crm_leads', 'crm_deals', 'crm_activities'
   ]
   loop
     seq := 'public.' || t || '_row_order_seq';
@@ -1606,6 +1724,9 @@ grant all privileges on table public.salespersons       to authenticated;
 grant all privileges on table public.sales_targets      to authenticated;
 grant all privileges on table public.print_forms        to authenticated;
 grant all privileges on table public.product_terms      to authenticated;
+grant all privileges on table public.crm_leads          to authenticated;
+grant all privileges on table public.crm_deals          to authenticated;
+grant all privileges on table public.crm_activities     to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -1629,7 +1750,8 @@ begin
     'screen_perms', 'suppliers', 'purchases', 'purchase_items',
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
-    'salespersons', 'sales_targets', 'print_forms', 'product_terms'
+    'salespersons', 'sales_targets', 'print_forms', 'product_terms',
+    'crm_leads', 'crm_deals', 'crm_activities'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1644,7 +1766,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 26 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 29 ตารางแล้ว';
 end
 $$;
 
@@ -1705,6 +1827,7 @@ from (values
   ('screen_perms'), ('suppliers'), ('purchases'), ('purchase_items'),
   ('purchase_returns'), ('purchase_return_items'),
   ('stock_counts'), ('stock_count_items'), ('ship_events'), ('sql_connections'),
-  ('salespersons'), ('sales_targets'), ('print_forms'), ('product_terms')
+  ('salespersons'), ('sales_targets'), ('print_forms'), ('product_terms'),
+  ('crm_leads'), ('crm_deals'), ('crm_activities')
 ) as x(name)
 order by x.name;

@@ -1,8 +1,8 @@
 {
-  "name": "ultra-erp",
+  "name": "ofau",
   "version": "1.0.0",
   "private": true,
-  "description": "Ultra ERP — ระบบควบคุมสินค้าคงคลัง",
+  "description": "One for All Ultra (OFAU) — หนึ่งเดียวเพื่อทุกสิ่ง",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

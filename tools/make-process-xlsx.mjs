@@ -36,7 +36,7 @@ const libFiles = fs.readdirSync(path.join(ROOT, "lib")).filter((f) => f.endsWith
 const viewFiles = fs.readdirSync(path.join(ROOT, "components/views")).filter((f) => f.endsWith(".js"));
 
 const overview = [
-  ["ชื่อระบบ", "Ultra ERP — ระบบควบคุมสินค้าคงคลัง"],
+  ["ชื่อระบบ", "One for All Ultra — ระบบควบคุมสินค้าคงคลัง"],
   ["สร้างเมื่อ", "เริ่ม 2026-08-27 (ดูรายละเอียดที่ชีต ขั้นตอนการสร้าง)"],
   ["สร้างไฟล์นี้เมื่อ", new Date().toISOString().slice(0, 10)],
   ["เป้าหมาย", "คุมสต็อกให้ตรงกับของจริงทุกเวลา และทำเอกสารการค้าครบวงจร ตั้งแต่ซื้อ รับเข้า เก็บ ขาย จัดส่ง จนถึงรายงาน"],

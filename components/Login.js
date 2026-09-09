@@ -40,11 +40,11 @@ export default function Login() {
         <div className="login-logo">
           <Logo size={62} />
           <div>
-            <h1>ระบบควบคุมสินค้าคงคลัง</h1>
+            <h1>One for All Ultra</h1>
             <small>
-              Ultra ERP
+              OFAU · หนึ่งเดียวเพื่อทุกสิ่ง
               <br />
-              ระบบควบคุมสินค้าคงคลัง
+              สินค้าคงคลัง · งานซื้อ · งานขาย · จัดส่ง · ลูกค้าสัมพันธ์
             </small>
           </div>
         </div>

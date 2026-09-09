@@ -56,7 +56,7 @@ function PrintDoc({ title, subtitle, body, signers = true, receipt = false, bare
       <div className="pr-head">
         <Logo size={46} />
         <div className="org">
-          <b>Ultra ERP</b>
+          <b>One for All Ultra</b>
           <span>ระบบควบคุมสินค้าคงคลัง</span>
         </div>
         <div className="rt">

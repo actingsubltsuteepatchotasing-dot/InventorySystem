@@ -104,7 +104,7 @@ export function ReceiptBody({ inv, sale, items }) {
   return (
     <div className="receipt">
       <div className="rc-head">
-        <b>Ultra ERP</b>
+        <b>One for All Ultra</b>
         <span>ระบบควบคุมสินค้าคงคลัง</span>
         {wh ? (
           <span>

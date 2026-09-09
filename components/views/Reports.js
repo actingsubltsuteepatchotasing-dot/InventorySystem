@@ -14,9 +14,23 @@ import { fmtDuration, localISO, num, thDate, thDateTime, thTime, todayISO } from
 import { downloadCSV } from "@/lib/csv";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
+import { IcChart } from "../Icons";
 import {
-  Badge, Card, Empty, ExportPair, PrintPair, ProductSelect, SearchSelect, TableWrap, WhLocFields,
+  Badge, Card, Empty, ExportPair, Kpi, PrintPair, ProductSelect, SearchSelect, TableWrap, WhLocFields,
 } from "../ui";
+import {
+  ACT_KINDS,
+  STAGES,
+  actKindOf,
+  avgCloseDays,
+  filterActivities,
+  filterDeals,
+  isOpen,
+  partyNameOf,
+  silentCustomers,
+  stageOf,
+  winRate,
+} from "@/lib/crm";
 import { CountSheetBody, ReceiptBody } from "./printBodies";
 
 /**
@@ -33,6 +47,9 @@ import { CountSheetBody, ReceiptBody } from "./printBodies";
  *   supplier เจ้าหนี้
  *   text     ช่องค้นหาอิสระ (เลขที่เอกสาร รหัส ชื่อ หรือส่วนใดส่วนหนึ่งก็ได้)
  */
+/** ชนิดกิจกรรมที่ทำเป็นคอลัมน์ในตารางสรุปรายคน — ตัดชนิด "อื่น ๆ" ออกเพื่อไม่ให้ตารางยาวเกิน */
+const ACT_KIND_COLS = ACT_KINDS.filter((k) => k.id !== "OTHER");
+
 const TABS = [
   { id: "stock", label: "สรุปยอดคงเหลือ", group: "ภาพรวม", needs: ["wh", "product", "text"] },
   { id: "card", label: "บัตรสินค้า (Stock Card)", group: "ภาพรวม", needs: ["date", "wh", "product"] },
@@ -52,6 +69,11 @@ const TABS = [
   { id: "docINVOICE", label: "ใบขายสินค้าและบริการ", group: "งานขาย", needs: ["date", "customer", "text"] },
 
   { id: "ship", label: "การจัดส่งและเวลาแต่ละขั้น", group: "งานจัดส่ง", needs: ["date", "customer", "text"] },
+
+  { id: "crmpipe", label: "กรวยการขาย (Pipeline)", group: "งานลูกค้าสัมพันธ์", needs: ["date", "text"] },
+  { id: "crmact", label: "กิจกรรมการติดต่อ", group: "งานลูกค้าสัมพันธ์", needs: ["date", "customer", "text"] },
+  { id: "crmwin", label: "ชนะ-แพ้ และเหตุผล", group: "งานลูกค้าสัมพันธ์", needs: ["date", "text"] },
+  { id: "crmquiet", label: "ลูกค้าเงียบที่ต้องตามกลับ", group: "งานลูกค้าสัมพันธ์", needs: ["customer", "text"] },
 
   { id: "products", label: "ทะเบียนสินค้า", group: "ข้อมูลหลัก", needs: ["product", "text"] },
   { id: "customers", label: "ทะเบียนลูกค้า", group: "ข้อมูลหลัก", needs: ["customer", "text"] },
@@ -321,6 +343,18 @@ export default function Reports() {
       {tab === "ship" && <ShipReport {...{ inv, db, filter, FilterBar, print, toast }} />}
       {tab === "products" && <ProductsReport {...{ inv, db, filter, FilterBar, print, toast }} />}
       {tab === "bins" && <BinsReport {...{ inv, db, filter, FilterBar, print, toast }} />}
+      {tab === "crmpipe" && (
+        <PipelineReport key="cp" {...{ inv, db, filter, FilterBar, print, toast }} />
+      )}
+      {tab === "crmact" && (
+        <ActivityReport key="ca" {...{ inv, db, filter, FilterBar, print, toast }} />
+      )}
+      {tab === "crmwin" && (
+        <WinLossReport key="cw" {...{ inv, db, filter, FilterBar, print, toast }} />
+      )}
+      {tab === "crmquiet" && (
+        <QuietReport key="cq" {...{ inv, db, filter, FilterBar, print, toast }} />
+      )}
       {tab === "customers" && (
         <PartyReport key="c" kind="customers" {...{ inv, db, filter, FilterBar, print, toast }} />
       )}
@@ -334,6 +368,649 @@ export default function Reports() {
         <TxnReport key={tab} type={tab} {...{ inv, db, inRange, filter, FilterBar, print, toast }} />
       )}
     </>
+  );
+}
+
+/* ------------------------------------------------ งานลูกค้าสัมพันธ์ */
+
+/**
+ * สรุปรายขั้นจากรายการดีลที่กรองมาแล้ว
+ * แยกจาก pipelineOf ใน lib เพราะที่นี่กรองด้วย filter.match ของหน้ารายงานไปก่อนแล้ว
+ * ส่งเข้า lib อีกทีจะกรองซ้ำสองชั้นด้วยกติกาคนละแบบ
+ */
+function summarizeStages(deals) {
+  return STAGES.map((s) => {
+    const rows = deals.filter((d) => d.stage === s.id);
+    const amount = rows.reduce((n, d) => n + (Number(d.amount) || 0), 0);
+    const weighted = rows.reduce(
+      (n, d) => n + ((Number(d.amount) || 0) * (Number(d.probability) || 0)) / 100,
+      0
+    );
+    return { ...s, count: rows.length, amount, weighted };
+  });
+}
+
+/** ตัวเลขสรุปของชุดดีลที่กรองมาแล้ว — ใช้กติกาเดียวกับ lib/crm.js */
+function summarizeDeals(deals) {
+  const open = deals.filter(isOpen);
+  return {
+    deals: deals.length,
+    open: open.length,
+    openAmount: open.reduce((n, d) => n + (Number(d.amount) || 0), 0),
+    weighted: open.reduce(
+      (n, d) => n + ((Number(d.amount) || 0) * (Number(d.probability) || 0)) / 100,
+      0
+    ),
+    won: deals.filter((d) => d.stage === "WON").length,
+    lost: deals.filter((d) => d.stage === "LOST").length,
+    winRate: winRate(deals),
+    avgDays: avgCloseDays(deals),
+  };
+}
+
+/**
+ * กรวยการขาย — ดีลค้างอยู่ที่ขั้นไหนบ้าง มูลค่าเท่าไร
+ *
+ * ช่วงวันที่กรองด้วย "วันที่เปิดโอกาส" ไม่ใช่วันที่ปิด
+ * เพราะคำถามของรายงานนี้คือ "งานที่รับเข้ามาในช่วงนี้ ตอนนี้ไปถึงไหนแล้ว"
+ */
+function PipelineReport({ db, filter, FilterBar, print, toast }) {
+  /*
+   * กรองข้อความด้วย filter.match ตัวเดียวกับแท็บอื่นทั้งหมด
+   * ไม่ได้ส่งคำค้นเข้าไปให้ lib กรองเอง เพราะ match รองรับหลายคำที่อยู่คนละช่อง
+   * และตัดตัวคั่นของเลขที่เอกสารให้ด้วย ถ้าเขียนวิธีค้นแยกอีกชุด
+   * ผลการค้นของแท็บนี้จะไม่เหมือนแท็บอื่นโดยที่คนใช้ไม่รู้ว่าทำไม
+   */
+  const deals = useMemo(
+    () =>
+      filterDeals(db, { from: filter.from, to: filter.to }).filter((d) =>
+        filter.match(d.code, d.name, partyNameOf(db, d), d.source, d.note)
+      ),
+    [db, filter]
+  );
+  const pipe = useMemo(() => summarizeStages(deals), [deals]);
+  const sum = useMemo(() => summarizeDeals(deals), [deals]);
+  const rowsAll = pipe.filter((s) => s.count);
+
+  const HEAD = ["ขั้นตอน", "จำนวนดีล", "มูลค่ารวม", "มูลค่าถ่วงน้ำหนัก"];
+  const rows = () => rowsAll.map((s) => [s.name, s.count, s.amount, s.weighted]);
+
+  return (
+    <Card
+      title="กรวยการขาย (Pipeline)"
+      actions={
+        <>
+          <Badge kind={sum.deals ? "info" : "gray"}>{sum.deals} ดีล</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!rowsAll.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: "กรวยการขาย (Pipeline)",
+                subtitle:
+                  "ช่วง " + thDate(filter.from) + " ถึง " + thDate(filter.to) +
+                  " · ดีลทั้งหมด " + sum.deals + " รายการ",
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ขั้นตอน</th>
+                        <th>จำนวนดีล</th>
+                        <th>มูลค่ารวม</th>
+                        <th>ถ่วงน้ำหนัก</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rowsAll.map((s) => (
+                        <tr key={s.id}>
+                          <td>{s.name}</td>
+                          <td>{num(s.count, 0)}</td>
+                          <td>{num(s.amount, 2)}</td>
+                          <td>{num(s.weighted, 2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), "กรวยการขาย.csv")}
+            disabled={!rowsAll.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+      {sum.deals ? (
+        <>
+          <div className="grid g4" style={{ marginBottom: 14 }}>
+            <Kpi
+              icon={<IcChart size={18} stroke={1.9} />}
+              label="ยังไล่ปิดอยู่"
+              value={num(sum.open, 0)}
+              sub={"มูลค่า ฿" + num(sum.openAmount, 0)}
+            />
+            <Kpi
+              icon={<IcChart size={18} stroke={1.9} />}
+              label="ถ่วงน้ำหนัก"
+              value={"฿" + num(sum.weighted, 0)}
+              sub="มูลค่า x โอกาสปิดได้"
+            />
+            <Kpi
+              icon={<IcChart size={18} stroke={1.9} />}
+              label="อัตราชนะ"
+              value={sum.winRate === null ? "—" : num(sum.winRate, 1) + "%"}
+              sub={"ชนะ " + num(sum.won, 0) + " · เสีย " + num(sum.lost, 0)}
+            />
+            <Kpi
+              icon={<IcChart size={18} stroke={1.9} />}
+              label="เวลาเฉลี่ยที่ใช้ปิด"
+              value={sum.avgDays === null ? "—" : num(sum.avgDays, 0) + " วัน"}
+              sub="เฉพาะดีลที่ปิดแล้ว"
+            />
+          </div>
+
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 160 }}>ขั้นตอน</th>
+                <th className="num" style={{ width: 110 }}>จำนวนดีล</th>
+                <th className="num" style={{ width: 160 }}>มูลค่ารวม</th>
+                <th className="num" style={{ width: 160 }}>ถ่วงน้ำหนัก</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pipe.map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <Badge kind={s.kind}>{s.name}</Badge>
+                  </td>
+                  <td className="num">{num(s.count, 0)}</td>
+                  <td className="num">{num(s.amount, 2)}</td>
+                  <td className="num">{num(s.weighted, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        </>
+      ) : (
+        <Empty>ไม่พบโอกาสการขายในช่วงที่เลือก</Empty>
+      )}
+    </Card>
+  );
+}
+
+/** กิจกรรมการติดต่อ — ใครติดต่อไปกี่ครั้ง และแยกเป็นชนิดไหนบ้าง */
+function ActivityReport({ db, filter, FilterBar, print, toast }) {
+  const list = useMemo(
+    () =>
+      filterActivities(db, {
+        from: filter.from,
+        to: filter.to,
+        customerId: filter.custId,
+      }).filter((a) => filter.match(partyNameOf(db, a), a.subject, a.result, a.note)),
+    [db, filter]
+  );
+
+  /** สรุปรายคนคำนวณจากรายการที่กรองแล้ว ตัวเลขในสองตารางจึงตรงกันเสมอ */
+  const byPerson = useMemo(() => {
+    const map = new Map();
+    list.forEach((a) => {
+      const sp = (db.salespersons || []).find((x) => x.id === a.salesId);
+      const key = sp ? sp.code + " " + sp.name : "(ไม่ระบุพนักงานขาย)";
+      const cur = map.get(key) || { name: key, total: 0, kinds: {} };
+      cur.total += 1;
+      cur.kinds[a.kind] = (cur.kinds[a.kind] || 0) + 1;
+      map.set(key, cur);
+    });
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  }, [db, list]);
+
+  const HEAD = ["วันที่", "ชนิด", "คู่ค้า", "เรื่องที่คุย", "ผลลัพธ์", "นัดครั้งถัดไป"];
+  const rows = () =>
+    list.map((a) => [
+      a.date,
+      actKindOf(a.kind).name,
+      partyNameOf(db, a),
+      a.subject,
+      a.result,
+      a.nextDate,
+    ]);
+
+  return (
+    <Card
+      title="กิจกรรมการติดต่อ"
+      actions={
+        <>
+          <Badge kind={list.length ? "info" : "gray"}>{list.length} ครั้ง</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: "กิจกรรมการติดต่อ",
+                subtitle:
+                  "ช่วง " + thDate(filter.from) + " ถึง " + thDate(filter.to) +
+                  " · ทั้งหมด " + list.length + " ครั้ง",
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>วันที่</th>
+                        <th>ชนิด</th>
+                        <th>คู่ค้า</th>
+                        <th>เรื่องที่คุย</th>
+                        <th>ผลลัพธ์</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((a) => (
+                        <tr key={a.id}>
+                          <td>{thDate(a.date)}</td>
+                          <td>{actKindOf(a.kind).name}</td>
+                          <td>{partyNameOf(db, a)}</td>
+                          <td>{a.subject}</td>
+                          <td>{a.result}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), "กิจกรรมการติดต่อ.csv")}
+            disabled={!list.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+      {list.length ? (
+        <>
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 200 }}>พนักงานขาย</th>
+                <th className="num" style={{ width: 110 }}>รวมทุกชนิด</th>
+                {ACT_KIND_COLS.map((k) => (
+                  <th key={k.id} className="num" style={{ width: 100 }}>
+                    {k.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {byPerson.map((p) => (
+                <tr key={p.name}>
+                  <td>{p.name}</td>
+                  <td className="num">
+                    <b>{num(p.total, 0)}</b>
+                  </td>
+                  {ACT_KIND_COLS.map((k) => (
+                    <td key={k.id} className="num">
+                      {num(p.kinds[k.id] || 0, 0)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+
+          <div className="doc-scroll" style={{ maxHeight: 460, marginTop: 14 }}>
+            <TableWrap>
+              <thead>
+                <tr>
+                  <th style={{ width: 120 }}>วันที่</th>
+                  <th style={{ width: 120 }}>ชนิด</th>
+                  <th style={{ minWidth: 180 }}>คู่ค้า</th>
+                  <th style={{ minWidth: 200 }}>เรื่องที่คุย</th>
+                  <th style={{ minWidth: 200 }}>ผลลัพธ์</th>
+                  <th style={{ width: 130 }}>นัดครั้งถัดไป</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((a) => (
+                  <tr key={a.id}>
+                    <td>{thDate(a.date)}</td>
+                    <td>{actKindOf(a.kind).name}</td>
+                    <td>{partyNameOf(db, a)}</td>
+                    <td>{a.subject}</td>
+                    <td className="muted">{a.result || "—"}</td>
+                    <td>{a.nextDate ? thDate(a.nextDate) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+          </div>
+        </>
+      ) : (
+        <Empty>ไม่พบกิจกรรมในช่วงที่เลือก</Empty>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * ชนะ-แพ้ และเหตุผล
+ *
+ * กรองด้วยวันที่ปิดจริง ไม่ใช่วันที่เปิด เพราะคำถามคือ
+ * "ช่วงนี้ปิดงานได้เท่าไร และที่เสียไปเสียเพราะอะไร"
+ */
+function WinLossReport({ db, filter, FilterBar, print, toast }) {
+  const closed = useMemo(() => {
+    return filterDeals(db, {})
+      .filter((d) => d.stage === "WON" || d.stage === "LOST")
+      .filter((d) => {
+        if (filter.from && (!d.closeDate || d.closeDate < filter.from)) return false;
+        if (filter.to && (!d.closeDate || d.closeDate > filter.to)) return false;
+        return filter.match(d.code, d.name, partyNameOf(db, d), d.lostReason, d.note);
+      });
+  }, [db, filter]);
+
+  const won = closed.filter((d) => d.stage === "WON");
+  const lost = closed.filter((d) => d.stage === "LOST");
+
+  /** จัดกลุ่มเหตุผลที่เสีย เรียงจากที่เจอบ่อยที่สุด — เป็นสิ่งที่เอาไปแก้ได้จริง */
+  const reasons = useMemo(() => {
+    const map = new Map();
+    lost.forEach((d) => {
+      const key = d.lostReason || "(ไม่ระบุเหตุผล)";
+      const cur = map.get(key) || { name: key, count: 0, amount: 0 };
+      cur.count += 1;
+      cur.amount += Number(d.amount) || 0;
+      map.set(key, cur);
+    });
+    return [...map.values()].sort((a, b) => b.count - a.count);
+  }, [lost]);
+
+  const HEAD = ["รหัส", "ชื่อโอกาส", "คู่ค้า", "ผล", "มูลค่า", "วันที่ปิด", "เหตุผลที่เสีย"];
+  const rows = () =>
+    closed.map((d) => [
+      d.code,
+      d.name,
+      partyNameOf(db, d),
+      stageOf(d.stage).name,
+      d.amount,
+      d.closeDate,
+      d.lostReason,
+    ]);
+
+  return (
+    <Card
+      title="ชนะ-แพ้ และเหตุผล"
+      actions={
+        <>
+          <Badge kind={closed.length ? "info" : "gray"}>{closed.length} ดีลที่ปิดแล้ว</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!closed.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: "สรุปชนะ-แพ้ และเหตุผล",
+                subtitle:
+                  "ปิดระหว่าง " + thDate(filter.from) + " ถึง " + thDate(filter.to) +
+                  " · ชนะ " + won.length + " · เสีย " + lost.length,
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>รหัส</th>
+                        <th>ชื่อโอกาส</th>
+                        <th>คู่ค้า</th>
+                        <th>ผล</th>
+                        <th>มูลค่า</th>
+                        <th>เหตุผลที่เสีย</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {closed.map((d) => (
+                        <tr key={d.id}>
+                          <td>{d.code}</td>
+                          <td>{d.name}</td>
+                          <td>{partyNameOf(db, d)}</td>
+                          <td>{stageOf(d.stage).name}</td>
+                          <td>{num(d.amount, 2)}</td>
+                          <td>{d.lostReason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), "ชนะ-แพ้.csv")}
+            disabled={!closed.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+      {closed.length ? (
+        <>
+          <div className="grid g4" style={{ marginBottom: 14 }}>
+            <Kpi
+              icon={<IcChart size={18} stroke={1.9} />}
+              label="ปิดได้"
+              value={num(won.length, 0)}
+              sub={"มูลค่า ฿" + num(won.reduce((n, d) => n + (Number(d.amount) || 0), 0), 0)}
+            />
+            <Kpi
+              icon={<IcChart size={18} stroke={1.9} />}
+              label="เสียโอกาส"
+              value={num(lost.length, 0)}
+              sub={"มูลค่า ฿" + num(lost.reduce((n, d) => n + (Number(d.amount) || 0), 0), 0)}
+              kind={lost.length > won.length ? "warn" : ""}
+            />
+            <Kpi
+              icon={<IcChart size={18} stroke={1.9} />}
+              label="อัตราชนะ"
+              value={num((won.length * 100) / closed.length, 1) + "%"}
+              sub={"จากดีลที่ปิดแล้ว " + closed.length + " รายการ"}
+            />
+            <Kpi
+              icon={<IcChart size={18} stroke={1.9} />}
+              label="เหตุผลที่เสียบ่อยที่สุด"
+              value={reasons[0] ? reasons[0].name : "—"}
+              sub={reasons[0] ? reasons[0].count + " ครั้ง" : "ยังไม่มีดีลที่เสีย"}
+            />
+          </div>
+
+          {reasons.length ? (
+            <TableWrap>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 240 }}>เหตุผลที่เสียโอกาส</th>
+                  <th className="num" style={{ width: 110 }}>จำนวนครั้ง</th>
+                  <th className="num" style={{ width: 160 }}>มูลค่าที่เสียไป</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reasons.map((r) => (
+                  <tr key={r.name}>
+                    <td>{r.name}</td>
+                    <td className="num">{num(r.count, 0)}</td>
+                    <td className="num">{num(r.amount, 2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+          ) : null}
+
+          <div className="doc-scroll" style={{ maxHeight: 420, marginTop: 14 }}>
+            <TableWrap>
+              <thead>
+                <tr>
+                  <th style={{ width: 90 }}>รหัส</th>
+                  <th style={{ minWidth: 190 }}>ชื่อโอกาส</th>
+                  <th style={{ minWidth: 170 }}>คู่ค้า</th>
+                  <th style={{ width: 140 }}>ผล</th>
+                  <th className="num" style={{ width: 130 }}>มูลค่า</th>
+                  <th style={{ width: 120 }}>วันที่ปิด</th>
+                  <th style={{ minWidth: 180 }}>เหตุผลที่เสีย</th>
+                </tr>
+              </thead>
+              <tbody>
+                {closed.map((d) => (
+                  <tr key={d.id}>
+                    <td className="code-cell">{d.code}</td>
+                    <td>{d.name}</td>
+                    <td>{partyNameOf(db, d)}</td>
+                    <td>
+                      <Badge kind={stageOf(d.stage).kind}>{stageOf(d.stage).name}</Badge>
+                    </td>
+                    <td className="num">{num(d.amount, 2)}</td>
+                    <td>{d.closeDate ? thDate(d.closeDate) : "—"}</td>
+                    <td className="muted">{d.lostReason || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+          </div>
+        </>
+      ) : (
+        <Empty>ไม่มีดีลที่ปิดในช่วงที่เลือก</Empty>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * ลูกค้าเงียบ — เคยซื้อแล้วแต่หายไปนาน
+ *
+ * ไม่ใช้ช่วงวันที่ของตัวกรอง แต่ใช้ "จำนวนวันที่เงียบ" ที่ตั้งเองได้
+ * เพราะคำถามคือ "ตอนนี้ใครหายไปนานแล้วบ้าง" ไม่ใช่ "ช่วงนั้นใครเงียบ"
+ */
+function QuietReport({ db, filter, FilterBar, print, toast }) {
+  const [days, setDays] = useState(90);
+
+  const list = useMemo(() => {
+    const rows = silentCustomers(db, days, todayISO());
+    return rows.filter((c) => {
+      if (filter.custId && c.id !== filter.custId) return false;
+      return filter.match(c.code, c.name, c.province);
+    });
+  }, [db, days, filter]);
+
+  const HEAD = ["รหัส", "ชื่อลูกค้า", "จังหวัด", "ซื้อครั้งล่าสุด", "เงียบมาแล้ว (วัน)", "จำนวนใบ", "ยอดซื้อสะสม"];
+  const rows = () =>
+    list.map((c) => [c.code, c.name, c.province, c.lastBuy, c.quietDays, c.bills, c.base]);
+
+  return (
+    <Card
+      title="ลูกค้าเงียบที่ต้องตามกลับ"
+      actions={
+        <>
+          <Badge kind={list.length ? "warn" : "gray"}>{list.length} ราย</Badge>
+          <PrintPair
+            onPrint={() => {
+              if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
+              print({
+                title: "ลูกค้าเงียบที่ต้องตามกลับ",
+                subtitle:
+                  "ไม่ซื้อเกิน " + days + " วัน · ทั้งหมด " + list.length +
+                  " ราย · ณ วันที่ " + thDate(todayISO()),
+                body: (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ลำดับ</th>
+                        <th>รหัส</th>
+                        <th>ชื่อลูกค้า</th>
+                        <th>จังหวัด</th>
+                        <th>ซื้อครั้งล่าสุด</th>
+                        <th>เงียบ (วัน)</th>
+                        <th>ยอดซื้อสะสม</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((c, i) => (
+                        <tr key={c.id}>
+                          <td>{i + 1}</td>
+                          <td>{c.code}</td>
+                          <td>{c.name}</td>
+                          <td>{c.province}</td>
+                          <td>{thDate(c.lastBuy)}</td>
+                          <td>{num(c.quietDays, 0)}</td>
+                          <td>{num(c.base, 2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ),
+              });
+            }}
+            toast={toast}
+          />
+          <ExportPair
+            onExport={(save) => save(HEAD, rows(), "ลูกค้าเงียบ.csv")}
+            disabled={!list.length}
+            toast={toast}
+          />
+        </>
+      }
+    >
+      {FilterBar}
+      <div className="row" style={{ marginBottom: 12, gap: 10 }}>
+        <label className="lbl" htmlFor="cq_days" style={{ margin: 0 }}>
+          นับว่าเงียบเมื่อไม่ซื้อเกิน
+        </label>
+        <input
+          className="inp num"
+          id="cq_days"
+          type="number"
+          min={1}
+          max={3650}
+          value={days}
+          onChange={(e) => setDays(Math.max(1, Number(e.target.value) || 1))}
+          style={{ width: 110 }}
+        />
+        <span className="muted">วัน</span>
+      </div>
+
+      {list.length ? (
+        <div className="doc-scroll" style={{ maxHeight: 520 }}>
+          <TableWrap>
+            <thead>
+              <tr>
+                <th style={{ width: 100 }}>รหัส</th>
+                <th style={{ minWidth: 220 }}>ชื่อลูกค้า</th>
+                <th style={{ minWidth: 130 }}>จังหวัด</th>
+                <th style={{ width: 130 }}>ซื้อครั้งล่าสุด</th>
+                <th className="num" style={{ width: 130 }}>เงียบ (วัน)</th>
+                <th className="num" style={{ width: 100 }}>จำนวนใบ</th>
+                <th className="num" style={{ width: 150 }}>ยอดซื้อสะสม</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((c) => (
+                <tr key={c.id}>
+                  <td className="code-cell">{c.code}</td>
+                  <td>{c.name}</td>
+                  <td>{c.province || "—"}</td>
+                  <td>{thDate(c.lastBuy)}</td>
+                  <td className="num">
+                    <b>{num(c.quietDays, 0)}</b>
+                  </td>
+                  <td className="num">{num(c.bills, 0)}</td>
+                  <td className="num">{num(c.base, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        </div>
+      ) : (
+        <Empty>ไม่มีลูกค้าที่เงียบเกิน {days} วัน</Empty>
+      )}
+    </Card>
   );
 }
 

@@ -349,8 +349,9 @@ head("5. เมนู สิทธิ และการสำรองข้อ
   const store = read("lib/store.js");
   const backup = read("components/views/Backup.js");
 
-  const navIds = [...shell.matchAll(/\{ id: "([a-zA-Z]+)", Icon/g)].map((m) => m[1]);
-  const screenIds = [...constants.matchAll(/\{ id: "([a-zA-Z]+)",\s+group:/g)].map((m) => m[1]);
+  // รับตัวเลขในรหัสหน้าจอด้วย (เช่น cust360) ไม่งั้นหน้าจอนั้นหลุดจากการตรวจทั้งหมด
+  const navIds = [...shell.matchAll(/\{ id: "(\w+)", Icon/g)].map((m) => m[1]);
+  const screenIds = [...constants.matchAll(/\{ id: "(\w+)",\s+group:/g)].map((m) => m[1]);
   const permsScreen = (constants.match(/PERMS_SCREEN\s*=\s*"([^"]+)"/) || [])[1];
 
   // เมนูที่ไม่มีบรรทัดวาดหน้าจอ = กดแล้วได้หน้าว่างโดยไม่มี error ให้เห็น
@@ -469,6 +470,8 @@ head("9. แท็บรายงานใช้ตัวกรองตรง�
     RECEIVE: "TxnReport", ISSUE: "TxnReport", TRANSFER: "TxnReport",
     ADJUST: "TxnReport", SALE: "TxnReport",
     docINVOICE: "DocReport", docPURCHASE: "DocReport", docPURRET: "DocReport",
+    crmpipe: "PipelineReport", crmact: "ActivityReport",
+    crmwin: "WinLossReport", crmquiet: "QuietReport",
   };
 
   /** ตัวฟังก์ชัน — ตัดถึง function/const ตัวถัดไปที่เริ่มคอลัมน์ 0 */
@@ -574,6 +577,22 @@ head("10. รายการค่าที่ฐานข้อมูลยอ�
     txnAllowed ? txnAllowed.match(/'([^']+)'/g).map((x) => x.replace(/'/g, "")) : null,
     types
   );
+
+  /*
+   * รายการค่าของงานลูกค้าสัมพันธ์ ประกาศอยู่ที่ lib/crm.js ไม่ใช่ lib/constants.js
+   * (อยู่กับตรรกะที่ใช้มันจริง ๆ) จึงต้องอ่านจากไฟล์นั้นแยกอีกที
+   */
+  const crm = read("lib/crm.js");
+  const crmIdsOf = (name) => {
+    const at = crm.indexOf("export const " + name + " = [");
+    if (at < 0) return null;
+    const body = crm.slice(at, crm.indexOf("\n];", at));
+    return [...body.matchAll(/id: "(\w+)"/g)].map((m) => m[1]);
+  };
+
+  compare("ขั้นตอนการขาย", allowedOf("crm_deals_stage"), crmIdsOf("STAGES"));
+  compare("ชนิดการติดต่อ", allowedOf("crm_activities_kind"), crmIdsOf("ACT_KINDS"));
+  compare("สถานะลูกค้าเป้าหมาย", allowedOf("crm_leads_status"), crmIdsOf("LEAD_STATUS"));
 
   // สถานะตั้งต้นของใบใหม่ ต้องเป็นค่าเดียวกันทั้งในโค้ด ในนิยามตาราง และในฟังก์ชันสร้างใบ
   const start = (constants.match(/SHIP_START = "(\w+)"/) || [])[1];

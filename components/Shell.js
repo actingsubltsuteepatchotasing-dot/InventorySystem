@@ -45,6 +45,10 @@ import ProductTerms from "./views/ProductTerms";
 import PrintForms from "./views/PrintForms";
 import Targets from "./views/Targets";
 import QuickView from "./views/QuickView";
+import Leads from "./views/Leads";
+import Deals from "./views/Deals";
+import Activities from "./views/Activities";
+import Customer360 from "./views/Customer360";
 import CountPrep from "./views/CountPrep";
 import CountScan from "./views/CountScan";
 import ShipScan from "./views/ShipScan";
@@ -83,6 +87,15 @@ const NAV = [
       { id: "pos", Icon: IcCart, title: "ขายสินค้า (POS)", sub: "ยิงบาร์โค๊ด ขาย และออกใบเสร็จ" },
       { id: "invoice", Icon: IcReport, title: "ขายสินค้าและบริการ", sub: "ออกใบกำกับภาษีเต็มรูปแบบ" },
       { id: "targets", Icon: IcChart, title: "กำหนดเป้าขาย", sub: "ตั้งเป้าและเทียบกับยอดจริง" },
+    ],
+  },
+  {
+    group: "งานลูกค้าสัมพันธ์",
+    items: [
+      { id: "deals", Icon: IcChart, title: "โอกาสการขาย", sub: "กรวยการขายและดีลที่ไล่ปิดอยู่" },
+      { id: "activities", Icon: IcReport, title: "บันทึกกิจกรรม", sub: "โทร เข้าพบ และนัดครั้งถัดไป" },
+      { id: "leads", Icon: IcPin, title: "ลูกค้าเป้าหมาย", sub: "ผู้สนใจที่ยังไม่เป็นลูกค้า" },
+      { id: "cust360", Icon: IcData, title: "ภาพรวมลูกค้า", sub: "ทุกอย่างของลูกค้าหนึ่งรายในหน้าเดียว" },
     ],
   },
   {
@@ -296,8 +309,8 @@ export default function Shell() {
         <div className="brand">
           <Logo size={36} ring="rgba(255,255,255,.16)" vein="var(--brand-d)" />
           <div className="brand-txt">
-            <strong>Ultra ERP</strong>
-            <span>Inventory Control</span>
+            <strong>One for All Ultra</strong>
+            <span>OFAU · หนึ่งเดียวเพื่อทุกสิ่ง</span>
           </div>
         </div>
 
@@ -411,6 +424,10 @@ export default function Shell() {
         <div className="content">
           <SetupBanner />
           {activeView === "quick" && <QuickView onNavigate={navigate} />}
+          {activeView === "deals" && <Deals onNavigate={navigate} />}
+          {activeView === "activities" && <Activities />}
+          {activeView === "leads" && <Leads onNavigate={navigate} />}
+          {activeView === "cust360" && <Customer360 onNavigate={navigate} />}
           {activeView === "dash" && <Dashboard onNavigate={navigate} />}
           {activeView === "receive" && <TxnScreen key="receive" type="RECEIVE" />}
           {activeView === "issue" && <TxnScreen key="issue" type="ISSUE" />}

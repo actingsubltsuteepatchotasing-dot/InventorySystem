@@ -1,9 +1,10 @@
 import "./globals.css";
 import Providers from "@/components/Providers";
 
-const TITLE = "Ultra ERP — ระบบควบคุมสินค้าคงคลัง";
+const TITLE = "One for All Ultra (OFAU) — หนึ่งเดียวเพื่อทุกสิ่ง";
 const DESCRIPTION =
-  "ระบบควบคุมสินค้าคงคลัง (Inventory Control) — รับ / เบิก / โอน / ปรับปรุงสินค้า พร้อมรายงานและกราฟสรุป";
+  "One for All Ultra (OFAU) หนึ่งเดียวเพื่อทุกสิ่ง — คุมสินค้าคงคลัง งานซื้อ งานขาย " +
+  "การจัดส่ง งานลูกค้าสัมพันธ์ และรายงานครบในระบบเดียว";
 
 /**
  * ที่อยู่เว็บสำหรับทำ URL แบบเต็มใน og:image และ og:url
@@ -29,11 +30,11 @@ export const metadata = {
   metadataBase: new URL(siteUrl()),
   title: TITLE,
   description: DESCRIPTION,
-  applicationName: "Ultra ERP",
+  applicationName: "One for All Ultra",
   // iOS ไม่อ่าน manifest จึงต้องบอกผ่าน meta แยก
   appleWebApp: {
     capable: true,
-    title: "Ultra ERP",
+    title: "One for All Ultra",
     statusBarStyle: "default",
   },
   formatDetection: { telephone: false },
@@ -43,7 +44,7 @@ export const metadata = {
     type: "website",
     locale: "th_TH",
     url: "/",
-    siteName: "Ultra ERP",
+    siteName: "One for All Ultra",
     title: TITLE,
     description: DESCRIPTION,
     images: [
@@ -52,7 +53,7 @@ export const metadata = {
         width: 1200,
         height: 630,
         type: "image/png",
-        alt: "Ultra ERP — ระบบควบคุมสินค้าคงคลัง",
+        alt: "One for All Ultra (OFAU) — หนึ่งเดียวเพื่อทุกสิ่ง",
       },
     ],
   },
