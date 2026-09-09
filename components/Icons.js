@@ -1,15 +1,6 @@
 // ไอคอน inline SVG ทั้งหมด (ไม่พึ่งไลบรารีภายนอก)
 
-import {
-  ARROW_HEAD,
-  ARROW_PATH,
-  ARROW_WIDTH,
-  FLAME_INNER,
-  FLAME_OUTER,
-  LOCKUP,
-  MARK,
-  pointsOf,
-} from "@/lib/logo";
+import { LOGO_RATIO, LOGO_SRC } from "@/lib/logo";
 
 function Ico({ size = 18, stroke = 2, children, ...rest }) {
   return (
@@ -124,95 +115,28 @@ export const IcPrint = (p) => (
 );
 
 /**
- * ตราสัญลักษณ์โปรแกรม One for All Ultra — เปลวไฟกับลูกศรพุ่งขึ้น
+ * ตราเต็ม — ไฟล์ภาพต้นฉบับของโลโก้ OFAU
  *
- * รูปทรงมาจาก lib/logo.js ชุดเดียวกับที่ตัวสร้างไอคอน PWA ใช้
- * แก้ที่ไฟล์นั้นที่เดียว ทั้งบนหน้าจอและไอคอนบนหน้าจอโฮมจะเปลี่ยนตามพร้อมกัน
+ * ใช้ทุกที่ที่แสดงโลโก้บนหน้าจอและบนกระดาษ
+ * ส่วนไอคอนแอปและไอคอนแท็บ (กรอบจัตุรัสเล็ก) สร้างจากรูปทรงใน lib/logo.js
+ * ด้วย tools/make-icons.mjs เพราะตราแนวนอนย่อลงกรอบจัตุรัสแล้วอ่านตัวอักษรไม่ออก
  *
- * @param {string} bg สีพื้นวงกลมด้านหลัง เว้นว่าง = พื้นโปร่งใส
- *        ใช้ตอนวางบนพื้นที่สีใกล้เคียงกับตัวตรา เช่นแถบเมนูสีเขียวเข้ม
+ * @param {number} height ความสูงเป็นพิกเซล กว้างตามสัดส่วนของไฟล์เอง
+ * @param {boolean} plaque วางบนแผ่นขาว — ใช้ตอนพื้นหลังเข้ม เพราะตัวอักษรบนตราเป็นเขียวเข้ม
  */
-export function Logo({ size = 36, bg = "" }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      {bg ? <circle cx="32" cy="32" r="31" fill={bg} stroke={MARK.edge} strokeWidth="0.8" /> : null}
-      {/* ลูกศรอยู่ล่างสุด เปลวไฟทับด้านบน ลำดับเดียวกับ markColorAt ใน lib/logo.js */}
-      <polyline
-        points={pointsOf(ARROW_PATH)}
-        fill="none"
-        stroke={MARK.arrow}
-        strokeWidth={ARROW_WIDTH}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <polygon points={pointsOf(ARROW_HEAD)} fill={MARK.arrow} />
-      <polygon points={pointsOf(FLAME_OUTER)} fill={MARK.flame} />
-      <polygon points={pointsOf(FLAME_INNER)} fill={MARK.flameLight} />
-    </svg>
+export function LogoFull({ height = 56, plaque = false }) {
+  const img = (
+    // ไม่ใช้ next/image เพราะต้องตั้งค่าเพิ่มและไฟล์นี้เป็นภาพเดียวขนาดคงที่
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={LOGO_SRC}
+      alt="One for All Ultra"
+      height={height}
+      width={Math.round(height * LOGO_RATIO)}
+      style={{ height, width: "auto", display: "block" }}
+    />
   );
+
+  return plaque ? <span className="logo-plaque">{img}</span> : img;
 }
 
-/**
- * ตราเต็ม — ตัวอักษร OFAU พร้อมเปลวไฟ ลูกศร และชื่อเต็มใต้คำ
- *
- * ใช้ตรงที่มีพื้นที่แนวนอน ส่วนช่องสี่เหลี่ยมจัตุรัสแคบ ๆ ใช้ <Logo> แทน
- * รูปทรงทั้งหมดมาจาก lib/logo.js ชุดเดียวกับตราย่อและไอคอน
- *
- * @param {number} width ความกว้างเป็นพิกเซล สูงตามสัดส่วนเอง
- * @param {"dark"|"light"} tone สีตัวอักษร — dark สำหรับพื้นสว่าง, light สำหรับพื้นเข้ม
- */
-export function LogoFull({ width = 220, tone = "dark" }) {
-  const ink = LOCKUP.ink[tone] || LOCKUP.ink.dark;
-  const { word, tagline } = LOCKUP;
-
-  return (
-    <svg
-      width={width}
-      viewBox={LOCKUP.view}
-      role="img"
-      aria-label="One for All Ultra"
-      style={{ display: "block", height: "auto" }}
-    >
-      {/* ลูกศรอยู่หลังตัวอักษร เปลวไฟอยู่หน้าสุด ลำดับเดียวกับตราต้นฉบับ */}
-      <path
-        d={LOCKUP.arrowD}
-        fill="none"
-        stroke={MARK.arrow}
-        strokeWidth={LOCKUP.arrowWidth}
-        strokeLinecap="round"
-      />
-      <polygon points={pointsOf(LOCKUP.arrowHead)} fill={MARK.arrow} />
-
-      <text
-        x={word.x}
-        y={word.y}
-        textAnchor="middle"
-        fill={ink}
-        fontSize={word.size}
-        fontWeight={word.weight}
-        letterSpacing={word.spacing}
-        fontFamily="inherit"
-      >
-        {word.text}
-      </text>
-
-      <text
-        x={tagline.x}
-        y={tagline.y}
-        textAnchor="middle"
-        fill={ink}
-        fontSize={tagline.size}
-        fontWeight={tagline.weight}
-        letterSpacing={tagline.spacing}
-        fontFamily="inherit"
-      >
-        {tagline.text}
-      </text>
-
-      <g transform={LOCKUP.flameTransform}>
-        <polygon points={pointsOf(FLAME_OUTER)} fill={MARK.flame} />
-        <polygon points={pointsOf(FLAME_INNER)} fill={MARK.flameLight} />
-      </g>
-    </svg>
-  );
-}

@@ -1,5 +1,7 @@
 import "./globals.css";
 import Providers from "@/components/Providers";
+// ที่อยู่ของไฟล์โลโก้ประกาศที่เดียวใน lib/logo.js เปลี่ยนชื่อไฟล์แล้วเปลี่ยนตามทุกที่
+import { LOGO_SRC } from "@/lib/logo";
 
 const TITLE = "One for All Ultra (OFAU) — หนึ่งเดียวเพื่อทุกสิ่ง";
 const DESCRIPTION =
@@ -49,10 +51,10 @@ export const metadata = {
     description: DESCRIPTION,
     images: [
       {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        type: "image/png",
+        url: LOGO_SRC,
+        width: 1408,
+        height: 768,
+        type: "image/jpeg",
         alt: "One for All Ultra (OFAU) — หนึ่งเดียวเพื่อทุกสิ่ง",
       },
     ],
@@ -61,7 +63,7 @@ export const metadata = {
     card: "summary_large_image",
     title: TITLE,
     description: DESCRIPTION,
-    images: ["/og-image.png"],
+    images: [LOGO_SRC],
   },
 };
 

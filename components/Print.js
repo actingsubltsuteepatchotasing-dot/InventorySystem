@@ -54,7 +54,7 @@ function PrintDoc({ title, subtitle, body, signers = true, receipt = false, bare
   return (
     <>
       <div className="pr-head">
-        <LogoFull width={168} />
+        <LogoFull height={44} />
         <div className="org">
           <span>หนึ่งเดียวเพื่อทุกสิ่ง</span>
         </div>

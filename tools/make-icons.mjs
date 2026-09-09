@@ -237,59 +237,6 @@ fs.writeFileSync(
 );
 console.log("  ico     " + icoSizes.join("/") + "px  app/favicon.ico");
 
-/*
- * รูปพรีวิวตอนแชร์ลิงก์ (Open Graph) 1200x630
- *
- * วาดเป็นพื้นขาวกับตราสัญลักษณ์ตรงกลาง ไม่มีตัวหนังสือ
- * เพราะสคริปต์นี้ไม่มีตัววาดฟอนต์ และการวาดตัวอักษรเองทีละเส้น
- * จะได้ผลที่แย่กว่าไม่มีเลย — ชื่อโปรแกรมมีอยู่ในหัวข้อของลิงก์อยู่แล้ว
- */
-{
-  const W = 1200;
-  const H = 630;
-  const rgba = Buffer.alloc(W * H * 4);
-  const bg = HEX(MARK.bg);
-  const scale = 420 / 64; // ตรากว้าง 420 พิกเซลกลางภาพ
-  const offX = (W - 64 * scale) / 2;
-  const offY = (H - 64 * scale) / 2;
-  const SS = 3;
-
-  for (let py = 0; py < H; py++) {
-    for (let px = 0; px < W; px++) {
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      let hit = 0;
-
-      for (let sy = 0; sy < SS; sy++) {
-        for (let sx = 0; sx < SS; sx++) {
-          const vx = (px + (sx + 0.5) / SS - offX) / scale;
-          const vy = (py + (sy + 0.5) / SS - offY) / scale;
-          const c = vx >= 0 && vx <= 64 && vy >= 0 && vy <= 64 ? markColorAt(vx, vy) : null;
-          if (c) {
-            const [cr, cg, cb] = HEX(c);
-            r += cr;
-            g += cg;
-            b += cb;
-            hit++;
-          }
-        }
-      }
-
-      const n = SS * SS;
-      const i = (py * W + px) * 4;
-      const w = hit / n; // สัดส่วนที่โดนตรา ใช้ผสมกับพื้นหลังให้ขอบเนียน
-      rgba[i] = Math.round((hit ? r / hit : 0) * w + bg[0] * (1 - w));
-      rgba[i + 1] = Math.round((hit ? g / hit : 0) * w + bg[1] * (1 - w));
-      rgba[i + 2] = Math.round((hit ? b / hit : 0) * w + bg[2] * (1 - w));
-      rgba[i + 3] = 255;
-    }
-  }
-
-  fs.writeFileSync(path.join(root, "public", "og-image.png"), encodePNG(W, H, rgba));
-  console.log("  og      1200x630  public/og-image.png");
-}
-
 for (const o of outputs) {
   const buf = render(o.size, { fullBleed: o.fullBleed, padding: o.padding });
   fs.writeFileSync(o.file, buf);

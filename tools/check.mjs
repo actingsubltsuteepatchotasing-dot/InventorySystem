@@ -1068,7 +1068,7 @@ head("19. ตราสัญลักษณ์มาจากรูปทรง�
 
   // รูปทรงต้องประกาศที่เดียว ไม่มีใครนิยามซ้ำ
   ["FLAME_OUTER", "FLAME_INNER", "ARROW_PATH", "ARROW_HEAD"].forEach((name) => {
-    const dup = [icons, maker].filter((src) => new RegExp("(const|let) " + name + "\\s*=").test(src));
+    const dup = [maker].filter((src) => new RegExp("(const|let) " + name + "\\s*=").test(src));
     if (dup.length) {
       bad(name + " ถูกนิยามซ้ำนอก lib/logo.js");
       n++;
@@ -1090,22 +1090,27 @@ head("19. ตราสัญลักษณ์มาจากรูปทรง�
     n++;
   }
 
-  // ตราเต็ม (ตัวอักษร OFAU) ต้องมาจากไฟล์เดียวกัน ไม่ใช่พิมพ์ข้อความไว้ในหน้าจอ
-  if (!/LOCKUP/.test(icons)) {
-    bad("components/Icons.js ไม่ได้ใช้ค่าของตราเต็มจาก lib/logo.js");
+  /*
+   * ตราเต็มใช้ไฟล์ภาพต้นฉบับ ไม่ได้วาดเลียนแบบ
+   * ที่อยู่ของไฟล์ต้องประกาศที่เดียวใน lib/logo.js
+   * ถ้าหน้าจอเขียน "/logo.jpg" กันเอง วันเปลี่ยนชื่อไฟล์จะแก้ไม่ครบ
+   */
+  if (!/export const LOGO_SRC = "/.test(logo)) {
+    bad("lib/logo.js ไม่ได้ประกาศที่อยู่ไฟล์ตราเต็ม (LOGO_SRC)");
     n++;
   }
-  if (!/export const LOCKUP = \{/.test(logo)) {
-    bad("lib/logo.js ไม่มีค่าของตราเต็ม (LOCKUP)");
+  const src = (logo.match(/export const LOGO_SRC = "([^"]+)"/) || [])[1];
+  if (src && !fs.existsSync(path.join(ROOT, "public", src.replace(/^\//, "")))) {
+    bad("ไม่พบไฟล์ตราเต็มที่ public" + src);
     n++;
   }
-  // ชื่อบนตราต้องมีที่เดียว ถ้าพิมพ์ซ้ำในหน้าจอ วันหนึ่งจะแก้ไม่ครบ
-  ["ONE FOR ALL ULTRA"].forEach((t) => {
-    if (icons.split(t).length > 2) {
-      bad("ข้อความบนตรา \"" + t + "\" ถูกพิมพ์ซ้ำใน components/Icons.js");
-      n++;
-    }
-  });
+  const hardCoded = FILES.filter(
+    (f) => f !== path.join("lib", "logo.js") && read(f).includes('"' + src + '"')
+  );
+  if (src && hardCoded.length) {
+    bad("มีไฟล์เขียนที่อยู่ของโลโก้ไว้เอง แทนที่จะใช้ LOGO_SRC: " + hardCoded.join(", "));
+    n++;
+  }
 
   // สีของตราต้องเป็นค่าคงที่ ไม่ใช่ตัวแปรธีม (โลโก้ต้องสีเดิมทั้งธีมสว่างและมืด)
   const markBlock = logo.slice(logo.indexOf("export const MARK = {"), logo.indexOf("};"));

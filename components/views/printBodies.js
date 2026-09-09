@@ -11,7 +11,7 @@ import {
   metaRows,
   totalRows,
 } from "@/lib/printForms";
-import { Logo } from "../Icons";
+import { LogoFull } from "../Icons";
 import { Barcode } from "../ui";
 
 /**
@@ -273,7 +273,7 @@ export function TradeDocBody({ inv, company, doc, items, form, party = "ผู�
             <>
               {f.showLogo ? (
                 <div className="ti-logo">
-                  <Logo size={40} />
+                  <LogoFull height={34} />
                 </div>
               ) : null}
               <b>{co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)"}</b>
