@@ -211,15 +211,17 @@ service worker จึงแคชเฉพาะไฟล์หน้าตา�
 ถ้ามีเวอร์ชันใหม่ของ service worker จะขึ้นข้อความให้ปิดแล้วเปิดแอปใหม่
 (ไม่ reload เองกลางคัน เผื่อกำลังคีย์บิลขายค้างอยู่)
 
-**สร้างไอคอนใหม่** — ไอคอนทั้งหมดสร้างจาก `components/fav/ERP.jpg` (554x554)
-ถ้าเปลี่ยนภาพต้นฉบับแล้วอยากสร้างใหม่ ให้รันบน Windows:
+**สร้างไอคอนใหม่** — ตราสัญลักษณ์ (เปลวไฟกับลูกศรพุ่งขึ้น) วาดด้วยโค้ด
+รูปทรงอยู่ที่ `lib/logo.js` ที่เดียว ทั้งโลโก้บนหน้าจอและไอคอนไฟล์ใช้ชุดเดียวกัน
+แก้รูปทรงที่ไฟล์นั้นแล้วสร้างไฟล์ใหม่ด้วย:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File tools/make-icons.ps1 -CropX 77 -CropY 77 -CropSize 400
+```bash
+node tools/make-icons.mjs
 ```
 
-ได้ไฟล์ 6 ไฟล์: `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`,
-`app/icon.png`, `app/apple-icon.png` และ `app/favicon.ico`
+ได้ไฟล์ 7 ไฟล์: `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`,
+`app/icon.png`, `app/apple-icon.png`, `app/favicon.ico` และ `public/og-image.png`
+(ไม่ต้องลงไลบรารีเพิ่ม — เขียนตัวเข้ารหัส PNG และ ICO เองด้วย zlib ที่มากับ Node)
 
 `favicon.ico` คือไอคอนบนแท็บ บรรจุ 16/32/48px ที่เรนเดอร์แยกทีละขนาดไว้ในไฟล์เดียว
 คมกว่าปล่อยให้เบราว์เซอร์ย่อจาก `icon.png` 192px เอง

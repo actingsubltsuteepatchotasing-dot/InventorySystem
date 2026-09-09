@@ -1044,5 +1044,61 @@ head("18. คู่มือการใช้งานครอบคลุม�
   }
 }
 
+head("19. ตราสัญลักษณ์มาจากรูปทรงชุดเดียว");
+{
+  /*
+   * โลโก้ถูกวาดสองที่: SVG บนหน้าจอ กับ PNG ของไอคอน PWA
+   * ถ้าสองที่นั้นเขียนรูปทรงแยกกัน วันหนึ่งจะมีที่หนึ่งที่ลืมแก้
+   * แล้วไอคอนบนหน้าจอโฮมกับโลโก้ในเว็บจะคนละรูป โดยไม่มีใครสังเกต
+   * จนกว่าจะมีคนติดตั้งแอปใหม่ ตรงนี้จึงบังคับให้ทั้งสองอ่านจาก lib/logo.js
+   */
+  const logo = read("lib/logo.js");
+  const icons = read("components/Icons.js");
+  const maker = read("tools/make-icons.mjs");
+  let n = 0;
+
+  if (!/from "@\/lib\/logo"/.test(icons)) {
+    bad("components/Icons.js ไม่ได้ใช้รูปทรงจาก lib/logo.js");
+    n++;
+  }
+  if (!/from "\.\.\/lib\/logo\.js"/.test(maker)) {
+    bad("tools/make-icons.mjs ไม่ได้ใช้รูปทรงจาก lib/logo.js");
+    n++;
+  }
+
+  // รูปทรงต้องประกาศที่เดียว ไม่มีใครนิยามซ้ำ
+  ["FLAME_OUTER", "FLAME_INNER", "ARROW_PATH", "ARROW_HEAD"].forEach((name) => {
+    const dup = [icons, maker].filter((src) => new RegExp("(const|let) " + name + "\\s*=").test(src));
+    if (dup.length) {
+      bad(name + " ถูกนิยามซ้ำนอก lib/logo.js");
+      n++;
+    }
+    if (!new RegExp("export const " + name + " = \\[").test(logo)) {
+      bad("lib/logo.js ไม่มีรูปทรง " + name);
+      n++;
+    }
+  });
+
+  // ทุกจุดต้องอยู่ในกรอบ 64x64 ไม่งั้นตราจะโดนตัดขอบตอนย่อเป็นไอคอน
+  const nums = [...logo.matchAll(/^  \[(\d+(?:\.\d+)?), (\d+(?:\.\d+)?)\],$/gm)].map((m) => [
+    Number(m[1]),
+    Number(m[2]),
+  ]);
+  const out = nums.filter(([x, y]) => x < 0 || x > 64 || y < 0 || y > 64);
+  if (out.length) {
+    bad("มีจุดของตราอยู่นอกกรอบ 64x64: " + out.map((v) => v.join(",")).join(" · "));
+    n++;
+  }
+
+  // สีของตราต้องเป็นค่าคงที่ ไม่ใช่ตัวแปรธีม (โลโก้ต้องสีเดิมทั้งธีมสว่างและมืด)
+  const markBlock = logo.slice(logo.indexOf("export const MARK = {"), logo.indexOf("};"));
+  if (/var\(--/.test(markBlock)) {
+    bad("สีของตราผูกกับตัวแปรธีม ทำให้โลโก้เปลี่ยนสีตามธีม");
+    n++;
+  }
+
+  if (!n) ok("ตราวาดจาก lib/logo.js ทั้งบนหน้าจอและไอคอน · " + nums.length + " จุด อยู่ในกรอบทั้งหมด");
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);

@@ -1,5 +1,15 @@
 // ไอคอน inline SVG ทั้งหมด (ไม่พึ่งไลบรารีภายนอก)
 
+import {
+  ARROW_HEAD,
+  ARROW_PATH,
+  ARROW_WIDTH,
+  FLAME_INNER,
+  FLAME_OUTER,
+  MARK,
+  pointsOf,
+} from "@/lib/logo";
+
 function Ico({ size = 18, stroke = 2, children, ...rest }) {
   return (
     <svg
@@ -112,13 +122,31 @@ export const IcPrint = (p) => (
   </Ico>
 );
 
-/** ตราสัญลักษณ์โปรแกรม (ใบไม้ในวงกลม) */
-export function Logo({ size = 36, ring = "var(--brand)", leaf = "var(--accent)", vein = "var(--brand-d)" }) {
+/**
+ * ตราสัญลักษณ์โปรแกรม One for All Ultra — เปลวไฟกับลูกศรพุ่งขึ้น
+ *
+ * รูปทรงมาจาก lib/logo.js ชุดเดียวกับที่ตัวสร้างไอคอน PWA ใช้
+ * แก้ที่ไฟล์นั้นที่เดียว ทั้งบนหน้าจอและไอคอนบนหน้าจอโฮมจะเปลี่ยนตามพร้อมกัน
+ *
+ * @param {string} bg สีพื้นวงกลมด้านหลัง เว้นว่าง = พื้นโปร่งใส
+ *        ใช้ตอนวางบนพื้นที่สีใกล้เคียงกับตัวตรา เช่นแถบเมนูสีเขียวเข้ม
+ */
+export function Logo({ size = 36, bg = "" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      <circle cx="32" cy="32" r="30" fill={ring} />
-      <path d="M32 13c-9 6-14 13-14 21a14 14 0 0 0 28 0c0-8-5-15-14-21z" fill={leaf} />
-      <path d="M32 18v30M32 30l7-6M32 38l-7-6" stroke={vein} strokeWidth="2.6" strokeLinecap="round" />
+      {bg ? <circle cx="32" cy="32" r="31" fill={bg} /> : null}
+      {/* ลูกศรอยู่ล่างสุด เปลวไฟทับด้านบน ลำดับเดียวกับ markColorAt ใน lib/logo.js */}
+      <polyline
+        points={pointsOf(ARROW_PATH)}
+        fill="none"
+        stroke={MARK.arrow}
+        strokeWidth={ARROW_WIDTH}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <polygon points={pointsOf(ARROW_HEAD)} fill={MARK.arrow} />
+      <polygon points={pointsOf(FLAME_OUTER)} fill={MARK.flame} />
+      <polygon points={pointsOf(FLAME_INNER)} fill={MARK.flameLight} />
     </svg>
   );
 }

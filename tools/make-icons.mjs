@@ -1,14 +1,15 @@
-// สร้างไอคอน PNG สำหรับ PWA จากโลโก้ที่วาดด้วยโค้ด (ใบยางในวงกลม)
+// สร้างไอคอน PNG สำหรับ PWA จากตราสัญลักษณ์ OFAU (เปลวไฟกับลูกศรพุ่งขึ้น)
 //
 // รันด้วย:  node tools/make-icons.mjs
 //
 // เขียน PNG encoder เองด้วย zlib ที่มีมากับ Node — ไม่ต้องติดตั้ง sharp หรือ canvas
-// รูปทรงลอกมาจาก <Logo> ใน components/Icons.js ซึ่งใช้ viewBox 64x64
-// ถ้าแก้โลโก้ในไฟล์นั้น ให้แก้ที่นี่แล้วรันใหม่
+// รูปทรงอ่านจาก lib/logo.js ชุดเดียวกับที่หน้าจอใช้ ไม่ได้ลอกมาเขียนซ้ำ
+// แก้โลโก้ที่ไฟล์นั้นที่เดียวแล้วรันสคริปต์นี้ใหม่ ไอคอนจะตรงกับบนหน้าจอเสมอ
 
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
+import { MARK, markColorAt } from "../lib/logo.js";
 
 /* ---------------------------------------------------------- PNG encoder */
 
@@ -70,42 +71,21 @@ function encodePNG(width, height, rgba) {
 
 /* ------------------------------------------------------------- รูปทรง */
 
-const RING = [0x00, 0x69, 0x3c]; // --brand   เขียวหลัก
-const LEAF = [0xa8, 0xcf, 0x45]; // --accent  เขียวใบยาง
-const VEIN = [0x00, 0x51, 0x2f]; // --brand-d เขียวเข้ม
+// รูปทรงมาจาก lib/logo.js ชุดเดียวกับที่หน้าจอใช้วาด SVG
+// เมื่อก่อนไฟล์นี้เขียนรูปทรงซ้ำไว้เอง พร้อมหมายเหตุว่า "ถ้าแก้โลโก้ ให้แก้ที่นี่ด้วย"
+// ซึ่งแปลว่าวันหนึ่งจะมีที่หนึ่งที่ลืมแก้ แล้วไอคอนบนหน้าจอโฮมกับในเว็บจะคนละรูป
+// ตอนนี้อ่านจากที่เดียว จึงไม่มีทางหลุดจากกันอีก
 
-/** อยู่ในวงกลมพื้นหลังหรือไม่ (viewBox 64x64, ศูนย์กลาง 32,32 รัศมี 30) */
-const inCircle = (x, y) => (x - 32) ** 2 + (y - 32) ** 2 <= 30 * 30;
-
-/**
- * อยู่ในรูปใบยางหรือไม่
- * ส่วนล่างเป็นครึ่งวงกลมศูนย์กลาง (32,34) รัศมี 14
- * ส่วนบนสอบขึ้นไปจบเป็นปลายแหลมที่ (32,13)
- */
-function inLeaf(x, y) {
-  if (y > 48 || y < 13) return false;
-  if (y >= 34) return (x - 32) ** 2 + (y - 34) ** 2 <= 14 * 14;
-  const t = (34 - y) / 21; // 0 ที่ฐาน -> 1 ที่ปลาย
-  const halfWidth = 14 * Math.pow(1 - t, 0.62);
-  return Math.abs(x - 32) <= halfWidth;
-}
-
-/** ระยะจากจุดถึงส่วนของเส้นตรง ใช้วาดเส้นใบ */
-function distToSegment(px, py, x1, y1, x2, y2) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const lenSq = dx * dx + dy * dy;
-  let t = lenSq === 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
-}
-
-const VEINS = [
-  [32, 18, 32, 48], // ก้านกลาง
-  [32, 30, 39, 24], // แขนงขวา
-  [32, 38, 25, 32], // แขนงซ้าย
+const HEX = (h) => [
+  parseInt(h.slice(1, 3), 16),
+  parseInt(h.slice(3, 5), 16),
+  parseInt(h.slice(5, 7), 16),
 ];
-const VEIN_HALF_WIDTH = 1.3;
+
+const RING = HEX(MARK.ring);
+
+/** อยู่ในวงกลมพื้นหลังหรือไม่ (viewBox 64x64, ศูนย์กลาง 32,32 รัศมี 31) */
+const inCircle = (x, y) => (x - 32) ** 2 + (y - 32) ** 2 <= 31 * 31;
 
 /**
  * สีของจุดหนึ่งในพิกัด viewBox
@@ -113,17 +93,11 @@ const VEIN_HALF_WIDTH = 1.3;
  * @returns {[number,number,number,number]|null} RGBA หรือ null = โปร่งใส
  */
 function colorAt(x, y, fullBleed) {
-  const onVein = VEINS.some(
-    ([x1, y1, x2, y2]) => distToSegment(x, y, x1, y1, x2, y2) <= VEIN_HALF_WIDTH
-  );
+  const mark = markColorAt(x, y);
+  if (mark) return [...HEX(mark), 255];
 
-  if (inLeaf(x, y)) return onVein ? [...VEIN, 255] : [...LEAF, 255];
-
-  // เส้นก้านที่ยื่นพ้นใบลงมาด้านล่าง ให้กลมกลืนกับพื้นวงกลม
-  if (onVein && (fullBleed || inCircle(x, y))) return [...VEIN, 255];
-
-  if (fullBleed) return [...RING, 255];
-  if (inCircle(x, y)) return [...RING, 255];
+  // ตราวางบนพื้นวงกลมสีเขียว เพื่อให้อ่านออกทั้งบนหน้าจอโฮมสว่างและมืด
+  if (fullBleed || inCircle(x, y)) return [...RING, 255];
   return null;
 }
 
@@ -191,6 +165,42 @@ function render(size, opts = {}) {
   return encodePNG(size, size, rgba);
 }
 
+/* ------------------------------------------------------------------ ICO */
+
+/**
+ * ห่อ PNG เป็นไฟล์ .ico
+ *
+ * .ico รุ่นใหม่ (Vista ขึ้นไป) ใส่ข้อมูล PNG ลงไปตรง ๆ ได้เลย ไม่ต้องแปลงเป็น BMP
+ * จึงเหลือแค่เขียนหัวไฟล์ 6 ไบต์ กับรายการภาพอีกรายการละ 16 ไบต์
+ * เบราว์เซอร์ทุกตัวที่ยังใช้กันอ่านแบบนี้ได้หมด
+ */
+function encodeICO(images) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0); // reserved
+  header.writeUInt16LE(1, 2); // 1 = ไอคอน
+  header.writeUInt16LE(images.length, 4);
+
+  const entries = [];
+  let offset = 6 + images.length * 16;
+
+  images.forEach((img) => {
+    const e = Buffer.alloc(16);
+    // ขนาด 256 เขียนเป็น 0 ตามข้อกำหนดของรูปแบบไฟล์
+    e.writeUInt8(img.size >= 256 ? 0 : img.size, 0);
+    e.writeUInt8(img.size >= 256 ? 0 : img.size, 1);
+    e.writeUInt8(0, 2); // จำนวนสีในจานสี (0 = ไม่ใช้จานสี)
+    e.writeUInt8(0, 3); // reserved
+    e.writeUInt16LE(1, 4); // color planes
+    e.writeUInt16LE(32, 6); // bits per pixel
+    e.writeUInt32LE(img.data.length, 8);
+    e.writeUInt32LE(offset, 12);
+    offset += img.data.length;
+    entries.push(e);
+  });
+
+  return Buffer.concat([header, ...entries, ...images.map((i) => i.data)]);
+}
+
 /* --------------------------------------------------------------- เขียนไฟล์ */
 
 const root = process.cwd();
@@ -210,6 +220,67 @@ const outputs = [
   { file: path.join(root, "app", "icon.png"), size: 192 },
   { file: path.join(root, "app", "apple-icon.png"), size: 180, fullBleed: true, padding: 0.1 },
 ];
+
+// ไอคอนบนแท็บเบราว์เซอร์ — ใส่หลายขนาดในไฟล์เดียว ให้แต่ละที่หยิบขนาดที่เหมาะไปใช้
+const icoSizes = [16, 32, 48, 64];
+fs.writeFileSync(
+  path.join(root, "app", "favicon.ico"),
+  encodeICO(icoSizes.map((size) => ({ size, data: render(size, { fullBleed: true }) })))
+);
+console.log("  ico     " + icoSizes.join("/") + "px  app/favicon.ico");
+
+/*
+ * รูปพรีวิวตอนแชร์ลิงก์ (Open Graph) 1200x630
+ *
+ * วาดเป็นพื้นเขียวกับตราสัญลักษณ์ตรงกลาง ไม่มีตัวหนังสือ
+ * เพราะสคริปต์นี้ไม่มีตัววาดฟอนต์ และการวาดตัวอักษรเองทีละเส้น
+ * จะได้ผลที่แย่กว่าไม่มีเลย — ชื่อโปรแกรมมีอยู่ในหัวข้อของลิงก์อยู่แล้ว
+ */
+{
+  const W = 1200;
+  const H = 630;
+  const rgba = Buffer.alloc(W * H * 4);
+  const ring = HEX(MARK.ring);
+  const scale = 420 / 64; // ตรากว้าง 420 พิกเซลกลางภาพ
+  const offX = (W - 64 * scale) / 2;
+  const offY = (H - 64 * scale) / 2;
+  const SS = 3;
+
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let hit = 0;
+
+      for (let sy = 0; sy < SS; sy++) {
+        for (let sx = 0; sx < SS; sx++) {
+          const vx = (px + (sx + 0.5) / SS - offX) / scale;
+          const vy = (py + (sy + 0.5) / SS - offY) / scale;
+          const c = vx >= 0 && vx <= 64 && vy >= 0 && vy <= 64 ? markColorAt(vx, vy) : null;
+          if (c) {
+            const [cr, cg, cb] = HEX(c);
+            r += cr;
+            g += cg;
+            b += cb;
+            hit++;
+          }
+        }
+      }
+
+      const n = SS * SS;
+      const i = (py * W + px) * 4;
+      const w = hit / n; // สัดส่วนที่โดนตรา ใช้ผสมกับพื้นหลังให้ขอบเนียน
+      rgba[i] = Math.round((hit ? r / hit : 0) * w + ring[0] * (1 - w));
+      rgba[i + 1] = Math.round((hit ? g / hit : 0) * w + ring[1] * (1 - w));
+      rgba[i + 2] = Math.round((hit ? b / hit : 0) * w + ring[2] * (1 - w));
+      rgba[i + 3] = 255;
+    }
+  }
+
+  fs.writeFileSync(path.join(root, "public", "og-image.png"), encodePNG(W, H, rgba));
+  console.log("  og      1200x630  public/og-image.png");
+}
 
 for (const o of outputs) {
   const buf = render(o.size, { fullBleed: o.fullBleed, padding: o.padding });
