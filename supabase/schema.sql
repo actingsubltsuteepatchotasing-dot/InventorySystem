@@ -7,7 +7,7 @@
 -- วิธีใช้: Supabase Dashboard > SQL Editor > New query > วางทั้งไฟล์ > Run
 --
 -- ไฟล์นี้ทำให้ครบทุกอย่าง:
---   1. สร้างตารางทั้ง 29 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
+--   1. สร้างตารางทั้ง 30 ตาราง (ข้ามตารางที่มีอยู่แล้ว ไม่แตะข้อมูลเดิม)
 --   2. ขยาย constraint ของ txns ให้รองรับประเภท SALE
 --   3. สร้างฟังก์ชัน stock_of() create_sale() create_invoice()
 --      create_purchase() และ create_purchase_return()
@@ -651,6 +651,7 @@ begin
   insert into public.invoices (
     id, doc_no, date, customer_id,
     cust_code, cust_name, cust_address, cust_province, cust_tax_id, cust_branch,
+    cust_kind,
     vat_rate, items_total, bill_discount, base, vat, total, note,
     ship_status, ship_from, ship_note, user_name, ts
   )
@@ -665,6 +666,7 @@ begin
     coalesce(p_inv ->> 'cust_province', ''),
     coalesce(p_inv ->> 'cust_tax_id', ''),
     coalesce(p_inv ->> 'cust_branch', ''),
+    coalesce(p_inv ->> 'cust_kind', ''),
     (p_inv ->> 'vat_rate')::numeric,
     (p_inv ->> 'items_total')::numeric,
     (p_inv ->> 'bill_discount')::numeric,
@@ -1308,6 +1310,47 @@ end
 $doc_form$;
 
 -- ============================================================================
+-- ทะเบียนประเภทลูกค้า
+-- ----------------------------------------------------------------------------
+-- เดิมประเภทลูกค้าเป็นรายการตายตัวในโค้ด เพิ่มประเภทใหม่ต้องรอ deploy
+-- ซึ่งไม่สมเหตุสมผล เพราะเป็นเรื่องของกิจการ ไม่ใช่ของโปรแกรม
+--
+-- ตัวลูกค้ายังเก็บ "ชื่อประเภท" ไว้ที่ customers.kind เหมือนเดิม ไม่ได้เปลี่ยนไปเก็บรหัส
+--   เพราะเก็บเป็นข้อความมาตั้งแต่ต้น และเอกสารที่คัดลอกค่านี้ไป (ใบขาย)
+--   ก็เก็บเป็นข้อความเหมือนกัน เปลี่ยนไปเก็บรหัสเมื่อไร ลูกค้าและเอกสารเดิมทั้งหมด
+--   จะอ่านประเภทไม่ออกทันที ตารางนี้จึงเป็น "รายการให้เลือก" ไม่ใช่กุญแจอ้างอิง
+--   จงใจไม่ผูก foreign key ด้วยเหตุผลเดียวกับ product_terms
+--
+-- ไม่ยุบรวมกับ product_terms ทั้งที่โครงเหมือนกัน
+--   เพราะคนละโดเมนกัน (ของสินค้า vs ของคู่ค้า) สิทธิการใช้งานคนละหน้าจอ
+--   และวันหน้าประเภทลูกค้าอาจมีช่องเฉพาะของตัวเอง เช่น เครดิตเทอมหรือส่วนลดประจำ
+--   ซึ่งใส่ในตารางที่ใช้ร่วมกับสินค้าไม่ได้
+create table if not exists public.customer_kinds (
+  id         text primary key,
+  code       text not null,
+  name       text not null,
+  note       text not null default '',
+  active     boolean not null default true,
+  user_name  text not null default '',
+  ts         bigint not null,
+  created_at timestamptz not null default now(),
+
+  constraint customer_kinds_code_len check (char_length(code) between 1 and 50),
+  constraint customer_kinds_name_len check (char_length(name) between 1 and 200)
+);
+
+create unique index if not exists customer_kinds_code_key on public.customer_kinds (lower(code));
+
+-- ชื่อห้ามซ้ำ เพราะตัวลูกค้าเก็บชื่อประเภทไว้ สองรหัสชื่อเดียวกันจะแยกไม่ออก
+create unique index if not exists customer_kinds_name_key on public.customer_kinds (lower(name));
+
+-- ใบขายคัดลอกประเภทลูกค้าไว้ในตัวเอกสารด้วย (snapshot)
+-- เหตุผลเดียวกับชื่อและที่อยู่: ลูกค้าเปลี่ยนประเภททีหลัง (เช่น เลื่อนเป็นตัวแทนจำหน่าย)
+-- ใบเก่าต้องยังบอกได้ว่า ณ วันที่ออกเอกสารนั้น ลูกค้าเป็นประเภทอะไร
+-- ไม่งั้นรายงานยอดขายแยกตามประเภทลูกค้าย้อนหลังจะเปลี่ยนไปเองทุกครั้งที่มีคนแก้ทะเบียน
+alter table public.invoices add column if not exists cust_kind text not null default '';
+
+-- ============================================================================
 -- ทะเบียนกลุ่ม / ยี่ห้อ / ประเภทสินค้า
 -- ----------------------------------------------------------------------------
 -- สามอย่างนี้โครงเหมือนกันเป๊ะ (รหัส + ชื่อ) ต่างกันแค่ความหมาย
@@ -1657,7 +1700,7 @@ begin
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
     'salespersons', 'sales_targets', 'print_forms', 'product_terms',
-    'crm_leads', 'crm_deals', 'crm_activities'
+    'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds'
   ]
   loop
     seq := 'public.' || t || '_row_order_seq';
@@ -1727,6 +1770,7 @@ grant all privileges on table public.product_terms      to authenticated;
 grant all privileges on table public.crm_leads          to authenticated;
 grant all privileges on table public.crm_deals          to authenticated;
 grant all privileges on table public.crm_activities     to authenticated;
+grant all privileges on table public.customer_kinds     to authenticated;
 
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
@@ -1751,7 +1795,7 @@ begin
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
     'salespersons', 'sales_targets', 'print_forms', 'product_terms',
-    'crm_leads', 'crm_deals', 'crm_activities'
+    'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1766,7 +1810,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 29 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 30 ตารางแล้ว';
 end
 $$;
 
@@ -1828,6 +1872,6 @@ from (values
   ('purchase_returns'), ('purchase_return_items'),
   ('stock_counts'), ('stock_count_items'), ('ship_events'), ('sql_connections'),
   ('salespersons'), ('sales_targets'), ('print_forms'), ('product_terms'),
-  ('crm_leads'), ('crm_deals'), ('crm_activities')
+  ('crm_leads'), ('crm_deals'), ('crm_activities'), ('customer_kinds')
 ) as x(name)
 order by x.name;

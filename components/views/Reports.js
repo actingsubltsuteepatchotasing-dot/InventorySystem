@@ -2447,6 +2447,14 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
 
   const sum = (f) => list.reduce((s, v) => s + (Number(v[f]) || 0), 0);
 
+  /*
+   * เฉพาะใบขายที่คัดลอกประเภทลูกค้าไว้ในตัวเอกสาร
+   * ใบซื้อและใบส่งคืนเป็นฝั่งเจ้าหนี้ ไม่มีประเภทลูกค้าให้แสดง
+   * แสดงค่าที่เก็บไว้ในใบ ไม่ได้อ่านสดจากทะเบียน รายงานย้อนหลังจึงไม่เปลี่ยน
+   * เมื่อมีคนแก้ประเภทของลูกค้าทีหลัง
+   */
+  const isSale = kind === "INVOICE";
+
   function printReport() {
     if (!list.length) return toast("ไม่มีข้อมูลสำหรับพิมพ์", "warn");
     print({
@@ -2461,6 +2469,7 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
               <th>เลขที่เอกสาร</th>
               <th>รหัส{cfg.party}</th>
               <th>ชื่อ{cfg.party}</th>
+              {isSale ? <th>ประเภทลูกค้า</th> : null}
               <th style={{ textAlign: "right" }}>ก่อนภาษี</th>
               <th style={{ textAlign: "right" }}>ภาษี</th>
               <th style={{ textAlign: "right" }}>สุทธิ</th>
@@ -2474,6 +2483,7 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
                 <td>{v.docNo}</td>
                 <td>{cfg.code(v)}</td>
                 <td>{cfg.partyName(v)}</td>
+                {isSale ? <td>{v.custKind}</td> : null}
                 <td style={{ textAlign: "right" }}>{num(v.base, 2)}</td>
                 <td style={{ textAlign: "right" }}>{num(v.vat, 2)}</td>
                 <td style={{ textAlign: "right" }}>{num(v.total, 2)}</td>
@@ -2496,9 +2506,11 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
   function exportFile(save) {
     save(
       ["วันที่", "เลขที่เอกสาร", "รหัส" + cfg.party, "ชื่อ" + cfg.party,
+        ...(isSale ? ["ประเภทลูกค้า"] : []),
         "รวมเงิน", "ส่วนลดท้ายบิล", "ก่อนภาษี", "อัตราภาษี", "ภาษี", "สุทธิ", "ผู้บันทึก"],
       list.map((v) => [
         v.date, v.docNo, cfg.code(v), cfg.partyName(v),
+        ...(isSale ? [v.custKind || ""] : []),
         v.itemsTotal, v.billDiscount, v.base, v.vatRate, v.vat, v.total, v.user,
       ]),
       "รายงาน" + cfg.name + ".csv"
@@ -2526,6 +2538,7 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
               <th style={{ minWidth: 150 }}>เลขที่เอกสาร</th>
               <th style={{ width: 90 }}>รหัส{cfg.party}</th>
               <th style={{ minWidth: 200 }}>ชื่อ{cfg.party}</th>
+              {isSale ? <th style={{ minWidth: 130 }}>ประเภทลูกค้า</th> : null}
               <th className="num" style={{ width: 110 }}>ก่อนภาษี</th>
               <th className="num" style={{ width: 100 }}>ภาษี</th>
               <th className="num" style={{ width: 120 }}>สุทธิ</th>
@@ -2538,6 +2551,7 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
                 <td className="code-cell">{v.docNo}</td>
                 <td>{cfg.code(v)}</td>
                 <td>{cfg.partyName(v)}</td>
+                {isSale ? <td className="muted">{v.custKind || "—"}</td> : null}
                 <td className="num">{num(v.base, 2)}</td>
                 <td className="num">{num(v.vat, 2)}</td>
                 <td className="num">
@@ -2548,7 +2562,7 @@ function DocReport({ inv, db, kind, filter, FilterBar, print, toast }) {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={4}>รวม {list.length} ใบ</td>
+              <td colSpan={isSale ? 5 : 4}>รวม {list.length} ใบ</td>
               <td className="num">{num(sum("base"), 2)}</td>
               <td className="num">{num(sum("vat"), 2)}</td>
               <td className="num">{num(sum("total"), 2)}</td>

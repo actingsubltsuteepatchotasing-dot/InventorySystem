@@ -11,7 +11,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
-import { BRANCH_KINDS, CUSTOMER_KINDS } from "@/lib/constants";
+import { BRANCH_KINDS } from "@/lib/constants";
+import { filterValues, optionsFor } from "@/lib/customerKinds";
 import { nextCustCode } from "@/lib/db";
 import { uid } from "@/lib/format";
 import { useToast } from "../Toast";
@@ -30,7 +31,10 @@ const blank = (code) => ({
   province: "",
   postcode: "",
   phone: "",
-  kind: CUSTOMER_KINDS[0],
+  // ลูกค้าใหม่ยังไม่ระบุประเภท ให้คนเลือกเองจากทะเบียน
+  // เดิมตั้งค่าตั้งต้นเป็นค่าแรกของรายการคงที่ ซึ่งทำให้ลูกค้าจำนวนมาก
+  // ถูกบันทึกเป็น "ลูกค้าทั่วไป" ทั้งที่ไม่มีใครตั้งใจเลือก แล้วรายงานแยกตามประเภทก็ไร้ความหมาย
+  kind: "",
   taxId: "",
   branch: "",
 });
@@ -228,7 +232,7 @@ export default function Customers() {
             aria-label="กรองตามประเภทลูกค้า"
           >
             <option value="">ทุกประเภท</option>
-            {CUSTOMER_KINDS.map((k) => (
+            {filterValues(db).map((k) => (
               <option key={k}>{k}</option>
             ))}
           </select>
@@ -338,16 +342,21 @@ export default function Customers() {
 
             <div className="field">
               <label className="lbl" htmlFor="cf_kind">ประเภทลูกค้า</label>
-              <select
-                className="sel"
+              {/* รายการมาจากทะเบียนที่ตั้งไว้ที่หน้า "กำหนดประเภทลูกค้า"
+                  บวกค่าที่ลูกค้ารายอื่นใช้อยู่แล้วแต่ยังไม่ได้จดทะเบียน
+                  ค่าที่ลูกค้ารายนี้ใช้อยู่จะอยู่ในรายการเสมอ แม้ถูกลบจากทะเบียนไปแล้ว */}
+              <SearchSelect
                 id="cf_kind"
                 value={form.kind}
-                onChange={(e) => set("kind", e.target.value)}
-              >
-                {CUSTOMER_KINDS.map((k) => (
-                  <option key={k}>{k}</option>
-                ))}
-              </select>
+                onChange={(v) => set("kind", v)}
+                options={optionsFor(db, form.kind)}
+                emptyLabel="— ไม่ระบุประเภท —"
+                notFound="ไม่พบประเภทลูกค้าที่ตรงกับ"
+                disabled={!perm.edit}
+              />
+              <span className="hint">
+                ตั้งรหัสและชื่อประเภทได้ที่เมนู <b>กำหนดประเภทลูกค้า</b>
+              </span>
             </div>
 
             <div className="field span2">

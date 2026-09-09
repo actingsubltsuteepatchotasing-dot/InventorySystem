@@ -132,6 +132,7 @@ export default function DataImport({ startSet }) {
       products: (d) => (d.products || []).map((x) => x.code),
       salespersons: (d) => (d.salespersons || []).map((x) => x.code),
       leads: (d) => (d.crmLeads || []).map((x) => x.code),
+      custkinds: (d) => (d.customerKinds || []).map((x) => x.code),
       // รหัสซ้ำข้ามมิติได้ กุญแจจึงเป็น "มิติ + รหัส" ไม่ใช่รหัสอย่างเดียว
       terms: (d) =>
         (d.productTerms || []).map((t) => keyOf(set, { dim: t.dim, code: t.code })),
@@ -339,6 +340,18 @@ export default function DataImport({ startSet }) {
         branch: v.branch,
       };
       return set.id === "customers" ? inv.saveCustomer(party) : inv.saveSupplier(party);
+    }
+
+    if (set.id === "custkinds") {
+      return inv.saveCustomerKind({
+        id: uid(),
+        code: v.code,
+        name: v.name,
+        note: v.note,
+        active: true,
+        user: who,
+        ts: Date.now(),
+      });
     }
 
     if (set.id === "leads") {

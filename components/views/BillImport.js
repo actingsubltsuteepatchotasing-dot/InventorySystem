@@ -148,6 +148,12 @@ export function parseAmount(raw) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** ประเภทลูกค้าของลูกค้ารายที่จับคู่ได้ — จับคู่ไม่ได้คืนค่าว่าง */
+function kindOfCustomer(db, id) {
+  const c = id ? (db.customers || []).find((x) => x.id === id) : null;
+  return c ? c.kind || "" : "";
+}
+
 export default function BillImport() {
   const inv = useInv();
   const perm = inv.perm("billimport");
@@ -367,6 +373,9 @@ export default function BillImport() {
               custProvince: r.custProvince,
               custTaxId: "",
               custBranch: "",
+              // ประเภทลูกค้าดึงจากทะเบียนของลูกค้าที่จับคู่ได้ ตามที่ตั้งไว้ที่หน้ารายละเอียดลูกค้า
+              // จับคู่ไม่ได้ก็เว้นว่าง ดีกว่าเดาประเภทให้เอง
+              custKind: kindOfCustomer(db, matchCustomer(db, r)),
               vatRate: 0,
               itemsTotal: r.total,
               billDiscount: 0,

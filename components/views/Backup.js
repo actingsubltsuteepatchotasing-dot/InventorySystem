@@ -61,6 +61,7 @@ const PARTS = [
   { key: "crmLeads", name: "ลูกค้าเป้าหมาย" },
   { key: "crmDeals", name: "โอกาสการขาย" },
   { key: "crmActivities", name: "บันทึกกิจกรรม" },
+  { key: "customerKinds", name: "ประเภทลูกค้า" },
 ];
 
 const stamp = () =>
