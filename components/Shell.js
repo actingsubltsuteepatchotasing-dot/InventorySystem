@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "./Toast";
 import {
   IcAdjust, IcBox, IcCart, IcChart, IcChevron, IcDash, IcData, IcDownload, IcGrid, IcIn,
-  IcMap, IcMenu, IcMove, IcOut, IcPin, IcPrint, IcReport, Logo,
+  IcMap, IcMenu, IcMove, IcOut, IcPin, IcPrint, IcReport, LogoFull,
 } from "./Icons";
 import BackupModal from "./BackupModal";
 import ChatWidget from "./ChatWidget";
@@ -311,11 +311,8 @@ export default function Shell() {
     <div className="app">
       <aside className={"sidebar" + (menuOpen ? " open" : "")}>
         <div className="brand">
-          <Logo size={36} bg="#ffffff" />
-          <div className="brand-txt">
-            <strong>One for All Ultra</strong>
-            <span>OFAU · หนึ่งเดียวเพื่อทุกสิ่ง</span>
-          </div>
+          {/* ตราเต็มบนแถบเมนูสีเขียวเข้ม จึงใช้ตัวอักษรสีขาว */}
+          <LogoFull width={186} tone="light" />
         </div>
 
         <nav className="side-nav">

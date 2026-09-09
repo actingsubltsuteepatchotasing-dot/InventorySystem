@@ -6,6 +6,7 @@ import {
   ARROW_WIDTH,
   FLAME_INNER,
   FLAME_OUTER,
+  LOCKUP,
   MARK,
   pointsOf,
 } from "@/lib/logo";
@@ -147,6 +148,71 @@ export function Logo({ size = 36, bg = "" }) {
       <polygon points={pointsOf(ARROW_HEAD)} fill={MARK.arrow} />
       <polygon points={pointsOf(FLAME_OUTER)} fill={MARK.flame} />
       <polygon points={pointsOf(FLAME_INNER)} fill={MARK.flameLight} />
+    </svg>
+  );
+}
+
+/**
+ * ตราเต็ม — ตัวอักษร OFAU พร้อมเปลวไฟ ลูกศร และชื่อเต็มใต้คำ
+ *
+ * ใช้ตรงที่มีพื้นที่แนวนอน ส่วนช่องสี่เหลี่ยมจัตุรัสแคบ ๆ ใช้ <Logo> แทน
+ * รูปทรงทั้งหมดมาจาก lib/logo.js ชุดเดียวกับตราย่อและไอคอน
+ *
+ * @param {number} width ความกว้างเป็นพิกเซล สูงตามสัดส่วนเอง
+ * @param {"dark"|"light"} tone สีตัวอักษร — dark สำหรับพื้นสว่าง, light สำหรับพื้นเข้ม
+ */
+export function LogoFull({ width = 220, tone = "dark" }) {
+  const ink = LOCKUP.ink[tone] || LOCKUP.ink.dark;
+  const { word, tagline } = LOCKUP;
+
+  return (
+    <svg
+      width={width}
+      viewBox={LOCKUP.view}
+      role="img"
+      aria-label="One for All Ultra"
+      style={{ display: "block", height: "auto" }}
+    >
+      {/* ลูกศรอยู่หลังตัวอักษร เปลวไฟอยู่หน้าสุด ลำดับเดียวกับตราต้นฉบับ */}
+      <path
+        d={LOCKUP.arrowD}
+        fill="none"
+        stroke={MARK.arrow}
+        strokeWidth={LOCKUP.arrowWidth}
+        strokeLinecap="round"
+      />
+      <polygon points={pointsOf(LOCKUP.arrowHead)} fill={MARK.arrow} />
+
+      <text
+        x={word.x}
+        y={word.y}
+        textAnchor="middle"
+        fill={ink}
+        fontSize={word.size}
+        fontWeight={word.weight}
+        letterSpacing={word.spacing}
+        fontFamily="inherit"
+      >
+        {word.text}
+      </text>
+
+      <text
+        x={tagline.x}
+        y={tagline.y}
+        textAnchor="middle"
+        fill={ink}
+        fontSize={tagline.size}
+        fontWeight={tagline.weight}
+        letterSpacing={tagline.spacing}
+        fontFamily="inherit"
+      >
+        {tagline.text}
+      </text>
+
+      <g transform={LOCKUP.flameTransform}>
+        <polygon points={pointsOf(FLAME_OUTER)} fill={MARK.flame} />
+        <polygon points={pointsOf(FLAME_INNER)} fill={MARK.flameLight} />
+      </g>
     </svg>
   );
 }

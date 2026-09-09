@@ -1090,6 +1090,23 @@ head("19. ตราสัญลักษณ์มาจากรูปทรง�
     n++;
   }
 
+  // ตราเต็ม (ตัวอักษร OFAU) ต้องมาจากไฟล์เดียวกัน ไม่ใช่พิมพ์ข้อความไว้ในหน้าจอ
+  if (!/LOCKUP/.test(icons)) {
+    bad("components/Icons.js ไม่ได้ใช้ค่าของตราเต็มจาก lib/logo.js");
+    n++;
+  }
+  if (!/export const LOCKUP = \{/.test(logo)) {
+    bad("lib/logo.js ไม่มีค่าของตราเต็ม (LOCKUP)");
+    n++;
+  }
+  // ชื่อบนตราต้องมีที่เดียว ถ้าพิมพ์ซ้ำในหน้าจอ วันหนึ่งจะแก้ไม่ครบ
+  ["ONE FOR ALL ULTRA"].forEach((t) => {
+    if (icons.split(t).length > 2) {
+      bad("ข้อความบนตรา \"" + t + "\" ถูกพิมพ์ซ้ำใน components/Icons.js");
+      n++;
+    }
+  });
+
   // สีของตราต้องเป็นค่าคงที่ ไม่ใช่ตัวแปรธีม (โลโก้ต้องสีเดิมทั้งธีมสว่างและมืด)
   const markBlock = logo.slice(logo.indexOf("export const MARK = {"), logo.indexOf("};"));
   if (/var\(--/.test(markBlock)) {

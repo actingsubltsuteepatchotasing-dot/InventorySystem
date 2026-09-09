@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { configHint } from "@/lib/supabase";
-import { Logo } from "./Icons";
+import { LogoFull } from "./Icons";
 
 /** หน้าเข้าสู่ระบบ — Supabase Auth ด้วยอีเมลและรหัสผ่าน */
 export default function Login() {
@@ -38,15 +38,10 @@ export default function Login() {
     <div className="login-page">
       <form className="login-card" onSubmit={submit} noValidate>
         <div className="login-logo">
-          <Logo size={62} />
-          <div>
-            <h1>One for All Ultra</h1>
-            <small>
-              OFAU · หนึ่งเดียวเพื่อทุกสิ่ง
-              <br />
-              สินค้าคงคลัง · งานซื้อ · งานขาย · จัดส่ง · ลูกค้าสัมพันธ์
-            </small>
-          </div>
+          <LogoFull width={250} />
+          <small>
+            หนึ่งเดียวเพื่อทุกสิ่ง — สินค้าคงคลัง · งานซื้อ · งานขาย · จัดส่ง · ลูกค้าสัมพันธ์
+          </small>
         </div>
 
         {!configured ? (

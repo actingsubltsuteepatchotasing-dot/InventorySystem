@@ -4,7 +4,7 @@
 // ซึ่งซ่อนอยู่บนหน้าจอ และแสดงเฉพาะตอนสั่งพิมพ์ (ดู @media print ใน globals.css)
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Logo } from "./Icons";
+import { LogoFull } from "./Icons";
 import { thDateTime } from "@/lib/format";
 
 const PrintContext = createContext(null);
@@ -54,10 +54,9 @@ function PrintDoc({ title, subtitle, body, signers = true, receipt = false, bare
   return (
     <>
       <div className="pr-head">
-        <Logo size={46} />
+        <LogoFull width={168} />
         <div className="org">
-          <b>One for All Ultra</b>
-          <span>ระบบควบคุมสินค้าคงคลัง</span>
+          <span>หนึ่งเดียวเพื่อทุกสิ่ง</span>
         </div>
         <div className="rt">
           พิมพ์โดย: admin
