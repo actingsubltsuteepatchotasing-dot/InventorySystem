@@ -1444,11 +1444,82 @@ head("20. หมวดการรับฟังลูกค้าต่อค�
     n++;
   }
 
+  /* ---------------- คู่มือ Word ---------------- */
+  /*
+   * คู่มือถูกสร้างจากโค้ด ไม่ใช่ไฟล์ Word ที่พิมพ์ทิ้งไว้
+   * ถ้าเพิ่มหน้าจอใหม่แล้วลืมเขียนคู่มือ คนใช้จะได้เล่มที่ขาดไปหนึ่งบทโดยไม่มีใครรู้
+   * ตรงนี้จึงบังคับให้คู่มือครอบคลุมทุกหน้าจอเสมอ เหมือนที่หมวด 18 ทำกับคู่มือในโปรแกรม
+   */
+  const manual = read("lib/vocManual.js");
+  const docx = read("lib/docx.js");
+
+  SCREENS.forEach((id) => {
+    if (!new RegExp('id: "' + id + '"').test(manual)) {
+      bad("คู่มือ Word ยังไม่มีบทของหน้าจอ " + id);
+      n++;
+    }
+  });
+
+  // ทุกหน้าจอในคู่มือต้องบอกครบว่าทำอะไร ใครใช้ ใช้ตอนไหน ได้อะไร และตอบเกณฑ์ข้อไหน
+  const manualScreens = (manual.match(/^    id: "voc\w*",$/gm) || []).length;
+  if (manualScreens !== SCREENS.length) {
+    bad("คู่มือ Word มี " + manualScreens + " บท แต่มีหน้าจอ " + SCREENS.length + " หน้า");
+    n++;
+  }
+  ["what:", "who:", "when:", "steps:", "result:", "criteria:"].forEach((key) => {
+    const found = (manual.match(new RegExp("^    " + key, "gm")) || []).length;
+    if (found !== SCREENS.length) {
+      bad("คู่มือ Word มีหัวข้อ " + key.replace(":", "") + " แค่ " + found + " บท จาก " + SCREENS.length);
+      n++;
+    }
+  });
+
+  // ไฟล์คู่มือที่สร้างไว้ในโครงงานต้องมีอยู่จริงและเปิดได้
+  const manualPath = path.join(ROOT, "Docs", "คู่มือการรับฟังลูกค้า.docx");
+  if (!fs.existsSync(manualPath)) {
+    bad("ไม่พบไฟล์ Docs/คู่มือการรับฟังลูกค้า.docx (สร้างด้วย node tools/make-voc-manual.mjs)");
+    n++;
+  } else {
+    const b = fs.readFileSync(manualPath);
+    if (b[0] !== 0x50 || b[1] !== 0x4b) {
+      bad("Docs/คู่มือการรับฟังลูกค้า.docx ไม่ใช่ไฟล์ zip ที่ถูกต้อง");
+      n++;
+    } else if (b.length < 20000) {
+      bad("Docs/คู่มือการรับฟังลูกค้า.docx เล็กผิดปกติ (" + Math.round(b.length / 1024) + " KB) น่าจะสร้างไม่ครบ");
+      n++;
+    }
+  }
+
+  if (!fs.existsSync(path.join(ROOT, "tools", "make-voc-manual.mjs"))) {
+    bad("ไม่พบ tools/make-voc-manual.mjs ซึ่งเป็นตัวสร้างไฟล์คู่มือ");
+    n++;
+  }
+
+  // ไฟล์ Word ต้องมีทุกส่วนที่ Word บังคับ ขาดอันเดียวก็เปิดไม่ขึ้น
+  [
+    "[Content_Types].xml",
+    "_rels/.rels",
+    "word/document.xml",
+    "word/styles.xml",
+    "word/_rels/document.xml.rels",
+  ].forEach((part) => {
+    if (!docx.includes(part)) {
+      bad("lib/docx.js ไม่ได้สร้างส่วนที่ Word บังคับ: " + part);
+      n++;
+    }
+  });
+
+  // ทุกช่องตารางต้องมีย่อหน้า ไม่งั้น Word ถือว่าไฟล์เสีย — ต้องมีตัวกันไว้ในโค้ด
+  if (!/content && content\.length \? content : blank\(\)/.test(docx)) {
+    bad("lib/docx.js ไม่ได้กันช่องตารางว่างเปล่า (Word จะฟ้องว่าไฟล์เสีย)");
+    n++;
+  }
+
   if (!n) {
     ok(
       "หมวดการรับฟังลูกค้าครบทุกชั้น · " + SCREENS.length + " หน้าจอ · " + TABLES.length +
         " ตาราง · เกณฑ์ 2 ข้อ 10 ระดับ " + checkIds.length + " จุดตรวจ · ตัวตรวจอัตโนมัติ " +
-        new Set(autoNames).size + " ตัวมีครบ"
+        new Set(autoNames).size + " ตัวมีครบ · คู่มือ Word ครบทุกหน้าจอ"
     );
   }
 }

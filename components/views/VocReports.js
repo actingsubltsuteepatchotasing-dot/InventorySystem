@@ -14,6 +14,8 @@ import { useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { downloadWorkbook } from "@/lib/xlsx";
 import { downloadPPTX } from "@/lib/pptx";
+import { downloadDOCX } from "@/lib/docx";
+import { buildManual } from "@/lib/vocManual";
 import { num, thDate, todayISO } from "@/lib/format";
 import { buildDeck, executiveSummary, levelText, reportSheets } from "@/lib/vocReport";
 import { usePrint } from "../Print";
@@ -42,6 +44,25 @@ export default function VocReports({ onNavigate }) {
       toast("ส่งออกไฟล์ Excel " + sheets.length + " ชีตแล้ว", "ok");
     } catch (e) {
       toast("ส่งออกไม่สำเร็จ: " + e.message, "err");
+    }
+  }
+
+  /*
+   * คู่มือ Word — เนื้อหามาจาก lib/vocManual.js ซึ่งดึงข้อความเกณฑ์และรายการตั้งต้น
+   * จาก lib/voc.js อีกที กดปุ่มนี้เมื่อไรจึงได้ฉบับที่ตรงกับระบบ ณ ตอนนั้นเสมอ
+   * ไม่ใช่ไฟล์ที่พิมพ์ทิ้งไว้แล้วเก่าโดยไม่มีใครรู้
+   */
+  function exportManual() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const doc = buildManual({ org, dateText: thDate(stamp) });
+      downloadDOCX(doc, "คู่มือการรับฟังลูกค้า-หมวด3-" + stamp);
+      toast("ส่งออกคู่มือ Word แล้ว", "ok");
+    } catch (e) {
+      toast("ส่งออกไม่สำเร็จ: " + e.message, "err");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -115,6 +136,9 @@ export default function VocReports({ onNavigate }) {
             <button className="btn btn-p btn-sm" onClick={exportPPT} disabled={busy}>
               {busy ? "กำลังสร้าง…" : "PowerPoint"}
             </button>
+            <button className="btn btn-g btn-sm" onClick={exportManual} disabled={busy}>
+              คู่มือ Word
+            </button>
             <button className="btn btn-o btn-sm" onClick={printReport}>
               พิมพ์ / PDF
             </button>
@@ -153,7 +177,8 @@ export default function VocReports({ onNavigate }) {
 
         <span className="hint">
           ข้อมูล ณ วันที่ {thDate(stamp)}
-          {org ? " · " + org : ""} · ไฟล์นำเสนอเป็น .pptx จริงที่เปิดแก้ต่อใน PowerPoint ได้
+          {org ? " · " + org : ""} · ไฟล์ที่ส่งออกเป็นไฟล์จริงทั้งหมด เปิดแก้ต่อใน Excel
+          PowerPoint และ Word ได้ ไม่ใช่ภาพ
         </span>
       </Card>
 
