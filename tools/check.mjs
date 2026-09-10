@@ -1209,5 +1209,283 @@ head("19. ตราสัญลักษณ์มาจากไฟล์ภา�
   }
 }
 
+head("20. หมวดการรับฟังลูกค้าต่อครบทุกชั้น");
+{
+  /*
+   * หมวดนี้เป็นหัวข้อใหญ่ของตัวเอง มีเจ็ดหน้าจอกับหกตาราง ที่ต้องประกาศตรงกันแปดที่:
+   *   เมนู · ตารางสิทธิ · คู่มือ · ตัวเลือกหน้าจอใน Shell ·
+   *   schema.sql · lib/api.js · lib/store.js · หน้าสำรองข้อมูล
+   * ลืมที่ใดที่หนึ่งแล้วอาการจะต่างกันไปคนละแบบ และบางแบบเงียบมาก
+   * (เช่น ลืมใส่ในหน้าสำรองข้อมูล = กู้คืนแล้วข้อมูลทั้งหมวดหายโดยไม่มีใครรู้)
+   *
+   * ที่สำคัญกว่านั้นคือ "ระดับที่ได้" ต้องคำนวณจากข้อมูลจริง
+   * ถ้าจุดตรวจอ้างตัวตรวจที่ไม่มีอยู่ ระบบจะรายงานระดับผิดโดยไม่มีใครรู้
+   * ซึ่งอันตรายกว่าไม่มีระบบนี้เลย
+   */
+  const voc = read("lib/voc.js");
+  const shell = read("components/Shell.js");
+  const consts = read("lib/constants.js");
+  const guide = read("lib/guide.js");
+  const api = read("lib/api.js");
+  const store = read("lib/store.js");
+  const backup = read("components/views/Backup.js");
+  const schema = read("supabase/schema.sql");
+  let n = 0;
+
+  const SCREENS = ["voc", "vocchan", "vocrec", "vocsurvey", "voclevel", "vocaction", "vocreport"];
+  const TABLES = [
+    "voc_channels",
+    "voc_records",
+    "voc_surveys",
+    "voc_survey_results",
+    "voc_actions",
+    "voc_levels",
+  ];
+  const STORE_KEYS = [
+    "vocChannels",
+    "vocRecords",
+    "vocSurveys",
+    "vocResults",
+    "vocActions",
+    "vocLevels",
+  ];
+
+  /* ---------------- หน้าจอต้องประกาศครบทุกที่ ---------------- */
+  SCREENS.forEach((id) => {
+    if (!new RegExp('id: "' + id + '"').test(shell)) {
+      bad("เมนูยังไม่มีหน้าจอ " + id);
+      n++;
+    }
+    if (!new RegExp('id: "' + id + '"').test(consts)) {
+      bad("ตารางสิทธิยังไม่มีหน้าจอ " + id);
+      n++;
+    }
+    if (!new RegExp('^  ' + id + ": \\{", "m").test(guide)) {
+      bad("คู่มือยังไม่มีหน้าจอ " + id);
+      n++;
+    }
+    if (!new RegExp('activeView === "' + id + '"').test(shell)) {
+      bad("Shell ยังไม่ได้เลือกหน้าจอ " + id + " มาแสดง");
+      n++;
+    }
+  });
+
+  // ต้องอยู่ในกลุ่มเมนูของตัวเอง ไม่ปนกับหมวดอื่น
+  if (!/group: "การรับฟังลูกค้า \(หมวด 3\)"/.test(shell)) {
+    bad("หมวดการรับฟังลูกค้าไม่ได้แยกเป็นกลุ่มเมนูของตัวเอง");
+    n++;
+  }
+
+  /* ---------------- ตารางต้องประกาศครบทุกชั้น ---------------- */
+  TABLES.forEach((t) => {
+    if (!new RegExp("create table if not exists public\\." + t + "\\b").test(schema)) {
+      bad("schema.sql ยังไม่มีตาราง " + t);
+      n++;
+    }
+    if (!new RegExp("grant all privileges on table public\\." + t + "\\b").test(schema)) {
+      bad("schema.sql ยังไม่ได้ GRANT ตาราง " + t + " (403 จะเกิดตอนใช้งานจริง)");
+      n++;
+    }
+    // ต้องอยู่ในทั้งสามรายการ: row_order · RLS · ตารางตรวจผลท้ายไฟล์
+    const listed = (schema.match(new RegExp("'" + t + "'", "g")) || []).length;
+    if (listed < 3) {
+      bad("schema.sql อ้าง " + t + " แค่ " + listed + " ที่ ต้องมีครบทั้ง row_order, RLS และตารางตรวจผล");
+      n++;
+    }
+    if (!new RegExp('"' + t + '"').test(api)) {
+      bad("lib/api.js ยังไม่รู้จักตาราง " + t);
+      n++;
+    }
+  });
+
+  STORE_KEYS.forEach((k) => {
+    if (!new RegExp("^  " + k + ": \\[\\]", "m").test(store)) {
+      bad("lib/store.js ไม่มีค่าตั้งต้นของ " + k + " (หน้าจอจะพังตอนยังโหลดไม่เสร็จ)");
+      n++;
+    }
+    if (!new RegExp('key: "' + k + '"').test(backup)) {
+      bad("หน้าสำรองข้อมูลยังไม่มี " + k + " (กู้คืนแล้วข้อมูลส่วนนี้จะหายเงียบ ๆ)");
+      n++;
+    }
+    if (!new RegExp(k + ":").test(api)) {
+      bad("lib/api.js ไม่ได้ส่ง " + k + " กลับมาจาก loadAll");
+      n++;
+    }
+  });
+
+  // ตัวเช็คความพร้อมต้องครอบคลุมทุกตาราง ไม่งั้นเปิดหน้าจอมาแล้วพังกลางทาง
+  const readyBlock = voc0(api, "export const vocReady", ";");
+  TABLES.forEach((t) => {
+    if (readyBlock && !readyBlock.includes(t)) {
+      bad("vocReady ไม่ได้ตรวจตาราง " + t);
+      n++;
+    }
+  });
+
+  /* ---------------- เกณฑ์ต้องครบและตรวจได้จริง ---------------- */
+  const critCount = (voc.match(/^    id: "3\.[12]",$/gm) || []).length;
+  if (critCount !== 2) {
+    bad("lib/voc.js ต้องมีเกณฑ์ย่อยสองข้อ (3.1 และ 3.2) แต่พบ " + critCount);
+    n++;
+  }
+
+  const levels = (voc.match(/^        level: [1-5],$/gm) || []).length;
+  if (levels !== 10) {
+    bad("เกณฑ์ต้องมีข้อละ 5 ระดับ รวม 10 ระดับ แต่พบ " + levels);
+    n++;
+  }
+
+  // รหัสจุดตรวจต้องไม่ซ้ำ — ซ้ำแล้วผลการยืนยันจะทับกันเพราะตารางใช้ check_id เป็นกุญแจ
+  const checkIds = [...voc.matchAll(/\{ id: "(3[12]L[1-5][a-z])"/g)].map((m) => m[1]);
+  const dupIds = checkIds.filter((x, i) => checkIds.indexOf(x) !== i);
+  if (dupIds.length) {
+    bad("รหัสจุดตรวจซ้ำ: " + [...new Set(dupIds)].join(", "));
+    n++;
+  }
+  if (checkIds.length < 30) {
+    bad("จุดตรวจมีแค่ " + checkIds.length + " ข้อ ซึ่งน้อยเกินกว่าจะครอบคลุมเกณฑ์ทั้ง 10 ระดับ");
+    n++;
+  }
+
+  // รหัสต้องตรงกับข้อและระดับที่มันอยู่ ไม่งั้นรายงานจะจัดกลุ่มผิด
+  const wrongPlace = [];
+  CRIT_BLOCKS(voc).forEach(({ crit, level, ids }) => {
+    ids.forEach((id) => {
+      if (!id.startsWith(crit.replace(".", "") + "L" + level)) wrongPlace.push(id);
+    });
+  });
+  if (wrongPlace.length) {
+    bad("รหัสจุดตรวจไม่ตรงกับข้อหรือระดับที่มันอยู่: " + wrongPlace.join(", "));
+    n++;
+  }
+
+  // ตัวตรวจอัตโนมัติที่อ้างถึงต้องมีอยู่จริง
+  const autoNames = [...voc.matchAll(/auto: "(\w+)"/g)].map((m) => m[1]);
+  const declared = new Set([
+    ...[...voc.matchAll(/^  (\w+)\(d\) \{/gm)].map((m) => m[1]),
+    ...[...voc.matchAll(/^  (\w+): \(d\) =>/gm)].map((m) => m[1]),
+  ]);
+  const missingAuto = [...new Set(autoNames)].filter((x) => !declared.has(x));
+  if (missingAuto.length) {
+    bad("จุดตรวจอ้างตัวตรวจที่ไม่มีอยู่จริง: " + missingAuto.join(", "));
+    n++;
+  }
+  const unusedAuto = [...declared].filter((x) => !autoNames.includes(x));
+  if (unusedAuto.length) {
+    bad("มีตัวตรวจที่เขียนไว้แล้วไม่มีจุดตรวจไหนใช้: " + unusedAuto.join(", "));
+    n++;
+  }
+
+  /* ---------------- ข้อมูลตั้งต้นต้องตรงกับที่ตกลงไว้ ---------------- */
+  const PRODUCTS = [
+    "ผลิตภัณฑ์จากยางพารา", "หมอน", "ท้อปเปอร์", "ยางก้อนถ้วย",
+    "ยางก้อนแท่ง", "ปุ๋ยเคมี", "ปุ๋ยอินทรีย์", "น้ำหมักชีวภาพ",
+  ];
+  const missingProd = PRODUCTS.filter((x) => !voc.includes('name: "' + x + '"'));
+  if (missingProd.length) {
+    bad("รายการผลิตภัณฑ์ขาด: " + missingProd.join(", "));
+    n++;
+  }
+
+  ["กลุ่มลูกค้าเชิงพาณิชย์", "กลุ่มลูกค้าด้านส่งเสริม"].forEach((g) => {
+    if (!voc.includes(g)) {
+      bad("รายการกลุ่มลูกค้าขาด: " + g);
+      n++;
+    }
+  });
+
+  // น้ำหนักรวมของหมวดต้องเป็น 10% ตามเกณฑ์
+  const weights = [...voc.matchAll(/^    weight: (\d+),$/gm)].map((m) => Number(m[1]));
+  const sum = weights.reduce((t, w) => t + w, 0);
+  if (sum !== 10) {
+    bad("น้ำหนักรวมของหมวดต้องเป็น 10% แต่รวมได้ " + sum);
+    n++;
+  }
+
+  /* ---------------- รายงานและไฟล์นำเสนอ ---------------- */
+  const report = read("lib/vocReport.js");
+  const pptx = read("lib/pptx.js");
+
+  // ตัวประกอบ zip ต้องมีชุดเดียว ไม่งั้นวันแก้บั๊กจะแก้ไม่ครบ
+  ["lib/xlsx.js", "lib/pptx.js"].forEach((f) => {
+    if (!/from "\.\/zip(\.js)?"/.test(read(f))) {
+      bad(f + " ไม่ได้ใช้ตัวประกอบ zip จาก lib/zip.js");
+      n++;
+    }
+    if (/^function zip\(/m.test(read(f))) {
+      bad(f + " เขียนตัวประกอบ zip ซ้ำ แทนที่จะใช้ของกลาง");
+      n++;
+    }
+  });
+
+  // ไฟล์นำเสนอต้องมีทุกส่วนที่ PowerPoint บังคับ ขาดอันเดียวก็เปิดไม่ขึ้น
+  [
+    "[Content_Types].xml",
+    "_rels/.rels",
+    "ppt/presentation.xml",
+    "ppt/slideMasters/slideMaster1.xml",
+    "ppt/slideLayouts/slideLayout1.xml",
+    "ppt/theme/theme1.xml",
+  ].forEach((part) => {
+    if (!pptx.includes(part)) {
+      bad("lib/pptx.js ไม่ได้สร้างส่วนที่ PowerPoint บังคับ: " + part);
+      n++;
+    }
+  });
+
+  // หน้าจอรายงานต้องหยิบตัวเลขจากตัวประกอบกลาง ไม่ใช่คำนวณเอง
+  const repScreen = read(path.join("components", "views", "VocReports.js"));
+  if (!/from "@\/lib\/vocReport"/.test(repScreen)) {
+    bad("หน้าจอรายงานไม่ได้ใช้ตัวประกอบรายงานกลาง ตัวเลขบนจอกับในไฟล์จะไม่ตรงกัน");
+    n++;
+  }
+  if (/assessAll\(/.test(repScreen)) {
+    bad("หน้าจอรายงานคำนวณระดับเอง แทนที่จะใช้ผลจาก lib/vocReport.js");
+    n++;
+  }
+
+  if (!n) {
+    ok(
+      "หมวดการรับฟังลูกค้าครบทุกชั้น · " + SCREENS.length + " หน้าจอ · " + TABLES.length +
+        " ตาราง · เกณฑ์ 2 ข้อ 10 ระดับ " + checkIds.length + " จุดตรวจ · ตัวตรวจอัตโนมัติ " +
+        new Set(autoNames).size + " ตัวมีครบ"
+    );
+  }
+}
+
+/** ตัดข้อความตั้งแต่คำที่ระบุจนถึงตัวปิด ใช้ดูเนื้อในของฟังก์ชันสั้น ๆ */
+function voc0(src, from, until) {
+  const at = src.indexOf(from);
+  if (at < 0) return "";
+  const end = src.indexOf(until, at);
+  return end < 0 ? src.slice(at) : src.slice(at, end);
+}
+
+/**
+ * แตกจุดตรวจของ lib/voc.js ออกเป็นกลุ่มตามข้อและระดับ
+ * ใช้ตรวจว่ารหัสจุดตรวจอยู่ถูกที่ (ไม่ใช่ก๊อปมาแล้วลืมแก้เลขระดับ)
+ */
+function CRIT_BLOCKS(voc) {
+  const out = [];
+  let crit = "";
+  let level = 0;
+  voc.split("\n").forEach((line) => {
+    const c = line.match(/^    id: "(3\.[12])",$/);
+    if (c) {
+      crit = c[1];
+      return;
+    }
+    const l = line.match(/^        level: ([1-5]),$/);
+    if (l) {
+      level = Number(l[1]);
+      out.push({ crit, level, ids: [] });
+      return;
+    }
+    const id = line.match(/\{ id: "(3[12]L[1-5][a-z])"/);
+    if (id && out.length) out[out.length - 1].ids.push(id[1]);
+  });
+  return out;
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);

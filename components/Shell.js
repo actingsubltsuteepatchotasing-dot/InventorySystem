@@ -55,6 +55,13 @@ import CountPrep from "./views/CountPrep";
 import CountScan from "./views/CountScan";
 import ShipScan from "./views/ShipScan";
 import Backup from "./views/Backup";
+import VocDash from "./views/VocDash";
+import VocChannels from "./views/VocChannels";
+import VocRecords from "./views/VocRecords";
+import VocSurveys from "./views/VocSurveys";
+import VocLevels from "./views/VocLevels";
+import VocActions from "./views/VocActions";
+import VocReports from "./views/VocReports";
 
 const NAV = [
   {
@@ -99,6 +106,18 @@ const NAV = [
       { id: "activities", Icon: IcReport, title: "บันทึกกิจกรรม", sub: "โทร เข้าพบ และนัดครั้งถัดไป" },
       { id: "leads", Icon: IcPin, title: "ลูกค้าเป้าหมาย", sub: "ผู้สนใจที่ยังไม่เป็นลูกค้า" },
       { id: "cust360", Icon: IcData, title: "ภาพรวมลูกค้า", sub: "ทุกอย่างของลูกค้าหนึ่งรายในหน้าเดียว" },
+    ],
+  },
+  {
+    group: "การรับฟังลูกค้า (หมวด 3)",
+    items: [
+      { id: "voc", Icon: IcDash, title: "ภาพรวมการรับฟังลูกค้า", sub: "ระดับตามเกณฑ์ เสียงลูกค้า และงานที่ค้าง" },
+      { id: "vocchan", Icon: IcPin, title: "ช่องทางการรับฟัง", sub: "ทะเบียนช่องทางและความครอบคลุมตามเกณฑ์" },
+      { id: "vocrec", Icon: IcReport, title: "เสียงของลูกค้า", sub: "บันทึกทีละเรื่อง จำแนกครบทุกมิติ" },
+      { id: "vocsurvey", Icon: IcChart, title: "ประเมินความพึงพอใจ", sub: "รอบประเมิน ความผูกพัน และผลรายกลุ่ม" },
+      { id: "voclevel", Icon: IcGrid, title: "ประเมินระดับตามเกณฑ์", sub: "จุดตรวจ 5 ระดับ พร้อมหลักฐาน" },
+      { id: "vocaction", Icon: IcMove, title: "แผนปรับปรุงและนวัตกรรม", sub: "รายงานผู้บริหาร ความรู้ และการนำไปใช้" },
+      { id: "vocreport", Icon: IcDownload, title: "รายงานและนำเสนอ", sub: "ส่งออก Excel และไฟล์ PowerPoint" },
     ],
   },
   {
@@ -431,6 +450,13 @@ export default function Shell() {
           {activeView === "leads" && <Leads onNavigate={navigate} />}
           {activeView === "cust360" && <Customer360 onNavigate={navigate} />}
           {activeView === "dash" && <Dashboard onNavigate={navigate} />}
+          {activeView === "voc" && <VocDash onNavigate={navigate} />}
+          {activeView === "vocchan" && <VocChannels />}
+          {activeView === "vocrec" && <VocRecords />}
+          {activeView === "vocsurvey" && <VocSurveys />}
+          {activeView === "voclevel" && <VocLevels onNavigate={navigate} />}
+          {activeView === "vocaction" && <VocActions />}
+          {activeView === "vocreport" && <VocReports onNavigate={navigate} />}
           {activeView === "receive" && <TxnScreen key="receive" type="RECEIVE" />}
           {activeView === "issue" && <TxnScreen key="issue" type="ISSUE" />}
           {activeView === "transfer" && <TxnScreen key="transfer" type="TRANSFER" />}

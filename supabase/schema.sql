@@ -1654,6 +1654,240 @@ create index if not exists crm_activities_cust_idx on public.crm_activities (cus
 create index if not exists crm_activities_deal_idx on public.crm_activities (deal_id);
 
 -- ============================================================================
+-- การรับฟังลูกค้า (SE-AM หมวด 3) — 6 ตาราง
+-- ----------------------------------------------------------------------------
+-- หมวดนี้แยกจากงานส่วนอื่นของระบบโดยตั้งใจ
+--   งานคลัง งานขาย งานลูกค้าสัมพันธ์ ตอบว่า "ขายอะไรไปเท่าไร"
+--   หมวดนี้ตอบว่า "เราฟังลูกค้าอย่างเป็นระบบแค่ไหน และอยู่ระดับไหนของเกณฑ์"
+--
+--   voc_channels        ช่องทางการรับฟัง ครอบคลุมกลุ่มไหนและช่วงใดของวงจรชีวิต
+--   voc_records         เสียงของลูกค้าที่รับฟังมาได้ทีละเรื่อง
+--   voc_surveys         รอบการประเมินความพึงพอใจ/ไม่พึงพอใจ/ความผูกพัน
+--   voc_survey_results  ผลของแต่ละรอบ แยกรายกลุ่มลูกค้า ผลิตภัณฑ์ และมิติ
+--   voc_actions         แผนปรับปรุง รายงานผู้บริหาร ความรู้ และนวัตกรรมที่ทำต่อ
+--   voc_levels          ผลการยืนยันจุดตรวจของเกณฑ์ที่ระบบตรวจเองไม่ได้
+--
+-- ทำไมไม่ใช้ตาราง customers ที่มีอยู่เป็นตัวตั้ง:
+--   เกณฑ์บังคับให้รับฟัง "อดีตลูกค้า ลูกค้าคู่แข่ง และผู้ที่อาจเป็นลูกค้าในอนาคต" ด้วย
+--   คนสามกลุ่มนี้ไม่มีอยู่ในทะเบียนลูกค้า และไม่ควรเอาไปใส่ปนกัน
+--   เพราะรายงานทุกตัวที่นับ "จำนวนลูกค้า" จะเพี้ยนทันที (เหตุผลเดียวกับ crm_leads)
+--   เสียงลูกค้าจึงผูกกับทะเบียนลูกค้าแบบไม่บังคับ ใครไม่อยู่ในทะเบียนก็บันทึกชื่อไว้ตรง ๆ ได้
+
+-- ช่องทางการรับฟัง
+-- ----------------------------------------------------------------------------
+-- groups / lifecycle เก็บเป็น text[] เพราะหนึ่งช่องทางครอบคลุมได้หลายกลุ่มพร้อมกัน
+-- (เช่น เพจเฟซบุ๊กรับฟังทั้งลูกค้าปัจจุบัน อดีตลูกค้า และผู้ที่อาจเป็นลูกค้า)
+-- ถ้าแยกเป็นตารางลูกจะต้อง join ทุกครั้งที่ตรวจความครอบคลุม ซึ่งเป็นการตรวจที่ทำบ่อยที่สุดในหมวดนี้
+create table if not exists public.voc_channels (
+  id          text primary key,
+  code        text not null,
+  name        text not null,
+  kind        text not null default 'WEB',
+  groups      text[] not null default '{}',
+  lifecycle   text[] not null default '{}',
+  dimension   text not null default '',
+  freq        text not null default 'MONTHLY',
+  owner       text not null default '',
+  practice    text not null default '',
+  note        text not null default '',
+  active      boolean not null default true,
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint voc_channels_kind
+    check (kind in ('SOCIAL', 'WEB', 'APP', 'CALL', 'VISIT', 'EVENT', 'SURVEY', 'FRONT', 'DOC')),
+  constraint voc_channels_freq
+    check (freq in ('REALTIME', 'DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'HALFYEAR', 'YEARLY')),
+  constraint voc_channels_code_len check (char_length(code) <= 50),
+  constraint voc_channels_name_len check (char_length(name) <= 200)
+);
+
+create unique index if not exists voc_channels_code_key on public.voc_channels (lower(code));
+create index if not exists voc_channels_kind_idx on public.voc_channels (kind);
+
+-- เสียงของลูกค้า
+-- ----------------------------------------------------------------------------
+-- หนึ่งแถวคือหนึ่งเรื่องที่ได้ยินมาจากลูกค้าหนึ่งราย ผ่านหนึ่งช่องทาง
+--
+-- ช่องทางเป็น restrict ไม่ใช่ set null — เสียงลูกค้าที่ไม่รู้ว่ามาจากช่องทางไหน
+-- ใช้ตรวจความครอบคลุมของช่องทางไม่ได้เลย ซึ่งเป็นหัวใจของเกณฑ์ระดับ 2 และ 3
+-- ช่องทางที่เลิกใช้ให้ปิดใช้งาน (active = false) แทนการลบ
+create table if not exists public.voc_records (
+  id          text primary key,
+  code        text not null,
+  date        date not null,
+  channel_id  text not null references public.voc_channels (id) on delete restrict,
+  group_id    text not null default 'COMM',
+  lifecycle   text not null default 'CURRENT',
+  dimension   text not null default 'PRODUCT',
+  product_id  text not null default '',
+  kind        text not null default 'NEED',
+  priority    text not null default 'MED',
+  status      text not null default 'NEW',
+  customer_id text references public.customers (id) on delete set null,
+  party_name  text not null default '',
+  province    text not null default '',
+  subject     text not null default '',
+  detail      text not null default '',
+  response    text not null default '',
+  owner       text not null default '',
+  due_date    date,
+  closed_date date,
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint voc_records_group     check (group_id in ('COMM', 'PROMO')),
+  constraint voc_records_lifecycle check (lifecycle in ('FUTURE', 'NEW', 'CURRENT', 'FORMER', 'RIVAL')),
+  constraint voc_records_dimension check (dimension in ('PRODUCT', 'SUPPORT', 'TXN', 'RELATION', 'IMAGE')),
+  constraint voc_records_kind      check (kind in ('NEED', 'COMPLAINT', 'SUGGEST', 'PRAISE', 'INQUIRY')),
+  constraint voc_records_priority  check (priority in ('HIGH', 'MED', 'LOW')),
+  constraint voc_records_status    check (status in ('NEW', 'ANALYZED', 'ASSIGNED', 'DONE', 'CLOSED'))
+);
+
+create unique index if not exists voc_records_code_key on public.voc_records (lower(code));
+create index if not exists voc_records_date_idx    on public.voc_records (date);
+create index if not exists voc_records_channel_idx on public.voc_records (channel_id);
+create index if not exists voc_records_group_idx   on public.voc_records (group_id);
+create index if not exists voc_records_status_idx  on public.voc_records (status);
+
+-- รอบการประเมิน
+-- ----------------------------------------------------------------------------
+-- sample_size กับ responded ใช้คำนวณร้อยละการตอบกลับ ซึ่งเกณฑ์ระดับ 5 ระบุไว้ตรง ๆ
+-- ว่าเป็นประเด็นหนึ่งของการประเมินประสิทธิผล จึงต้องเก็บเป็นตัวเลข ไม่ใช่เขียนไว้ในหมายเหตุ
+create table if not exists public.voc_surveys (
+  id           text primary key,
+  code         text not null,
+  name         text not null,
+  kind         text not null default 'SAT',
+  fiscal_year  integer not null,
+  purpose      text not null default '',
+  form         text not null default '',
+  freq         text not null default 'YEARLY',
+  method       text not null default '',
+  sampling     text not null default '',
+  sample_size  integer not null default 0,
+  responded    integer not null default 0,
+  start_date   date,
+  end_date     date,
+  status       text not null default 'PLAN',
+  vendor       text not null default '',
+  owner        text not null default '',
+  note         text not null default '',
+  user_name    text not null default '',
+  ts           bigint not null,
+  created_at   timestamptz not null default now(),
+
+  constraint voc_surveys_kind   check (kind in ('SAT', 'DISSAT', 'ENGAGE', 'EFFECT')),
+  constraint voc_surveys_freq   check (freq in ('REALTIME', 'DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'HALFYEAR', 'YEARLY')),
+  constraint voc_surveys_status check (status in ('PLAN', 'FIELD', 'ANALYZE', 'DONE', 'CANCEL')),
+  constraint voc_surveys_sample check (sample_size >= 0 and responded >= 0),
+  -- ตอบกลับมากกว่าที่ส่งไปไม่ได้ ถ้าปล่อยไว้ร้อยละการตอบกลับจะเกิน 100 แล้วรายงานจะดูตลก
+  constraint voc_surveys_responded check (responded <= sample_size or sample_size = 0)
+);
+
+create unique index if not exists voc_surveys_code_key on public.voc_surveys (lower(code));
+create index if not exists voc_surveys_kind_idx on public.voc_surveys (kind);
+create index if not exists voc_surveys_year_idx on public.voc_surveys (fiscal_year);
+
+-- ผลของแต่ละรอบ
+-- ----------------------------------------------------------------------------
+-- เก็บเป็นคะแนนดิบกับคะแนนเต็ม ไม่ใช่ร้อยละสำเร็จรูป
+-- เพราะแบบสำรวจแต่ละรอบใช้สเกลไม่เท่ากัน (5 ระดับ / 10 ระดับ / 100 คะแนน)
+-- เก็บร้อยละไว้เลยจะเทียบข้ามรอบไม่ได้ และย้อนกลับไปหาคะแนนดิบไม่ได้อีก
+create table if not exists public.voc_survey_results (
+  id          text primary key,
+  survey_id   text not null references public.voc_surveys (id) on delete cascade,
+  group_id    text not null default 'COMM',
+  product_id  text not null default '',
+  dimension   text not null default 'PRODUCT',
+  score       numeric(10, 2) not null default 0,
+  full_score  numeric(10, 2) not null default 5,
+  respondents integer not null default 0,
+  benchmark   numeric(10, 2) not null default 0,
+  note        text not null default '',
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint voc_results_group     check (group_id in ('COMM', 'PROMO')),
+  constraint voc_results_dimension check (dimension in ('PRODUCT', 'SUPPORT', 'TXN', 'RELATION', 'IMAGE')),
+  constraint voc_results_full      check (full_score > 0),
+  constraint voc_results_score     check (score >= 0 and score <= full_score),
+  constraint voc_results_benchmark check (benchmark >= 0 and benchmark <= full_score)
+);
+
+create index if not exists voc_results_survey_idx on public.voc_survey_results (survey_id);
+create index if not exists voc_results_group_idx  on public.voc_survey_results (group_id);
+
+-- แผนปรับปรุง ความรู้ และนวัตกรรม
+-- ----------------------------------------------------------------------------
+-- ตารางนี้คือหลักฐานของเกณฑ์ระดับ 3-5 ทั้งหมด
+-- แต่ละชนิดผูกกับข้อกำหนดคนละข้อ (ดู ACTION_KINDS ใน lib/voc.js) จึงต้องแยกชนิดให้ชัด
+-- ไม่ใช่กองรวมกันเป็น "แผนงาน" แล้วรายงานว่าครบ
+--
+-- store_url = ที่จัดเก็บความรู้/นวัตกรรมในระบบดิจิทัล ซึ่งเกณฑ์ระดับ 5 บังคับไว้
+create table if not exists public.voc_actions (
+  id          text primary key,
+  code        text not null,
+  kind        text not null default 'IMPROVE',
+  crit        text not null default '',
+  title       text not null,
+  detail      text not null default '',
+  record_id   text references public.voc_records (id) on delete set null,
+  survey_id   text references public.voc_surveys (id) on delete set null,
+  owner       text not null default '',
+  due_date    date,
+  done_date   date,
+  status      text not null default 'PLAN',
+  result      text not null default '',
+  store_url   text not null default '',
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint voc_actions_kind check (kind in
+    ('REPORT', 'STRATEGY', 'IMPROVE', 'DIGITAL', 'COMMUNICATE', 'CONTROL', 'EVAL', 'KM', 'INNOVATION')),
+  constraint voc_actions_crit   check (crit in ('', '3.1', '3.2')),
+  constraint voc_actions_status check (status in ('PLAN', 'DOING', 'DONE', 'HOLD'))
+);
+
+create unique index if not exists voc_actions_code_key on public.voc_actions (lower(code));
+create index if not exists voc_actions_kind_idx   on public.voc_actions (kind);
+create index if not exists voc_actions_status_idx on public.voc_actions (status);
+
+-- ผลการยืนยันจุดตรวจ
+-- ----------------------------------------------------------------------------
+-- เก็บเฉพาะจุดตรวจที่ระบบตรวจเองไม่ได้ (ต้องให้คนยืนยันพร้อมแนบหลักฐาน)
+-- จุดตรวจที่ระบบตรวจได้จะคำนวณสดจากข้อมูลจริงเสมอ ไม่เก็บผลไว้ในตารางนี้
+--   เก็บไว้เมื่อไรก็เพี้ยนเมื่อนั้น เพราะข้อมูลต้นทางเปลี่ยนได้ตลอด
+--   แต่ยังให้แนบหลักฐานของจุดตรวจอัตโนมัติได้ เผื่อผู้ตรวจขอดูเอกสารประกอบ
+--
+-- check_id เป็นรหัสจุดตรวจที่ประกาศไว้ใน lib/voc.js (เช่น 31L2f)
+-- ไม่ใส่ foreign key เพราะรายการจุดตรวจอยู่ในโค้ด ไม่ใช่ในฐานข้อมูล
+create table if not exists public.voc_levels (
+  id          text primary key,
+  crit        text not null,
+  level       integer not null,
+  check_id    text not null,
+  done        boolean not null default false,
+  evidence    text not null default '',
+  owner       text not null default '',
+  done_date   date,
+  note        text not null default '',
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint voc_levels_crit  check (crit in ('3.1', '3.2')),
+  constraint voc_levels_level check (level between 1 and 5)
+);
+
+create unique index if not exists voc_levels_check_key on public.voc_levels (check_id);
+create index if not exists voc_levels_crit_idx on public.voc_levels (crit, level);
+
+-- ============================================================================
 -- สิทธิการใช้งานหน้าจอ
 -- ----------------------------------------------------------------------------
 -- หนึ่งแถวคือหนึ่งหน้าจอ ไม่มีแถว = ยังไม่ได้จำกัดสิทธิ ใช้ได้เต็มทุกอย่าง
@@ -1700,7 +1934,9 @@ begin
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
     'salespersons', 'sales_targets', 'print_forms', 'product_terms',
-    'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds'
+    'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds',
+    'voc_channels', 'voc_records', 'voc_surveys', 'voc_survey_results',
+    'voc_actions', 'voc_levels'
   ]
   loop
     seq := 'public.' || t || '_row_order_seq';
@@ -1768,6 +2004,12 @@ grant all privileges on table public.sales_targets      to authenticated;
 grant all privileges on table public.print_forms        to authenticated;
 grant all privileges on table public.product_terms      to authenticated;
 grant all privileges on table public.crm_leads          to authenticated;
+grant all privileges on table public.voc_channels               to authenticated;
+grant all privileges on table public.voc_records                to authenticated;
+grant all privileges on table public.voc_surveys                to authenticated;
+grant all privileges on table public.voc_survey_results         to authenticated;
+grant all privileges on table public.voc_actions                to authenticated;
+grant all privileges on table public.voc_levels                 to authenticated;
 grant all privileges on table public.crm_deals          to authenticated;
 grant all privileges on table public.crm_activities     to authenticated;
 grant all privileges on table public.customer_kinds     to authenticated;
@@ -1795,7 +2037,9 @@ begin
     'purchase_returns', 'purchase_return_items',
     'stock_counts', 'stock_count_items', 'ship_events', 'sql_connections',
     'salespersons', 'sales_targets', 'print_forms', 'product_terms',
-    'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds'
+    'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds',
+    'voc_channels', 'voc_records', 'voc_surveys', 'voc_survey_results',
+    'voc_actions', 'voc_levels'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -1810,7 +2054,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 30 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 36 ตารางแล้ว';
 end
 $$;
 
@@ -1872,6 +2116,8 @@ from (values
   ('purchase_returns'), ('purchase_return_items'),
   ('stock_counts'), ('stock_count_items'), ('ship_events'), ('sql_connections'),
   ('salespersons'), ('sales_targets'), ('print_forms'), ('product_terms'),
-  ('crm_leads'), ('crm_deals'), ('crm_activities'), ('customer_kinds')
+  ('crm_leads'), ('crm_deals'), ('crm_activities'), ('customer_kinds'),
+  ('voc_channels'), ('voc_records'), ('voc_surveys'), ('voc_survey_results'),
+  ('voc_actions'), ('voc_levels')
 ) as x(name)
 order by x.name;

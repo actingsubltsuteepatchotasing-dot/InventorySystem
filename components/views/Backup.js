@@ -62,6 +62,12 @@ const PARTS = [
   { key: "crmDeals", name: "โอกาสการขาย" },
   { key: "crmActivities", name: "บันทึกกิจกรรม" },
   { key: "customerKinds", name: "ประเภทลูกค้า" },
+  { key: "vocChannels", name: "ช่องทางการรับฟังลูกค้า" },
+  { key: "vocRecords", name: "เสียงของลูกค้า" },
+  { key: "vocSurveys", name: "รอบการประเมินความพึงพอใจ" },
+  { key: "vocResults", name: "ผลการประเมิน" },
+  { key: "vocActions", name: "แผนปรับปรุงและนวัตกรรม" },
+  { key: "vocLevels", name: "ผลการยืนยันจุดตรวจตามเกณฑ์" },
 ];
 
 const stamp = () =>
