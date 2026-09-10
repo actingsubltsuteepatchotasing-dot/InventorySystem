@@ -52,9 +52,9 @@ export const metadata = {
     images: [
       {
         url: LOGO_SRC,
-        width: 1408,
-        height: 768,
-        type: "image/jpeg",
+        width: 728,
+        height: 527,
+        type: "image/png",
         alt: "One for All Ultra (OFAU) — หนึ่งเดียวเพื่อทุกสิ่ง",
       },
     ],

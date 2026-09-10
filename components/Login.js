@@ -38,7 +38,7 @@ export default function Login() {
     <div className="login-page">
       <form className="login-card" onSubmit={submit} noValidate>
         <div className="login-logo">
-          <LogoFull height={72} />
+          <LogoFull height={80} />
           <small>
             หนึ่งเดียวเพื่อทุกสิ่ง — สินค้าคงคลัง · งานซื้อ · งานขาย · จัดส่ง · ลูกค้าสัมพันธ์
           </small>

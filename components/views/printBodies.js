@@ -273,7 +273,7 @@ export function TradeDocBody({ inv, company, doc, items, form, party = "ผู�
             <>
               {f.showLogo ? (
                 <div className="ti-logo">
-                  <LogoFull height={34} />
+                  <LogoFull height={32} />
                 </div>
               ) : null}
               <b>{co.name || "(ยังไม่ได้ตั้งค่าข้อมูลกิจการ)"}</b>

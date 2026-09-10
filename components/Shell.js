@@ -311,8 +311,8 @@ export default function Shell() {
     <div className="app">
       <aside className={"sidebar" + (menuOpen ? " open" : "")}>
         <div className="brand">
-          {/* ตัวอักษรบนตราเป็นเขียวเข้ม บนแถบเมนูสีเข้มจึงต้องวางบนแผ่นขาว */}
-          <LogoFull height={46} plaque />
+          {/* บนแถบเมนูสีเข้มใช้ตราฉบับตัวอักษรสีขาว จึงไม่ต้องมีแผ่นขาวรองให้ดูเป็นป้ายแปะ */}
+          <LogoFull height={72} light />
         </div>
 
         <nav className="side-nav">

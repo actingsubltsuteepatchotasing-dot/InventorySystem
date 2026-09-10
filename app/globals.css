@@ -424,17 +424,6 @@ table { border-collapse: collapse; width: 100%; }
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
-/*
- * แผ่นขาวรองตราเต็ม — ตัวอักษรบนตราเป็นเขียวเข้ม
- * วางบนแถบเมนูสีเขียวเข้มตรง ๆ แล้วจะอ่านไม่ออก
- */
-.logo-plaque {
-  display: inline-flex;
-  padding: 7px 12px;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
-}
 .side-nav { flex: 1; overflow-y: auto; padding: 12px 10px; }
 /* หัวข้อกลุ่มเมนู กดเพื่อหุบ/ขยายกลุ่มนั้น */
 .nav-group {

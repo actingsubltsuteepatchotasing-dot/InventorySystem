@@ -1044,82 +1044,169 @@ head("18. คู่มือการใช้งานครอบคลุม�
   }
 }
 
-head("19. ตราสัญลักษณ์มาจากรูปทรงชุดเดียว");
+head("19. ตราสัญลักษณ์มาจากไฟล์ภาพต้นฉบับไฟล์เดียว");
 {
   /*
-   * โลโก้ถูกวาดสองที่: SVG บนหน้าจอ กับ PNG ของไอคอน PWA
-   * ถ้าสองที่นั้นเขียนรูปทรงแยกกัน วันหนึ่งจะมีที่หนึ่งที่ลืมแก้
-   * แล้วไอคอนบนหน้าจอโฮมกับโลโก้ในเว็บจะคนละรูป โดยไม่มีใครสังเกต
-   * จนกว่าจะมีคนติดตั้งแอปใหม่ ตรงนี้จึงบังคับให้ทั้งสองอ่านจาก lib/logo.js
+   * โลโก้เคยถูกวาดเลียนแบบด้วยโค้ด (รูปหลายเหลี่ยมของเปลวไฟกับลูกศร)
+   * แล้วไม่เหมือนต้นฉบับสักรอบ ตอนนี้ทุกที่ใช้ไฟล์ภาพจริงที่ผ่าน tools/trim-logo.ps1
+   * ตรงนี้จึงเฝ้าสองอย่าง: ที่อยู่ไฟล์ต้องประกาศที่เดียว และไฟล์ที่สร้างไว้ต้องครบและตรงสเปก
    */
   const logo = read("lib/logo.js");
-  const icons = read("components/Icons.js");
-  const maker = read("tools/make-icons.mjs");
   let n = 0;
 
-  if (!/from "@\/lib\/logo"/.test(icons)) {
-    bad("components/Icons.js ไม่ได้ใช้รูปทรงจาก lib/logo.js");
-    n++;
-  }
-  if (!/from "\.\.\/lib\/logo\.js"/.test(maker)) {
-    bad("tools/make-icons.mjs ไม่ได้ใช้รูปทรงจาก lib/logo.js");
-    n++;
-  }
+  /** อ่านขนาดกับชนิดสีจากหัวไฟล์ PNG (IHDR อยู่ต้นไฟล์เสมอตามข้อกำหนด) */
+  const pngInfo = (rel) => {
+    const abs = path.join(ROOT, rel);
+    if (!fs.existsSync(abs)) return null;
+    const b = fs.readFileSync(abs);
+    const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+    if (b.length < 33 || sig.some((v, i) => b[i] !== v)) return { broken: true };
+    return {
+      width: b.readUInt32BE(16),
+      height: b.readUInt32BE(20),
+      colorType: b[25], // 6 = RGBA (มีชั้นความโปร่งใส)
+      bytes: b.length,
+    };
+  };
 
-  // รูปทรงต้องประกาศที่เดียว ไม่มีใครนิยามซ้ำ
-  ["FLAME_OUTER", "FLAME_INNER", "ARROW_PATH", "ARROW_HEAD"].forEach((name) => {
-    const dup = [maker].filter((src) => new RegExp("(const|let) " + name + "\\s*=").test(src));
-    if (dup.length) {
-      bad(name + " ถูกนิยามซ้ำนอก lib/logo.js");
+  // ---------- ที่อยู่ของไฟล์ต้องประกาศที่เดียว ----------
+  const srcOf = (name) => (logo.match(new RegExp("export const " + name + ' = "([^"]+)"')) || [])[1];
+  const variants = [
+    { name: "LOGO_SRC", label: "ตราเต็มตัวอักษรเขียว" },
+    { name: "LOGO_SRC_LIGHT", label: "ตราเต็มตัวอักษรขาว" },
+  ];
+
+  const sizes = [];
+  for (const v of variants) {
+    const src = srcOf(v.name);
+    if (!src) {
+      bad("lib/logo.js ไม่ได้ประกาศที่อยู่ไฟล์" + v.label + " (" + v.name + ")");
+      n++;
+      continue;
+    }
+    const info = pngInfo(path.join("public", src.replace(/^\//, "")));
+    if (!info) {
+      bad("ไม่พบไฟล์" + v.label + "ที่ public" + src);
+      n++;
+      continue;
+    }
+    if (info.broken) {
+      bad("public" + src + " ไม่ใช่ไฟล์ PNG ที่อ่านได้");
+      n++;
+      continue;
+    }
+    // ต้องมีชั้นความโปร่งใส ไม่งั้นวางบนพื้นสีอะไรก็เห็นเป็นกล่องสี่เหลี่ยม
+    if (info.colorType !== 6 && info.colorType !== 4) {
+      bad("public" + src + " ไม่มีชั้นความโปร่งใส วางบนพื้นสีแล้วจะเห็นเป็นกล่อง");
       n++;
     }
-    if (!new RegExp("export const " + name + " = \\[").test(logo)) {
-      bad("lib/logo.js ไม่มีรูปทรง " + name);
+    sizes.push({ ...v, src, w: info.width, h: info.height });
+
+    // ห้ามไฟล์อื่นเขียนที่อยู่ไว้เอง ไม่งั้นวันเปลี่ยนชื่อไฟล์จะแก้ไม่ครบ
+    const hardCoded = FILES.filter(
+      (f) => f !== path.join("lib", "logo.js") && read(f).includes('"' + src + '"')
+    );
+    if (hardCoded.length) {
+      bad("มีไฟล์เขียนที่อยู่ของโลโก้ไว้เอง แทนที่จะใช้ " + v.name + ": " + hardCoded.join(", "));
       n++;
     }
-  });
+  }
 
-  // ทุกจุดต้องอยู่ในกรอบ 64x64 ไม่งั้นตราจะโดนตัดขอบตอนย่อเป็นไอคอน
-  const nums = [...logo.matchAll(/^  \[(\d+(?:\.\d+)?), (\d+(?:\.\d+)?)\],$/gm)].map((m) => [
-    Number(m[1]),
-    Number(m[2]),
-  ]);
-  const out = nums.filter(([x, y]) => x < 0 || x > 64 || y < 0 || y > 64);
-  if (out.length) {
-    bad("มีจุดของตราอยู่นอกกรอบ 64x64: " + out.map((v) => v.join(",")).join(" · "));
+  // สองฉบับต้องขนาดเท่ากันเป๊ะ ไม่งั้นสลับไปใช้ฉบับขาวแล้วหน้าจอขยับ
+  if (sizes.length === 2 && (sizes[0].w !== sizes[1].w || sizes[0].h !== sizes[1].h)) {
+    bad(
+      "ตราสองฉบับขนาดไม่เท่ากัน (" + sizes[0].w + "x" + sizes[0].h + " กับ " +
+        sizes[1].w + "x" + sizes[1].h + ") สลับฉบับแล้วหน้าจอจะขยับ"
+    );
     n++;
   }
 
+  // ---------- สัดส่วนที่ประกาศต้องตรงกับไฟล์จริง ----------
   /*
-   * ตราเต็มใช้ไฟล์ภาพต้นฉบับ ไม่ได้วาดเลียนแบบ
-   * ที่อยู่ของไฟล์ต้องประกาศที่เดียวใน lib/logo.js
-   * ถ้าหน้าจอเขียน "/logo.jpg" กันเอง วันเปลี่ยนชื่อไฟล์จะแก้ไม่ครบ
+   * LOGO_RATIO ใช้กันภาพยืดและกันหน้ากระตุกตอนภาพโหลดเสร็จ
+   * ถ้าเปลี่ยนไฟล์ภาพแล้วลืมแก้ตัวเลข ภาพจะยืดโดยไม่มีใครฟ้อง จึงเทียบกับหัวไฟล์จริง
    */
-  if (!/export const LOGO_SRC = "/.test(logo)) {
-    bad("lib/logo.js ไม่ได้ประกาศที่อยู่ไฟล์ตราเต็ม (LOGO_SRC)");
+  const ratioExpr = (logo.match(/export const LOGO_RATIO = ([\d.]+) \/ ([\d.]+);/) || []).slice(1);
+  if (ratioExpr.length !== 2) {
+    bad("lib/logo.js ไม่ได้ประกาศสัดส่วนของตรา (LOGO_RATIO) ในรูป กว้าง / สูง");
     n++;
+  } else if (sizes.length) {
+    const [dw, dh] = ratioExpr.map(Number);
+    if (dw !== sizes[0].w || dh !== sizes[0].h) {
+      bad(
+        "LOGO_RATIO เขียนไว้ " + dw + " / " + dh + " แต่ไฟล์จริงคือ " +
+          sizes[0].w + " x " + sizes[0].h + " ภาพจะยืด"
+      );
+      n++;
+    }
   }
-  const src = (logo.match(/export const LOGO_SRC = "([^"]+)"/) || [])[1];
-  if (src && !fs.existsSync(path.join(ROOT, "public", src.replace(/^\//, "")))) {
-    bad("ไม่พบไฟล์ตราเต็มที่ public" + src);
+
+  // ---------- ไอคอนแอปต้องครบและขนาดตรง ----------
+  /*
+   * ไอคอนตัดจากตราเดียวกันด้วย tools/trim-logo.ps1
+   * ถ้าไฟล์ไหนหาย ผู้ใช้ที่ติดตั้งเป็นแอปจะได้ไอคอนว่างบนหน้าจอโฮมโดยไม่มีใครรู้
+   */
+  const icons = [
+    ["public/icons/icon-192.png", 192],
+    ["public/icons/icon-512.png", 512],
+    ["public/icons/icon-maskable-512.png", 512],
+    ["app/icon.png", 192],
+    ["app/apple-icon.png", 180],
+  ];
+  for (const [rel, size] of icons) {
+    const info = pngInfo(rel);
+    if (!info || info.broken) {
+      bad("ไม่พบไอคอน " + rel + " (สร้างด้วย tools/trim-logo.ps1)");
+      n++;
+      continue;
+    }
+    if (info.width !== size || info.height !== size) {
+      bad(rel + " ควรเป็น " + size + "x" + size + " แต่เป็น " + info.width + "x" + info.height);
+      n++;
+    }
+  }
+
+  // ไอคอนที่ประกาศไว้ใน manifest ต้องมีอยู่จริงทุกไฟล์
+  const manifest = read("app/manifest.js");
+  for (const m of manifest.matchAll(/src: "(\/[^"]+\.png)"/g)) {
+    const rel = path.join("public", m[1].replace(/^\//, ""));
+    if (!fs.existsSync(path.join(ROOT, rel))) {
+      bad("app/manifest.js อ้างไอคอน " + m[1] + " ที่ไม่มีไฟล์อยู่จริง");
+      n++;
+    }
+  }
+
+  // ---------- ไอคอนแท็บ ----------
+  const icoPath = path.join(ROOT, "app", "favicon.ico");
+  if (!fs.existsSync(icoPath)) {
+    bad("ไม่พบ app/favicon.ico");
     n++;
+  } else {
+    const ico = fs.readFileSync(icoPath);
+    // ต้องเช็กความยาวก่อนอ่านทุกครั้ง ไฟล์เสียที่สั้นกว่าหัวไฟล์จะทำให้ตัวตรวจพังเอง
+    const count = ico.length >= 6 ? ico.readUInt16LE(4) : 0;
+    if (ico.length < 6 || ico.readUInt16LE(0) !== 0 || ico.readUInt16LE(2) !== 1 || count < 1) {
+      bad("app/favicon.ico หัวไฟล์ไม่ถูกรูปแบบ เบราว์เซอร์จะไม่แสดงไอคอนแท็บ");
+      n++;
+    } else if (count < 4) {
+      bad("app/favicon.ico มีแค่ " + count + " ขนาด ควรมี 16/32/48/64 ให้แต่ละที่เลือกใช้");
+      n++;
+    }
   }
-  const hardCoded = FILES.filter(
-    (f) => f !== path.join("lib", "logo.js") && read(f).includes('"' + src + '"')
-  );
-  if (src && hardCoded.length) {
-    bad("มีไฟล์เขียนที่อยู่ของโลโก้ไว้เอง แทนที่จะใช้ LOGO_SRC: " + hardCoded.join(", "));
+
+  // ---------- ตัวสร้างไอคอนต้องยังอยู่ ----------
+  // ไฟล์ปลายทางเป็นไฟล์ไบนารี สร้างใหม่เองด้วยมือไม่ได้ ถ้าสคริปต์หายก็แก้โลโก้ไม่ได้อีก
+  if (!fs.existsSync(path.join(ROOT, "tools", "trim-logo.ps1"))) {
+    bad("ไม่พบ tools/trim-logo.ps1 ซึ่งเป็นตัวสร้างไฟล์โลโก้และไอคอนทั้งหมด");
     n++;
   }
 
-  // สีของตราต้องเป็นค่าคงที่ ไม่ใช่ตัวแปรธีม (โลโก้ต้องสีเดิมทั้งธีมสว่างและมืด)
-  const markBlock = logo.slice(logo.indexOf("export const MARK = {"), logo.indexOf("};"));
-  if (/var\(--/.test(markBlock)) {
-    bad("สีของตราผูกกับตัวแปรธีม ทำให้โลโก้เปลี่ยนสีตามธีม");
-    n++;
+  if (!n) {
+    ok(
+      "ตราทุกที่มาจากไฟล์ภาพเดียว · เต็ม " + sizes[0].w + "x" + sizes[0].h +
+        " สองฉบับ (เขียว/ขาว) · ไอคอน " + (icons.length + 1) + " ไฟล์ครบและขนาดตรง"
+    );
   }
-
-  if (!n) ok("ตราวาดจาก lib/logo.js ทั้งบนหน้าจอและไอคอน · " + nums.length + " จุด อยู่ในกรอบทั้งหมด");
 }
 
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));

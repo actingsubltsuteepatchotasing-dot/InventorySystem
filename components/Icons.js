@@ -1,6 +1,6 @@
 // ไอคอน inline SVG ทั้งหมด (ไม่พึ่งไลบรารีภายนอก)
 
-import { LOGO_RATIO, LOGO_SRC } from "@/lib/logo";
+import { LOGO_RATIO, LOGO_SRC, LOGO_SRC_LIGHT } from "@/lib/logo";
 
 function Ico({ size = 18, stroke = 2, children, ...rest }) {
   return (
@@ -118,25 +118,24 @@ export const IcPrint = (p) => (
  * ตราเต็ม — ไฟล์ภาพต้นฉบับของโลโก้ OFAU
  *
  * ใช้ทุกที่ที่แสดงโลโก้บนหน้าจอและบนกระดาษ
- * ส่วนไอคอนแอปและไอคอนแท็บ (กรอบจัตุรัสเล็ก) สร้างจากรูปทรงใน lib/logo.js
- * ด้วย tools/make-icons.mjs เพราะตราแนวนอนย่อลงกรอบจัตุรัสแล้วอ่านตัวอักษรไม่ออก
+ * ส่วนไอคอนแอปกับไอคอนแท็บ (กรอบจัตุรัสเล็ก) ตัดเฉพาะเปลวไฟกับลูกศรจากภาพเดียวกัน
+ * ด้วย tools/trim-logo.ps1 เพราะตราแนวนอนย่อลงกรอบจัตุรัสแล้วอ่านตัวอักษรไม่ออก
  *
  * @param {number} height ความสูงเป็นพิกเซล กว้างตามสัดส่วนของไฟล์เอง
- * @param {boolean} plaque วางบนแผ่นขาว — ใช้ตอนพื้นหลังเข้ม เพราะตัวอักษรบนตราเป็นเขียวเข้ม
+ * @param {boolean} light ใช้ฉบับตัวอักษรสีขาว สำหรับวางบนพื้นเข้ม เช่น แถบเมนู
  */
-export function LogoFull({ height = 56, plaque = false }) {
-  const img = (
+export function LogoFull({ height = 56, light = false }) {
+  return (
     // ไม่ใช้ next/image เพราะต้องตั้งค่าเพิ่มและไฟล์นี้เป็นภาพเดียวขนาดคงที่
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={LOGO_SRC}
+      src={light ? LOGO_SRC_LIGHT : LOGO_SRC}
       alt="One for All Ultra"
       height={height}
       width={Math.round(height * LOGO_RATIO)}
       style={{ height, width: "auto", display: "block" }}
     />
   );
-
-  return plaque ? <span className="logo-plaque">{img}</span> : img;
 }
+
 
