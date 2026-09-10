@@ -15,7 +15,6 @@ import { num, thDate, todayISO } from "@/lib/format";
 import {
   CUST_GROUPS,
   actionStatusOf,
-  assessAll,
   avgResponseRate,
   surveyStatusOf,
   surveySummary,
@@ -32,7 +31,11 @@ export default function VocDash({ onNavigate }) {
   const inv = useInv();
   const { db } = inv;
 
-  const assessment = useMemo(() => (inv.vocReady ? assessAll(db) : null), [db, inv.vocReady]);
+  /*
+   * executiveSummary ประเมินทั้งหมวดให้อยู่แล้วและคืน items กับ level มาด้วย
+   * เคยเรียก assessAll ซ้ำอีกรอบตรงนี้ ซึ่งไล่ตัวตรวจทั้ง 37 ตัวสองเที่ยวทุกครั้งที่วาดใหม่
+   * โดยได้ผลเหมือนเดิมเป๊ะ
+   */
   const summary = useMemo(() => (inv.vocReady ? executiveSummary(db) : null), [db, inv.vocReady]);
   const voc = useMemo(() => (inv.vocReady ? vocSummary(db) : null), [db, inv.vocReady]);
   const surveys = useMemo(() => (inv.vocReady ? surveySummary(db) : []), [db, inv.vocReady]);
@@ -56,7 +59,7 @@ export default function VocDash({ onNavigate }) {
     <div className="stack">
       <Card title="ระดับตามเกณฑ์ประเมินรัฐวิสาหกิจ หมวด 3 (น้ำหนัก 10%)">
         <div className="voc-exec">
-          <div className={"voc-lv lv" + assessment.level}>{levelText(assessment.level)}</div>
+          <div className={"voc-lv lv" + summary.level}>{levelText(summary.level)}</div>
           <div>
             <b>{summary.headline}</b>
             <p>{summary.weakest}</p>
@@ -65,7 +68,7 @@ export default function VocDash({ onNavigate }) {
         </div>
 
         <div className="voc-cover">
-          {assessment.items.map((it) => (
+          {summary.items.map((it) => (
             <div key={it.id}>
               <div className="lbl">
                 ข้อ {it.id} {it.name}

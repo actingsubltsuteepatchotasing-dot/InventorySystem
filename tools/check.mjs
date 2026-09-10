@@ -378,6 +378,29 @@ head("5. เมนู สิทธิ และการสำรองข้อ
   if (notBacked.length) bad("ตารางที่ยังไม่ได้ใส่ในหน้าสำรองข้อมูล: " + notBacked.join(", "));
   else ok("หน้าสำรองข้อมูลครอบคลุมทุกตาราง (" + parts.length + " ส่วน)");
 
+  /*
+   * ชื่อกลุ่มต้องเป็นข้อความเดียวกันทั้งในเมนูและในตารางสิทธิ
+   * ถ้าไม่ตรง คนตั้งสิทธิจะหากลุ่มไม่เจอ เพราะสองหน้าเรียกชื่อคนละอย่าง
+   * และไม่มีอะไรฟ้อง เพราะสองหน้านั้นอ่านคนละไฟล์กัน
+   */
+  const navGroups = [
+    ...new Set([...shell.matchAll(/^    group: "([^"]+)",$/gm)].map((m) => m[1])),
+  ];
+  const permGroups = [
+    ...new Set([...constants.matchAll(/group: "([^"]+)"/g)].map((m) => m[1])),
+  ];
+  const onlyNav = navGroups.filter((g) => !permGroups.includes(g));
+  const onlyPerm = permGroups.filter((g) => !navGroups.includes(g));
+  if (onlyNav.length || onlyPerm.length) {
+    bad(
+      "ชื่อกลุ่มในเมนูกับในตารางสิทธิไม่ตรงกัน" +
+        (onlyNav.length ? " · มีแต่ในเมนู: " + onlyNav.join(", ") : "") +
+        (onlyPerm.length ? " · มีแต่ในตารางสิทธิ: " + onlyPerm.join(", ") : "")
+    );
+  } else {
+    ok("ชื่อกลุ่มตรงกันทั้งเมนูและตารางสิทธิ (" + navGroups.length + " กลุ่ม)");
+  }
+
   const prefixes = [...constants.matchAll(/prefix: "(\w+)", period: "(\w+)"/g)].map((m) => m[1] + "-" + m[2]);
   const dup = prefixes.filter((p, i) => prefixes.indexOf(p) !== i);
   if (dup.length) bad("อักษรนำหน้าเลขที่เอกสารซ้ำกัน: " + dup.join(", "));
@@ -538,7 +561,8 @@ head("10. รายการค่าที่ฐานข้อมูลยอ�
   /** ค่าใน check (col in ('A', 'B', ...)) ของ constraint ชื่อหนึ่ง */
   const allowedOf = (constraintName) => {
     const m = sql.match(
-      new RegExp("constraint\\s+" + constraintName + "[\\s\\S]{0,200}?in \\(([^)]*)\\)")
+      // ยอมให้ขึ้นบรรทัดใหม่หลังคำว่า in ได้ ไม่งั้นจะเลยไปจับ constraint ตัวถัดไป
+      new RegExp("constraint\\s+" + constraintName + "[\\s\\S]{0,200}?in\\s*\\(([^)]*)\\)")
     );
     return m ? m[1].match(/'([^']+)'/g).map((x) => x.replace(/'/g, "")) : null;
   };
@@ -582,6 +606,38 @@ head("10. รายการค่าที่ฐานข้อมูลยอ�
    * รายการค่าของงานลูกค้าสัมพันธ์ ประกาศอยู่ที่ lib/crm.js ไม่ใช่ lib/constants.js
    * (อยู่กับตรรกะที่ใช้มันจริง ๆ) จึงต้องอ่านจากไฟล์นั้นแยกอีกที
    */
+  /*
+   * หมวดการรับฟังลูกค้าประกาศรายการค่าไว้ที่ lib/voc.js
+   * ทุกชุดผูกกับ check constraint ของฐานข้อมูล เพิ่มค่าในโค้ดแล้วลืมแก้ constraint
+   * ผลคือกดบันทึกแล้วได้ error ของ Postgres ที่อ่านแล้วไม่รู้ว่าต้องไปแก้ตรงไหน
+   * ซึ่งเป็นอาการที่หาต้นเหตุยากที่สุดแบบหนึ่ง
+   */
+  const vocSrc = read("lib/voc.js");
+  const vocIdsOf = (name) => {
+    const at = vocSrc.indexOf("export const " + name + " = [");
+    if (at < 0) return null;
+    const body = vocSrc.slice(at, vocSrc.indexOf("\n];", at));
+    return [...body.matchAll(/id: "([\w.]+)"/g)].map((m) => m[1]);
+  };
+
+  [
+    ["ชนิดช่องทางการรับฟัง", "voc_channels_kind", "CHANNEL_KINDS"],
+    ["ความถี่ของช่องทาง", "voc_channels_freq", "FREQUENCIES"],
+    ["กลุ่มลูกค้าในเสียงลูกค้า", "voc_records_group", "CUST_GROUPS"],
+    ["ช่วงวงจรชีวิต", "voc_records_lifecycle", "LIFECYCLE"],
+    ["มิติของความต้องการ", "voc_records_dimension", "DIMENSIONS"],
+    ["ประเภทของเสียงลูกค้า", "voc_records_kind", "VOC_KINDS"],
+    ["ระดับความสำคัญ", "voc_records_priority", "PRIORITIES"],
+    ["สถานะของเสียงลูกค้า", "voc_records_status", "VOC_STATUS"],
+    ["ชนิดการประเมิน", "voc_surveys_kind", "SURVEY_KINDS"],
+    ["ความถี่ของรอบประเมิน", "voc_surveys_freq", "FREQUENCIES"],
+    ["สถานะรอบประเมิน", "voc_surveys_status", "SURVEY_STATUS"],
+    ["กลุ่มลูกค้าในผลประเมิน", "voc_results_group", "CUST_GROUPS"],
+    ["มิติในผลประเมิน", "voc_results_dimension", "DIMENSIONS"],
+    ["ชนิดของแผนงาน", "voc_actions_kind", "ACTION_KINDS"],
+    ["สถานะของแผนงาน", "voc_actions_status", "ACTION_STATUS"],
+  ].forEach(([label, cons, name]) => compare(label, allowedOf(cons), vocIdsOf(name)));
+
   const crm = read("lib/crm.js");
   const crmIdsOf = (name) => {
     const at = crm.indexOf("export const " + name + " = [");
