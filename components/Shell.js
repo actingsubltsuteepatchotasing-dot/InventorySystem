@@ -293,7 +293,13 @@ export default function Shell() {
    */
   const nav = NAV.map((g) => ({
     ...g,
-    items: g.items.filter((it) => it.id === PERMS_SCREEN || inv.perm(it.id).view),
+    /*
+     * หน้ากำหนดสิทธิโผล่เฉพาะแอดมิน — คนทั่วไปเปิดเข้าไปก็แก้อะไรไม่ได้อยู่แล้ว
+     * และหน้านี้ไม่มีในตารางสิทธิ จึงต้องตัดสินจากบทบาทแทนการดู perm
+     */
+    items: g.items.filter((it) =>
+      it.id === PERMS_SCREEN ? inv.isAdmin : inv.perm(it.id).view
+    ),
   })).filter((g) => g.items.length);
 
   const shown = nav.flatMap((g) => g.items);

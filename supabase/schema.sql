@@ -1888,6 +1888,154 @@ create unique index if not exists voc_levels_check_key on public.voc_levels (che
 create index if not exists voc_levels_crit_idx on public.voc_levels (crit, level);
 
 -- ============================================================================
+-- ผู้ใช้ในระบบ และสิทธิรายผู้ใช้
+-- ----------------------------------------------------------------------------
+-- เดิมสิทธิเป็นของ "ทั้งระบบ" — ตั้งครั้งเดียวมีผลกับทุกคนเหมือนกันหมด
+-- ซึ่งใช้ไม่ได้จริงเมื่อมีหลายฝ่ายใช้ระบบเดียวกัน (คลังไม่ควรเห็นหน้าตั้งราคา
+-- และฝ่ายขายไม่ควรแก้ผังคลัง) จึงเพิ่มสิทธิรายคน โดยมีแอดมินเป็นคนกำหนด
+--
+--   app_users   ทะเบียนผู้ใช้ในระบบ พร้อมบทบาท (แอดมิน / ผู้ใช้ทั่วไป)
+--   user_perms  สิทธิรายคนรายหน้าจอ
+--   screen_perms ของเดิม กลายเป็น "ค่าเริ่มต้นของทุกคน" ที่ใช้เมื่อคนนั้นไม่มีสิทธิเฉพาะตัว
+--
+-- ลำดับการตัดสินสิทธิ (ดู permOf ใน lib/db.js):
+--   1. สิทธิเฉพาะตัวของคนนั้น (user_perms)
+--   2. ค่าเริ่มต้นของทุกคน (screen_perms)
+--   3. ไม่มีทั้งคู่ = เปิดหมด
+--
+-- ทำไมต้องมี app_users ทั้งที่ Supabase มี auth.users อยู่แล้ว:
+--   auth.users อ่านจากฝั่งเว็บไม่ได้ ต้องใช้ service_role key ซึ่งข้ามทุกสิทธิ์
+--   ถ้าฝังกุญแจนั้นไว้ในเว็บ ใครเปิดหน้าเว็บก็ลบข้อมูลทั้งระบบได้
+--   จึงทำทะเบียนคู่ขนานไว้ใน public ที่อ่านได้ตามปกติ และเก็บเฉพาะสิ่งที่จำเป็น
+--   (รหัสผ่านยังอยู่ใน auth.users ที่เดียว ไม่ได้คัดลอกมาไว้ที่นี่)
+
+create table if not exists public.app_users (
+  id         uuid primary key,
+  email      text not null default '',
+  name       text not null default '',
+  role       text not null default 'user',
+  active     boolean not null default true,
+  note       text not null default '',
+  ts         bigint not null default 0,
+  created_at timestamptz not null default now(),
+
+  constraint app_users_role check (role in ('admin', 'user'))
+);
+
+create unique index if not exists app_users_email_key on public.app_users (lower(email));
+create index if not exists app_users_role_idx on public.app_users (role);
+
+-- สิทธิรายคนรายหน้าจอ
+-- ----------------------------------------------------------------------------
+-- id ตั้งเป็น "<uuid ของคน>:<รหัสหน้าจอ>" เพื่อให้บันทึกทับของเดิมได้ตรง ๆ
+-- ผ่าน primary key โดยไม่ต้องพึ่ง unique index ซ้อนอีกชั้น
+--
+-- ไม่มีแถว = คนนั้นใช้ค่าเริ่มต้นของทุกคน ไม่ใช่ "ห้ามทุกอย่าง"
+--   ค่าเริ่มต้นต้องเป็นเปิด ไม่ใช่ปิด ไม่งั้นระบบที่ยังไม่ตั้งสิทธิจะเปิดมาแล้วว่างเปล่า
+--   จนคนใช้คิดว่าโปรแกรมพัง (เหตุผลเดียวกับ screen_perms)
+create table if not exists public.user_perms (
+  id         text primary key,
+  user_id    uuid not null references public.app_users (id) on delete cascade,
+  screen_id  text not null,
+  can_view   boolean not null default true,
+  can_edit   boolean not null default true,
+  can_date   boolean not null default true,
+  ts         bigint not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists user_perms_pair_key on public.user_perms (user_id, screen_id);
+create index if not exists user_perms_user_idx on public.user_perms (user_id);
+
+-- ตัวตัดสินว่าเป็นแอดมินหรือไม่
+-- ----------------------------------------------------------------------------
+-- security definer เพราะต้องอ่าน app_users ได้แม้ policy ของตารางนั้นจะยังไม่อนุญาต
+-- ไม่งั้นจะวนเป็นงูกินหาง (อ่าน app_users ต้องรู้ว่าเป็นแอดมิน ซึ่งต้องอ่าน app_users)
+--
+-- ข้อสำคัญ: ถ้าระบบยังไม่มีแอดมินเลยสักคน ให้ถือว่าทุกคนเป็นแอดมิน
+--   ไม่งั้นระบบที่เพิ่งติดตั้งจะไม่มีใครตั้งสิทธิให้ใครได้เลย และแก้กลับไม่ได้
+--   นอกจากเข้าไปแก้ในฐานข้อมูลตรง ๆ ซึ่งคนใช้ทั่วไปทำไม่ได้
+--   พอมีแอดมินคนแรกแล้ว ประตูนี้จะปิดเองทันที
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select
+    not exists (select 1 from public.app_users where role = 'admin' and active)
+    or exists (
+      select 1 from public.app_users
+      where id = auth.uid() and role = 'admin' and active
+    );
+$$;
+
+-- นำผู้ใช้ที่มีอยู่แล้วเข้าทะเบียน และตั้งแอดมินคนแรก
+-- ----------------------------------------------------------------------------
+-- รันซ้ำได้ ผู้ใช้ที่อยู่ในทะเบียนแล้วจะไม่ถูกแตะ
+do $seed_users$
+declare
+  n_new int;
+  n_all int;
+begin
+  insert into public.app_users (id, email, ts)
+  select u.id, coalesce(u.email, ''), 0
+  from auth.users u
+  on conflict (id) do nothing;
+  get diagnostics n_new = row_count;
+
+  -- ยังไม่มีแอดมินเลย ให้คนที่สมัครเข้ามาก่อนสุดเป็นแอดมิน
+  if not exists (select 1 from public.app_users where role = 'admin') then
+    update public.app_users
+    set role = 'admin'
+    where id = (select id from public.app_users order by created_at, email limit 1);
+  end if;
+
+  select count(*) into n_all from public.app_users;
+  raise notice 'ทะเบียนผู้ใช้: เพิ่มใหม่ % คน รวมทั้งหมด % คน', n_new, n_all;
+end
+$seed_users$;
+
+-- ผู้ใช้ใหม่ที่สร้างทีหลังให้เข้าทะเบียนเอง
+-- ----------------------------------------------------------------------------
+-- ทำสองทางเพื่อไม่ให้พึ่งทางใดทางหนึ่งอย่างเดียว:
+--   1. trigger บน auth.users — ได้ทันทีที่สร้างบัญชี
+--   2. ตัวโปรแกรมลงทะเบียนตัวเองตอนล็อกอินครั้งแรก (ดู ensureAppUser ใน lib/api.js)
+-- ถ้าสร้าง trigger ไม่สำเร็จ (บางโปรเจกต์จำกัดสิทธิ์บน schema auth)
+-- ทางที่สองยังทำงานได้ จึงไม่ปล่อยให้ทั้งไฟล์ล้มเพราะเรื่องนี้
+create or replace function public.handle_new_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  insert into public.app_users (id, email, role)
+  values (
+    new.id,
+    coalesce(new.email, ''),
+    case when exists (select 1 from public.app_users) then 'user' else 'admin' end
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+do $auth_trigger$
+begin
+  drop trigger if exists on_auth_user_created on auth.users;
+  create trigger on_auth_user_created
+    after insert on auth.users
+    for each row execute function public.handle_new_auth_user();
+  raise notice 'ตั้ง trigger รับผู้ใช้ใหม่เข้าทะเบียนแล้ว';
+exception
+  when insufficient_privilege or undefined_table then
+    raise notice 'สร้าง trigger บน auth.users ไม่ได้ — ตัวโปรแกรมจะลงทะเบียนผู้ใช้เองตอนล็อกอินแทน';
+end
+$auth_trigger$;
+
+-- ============================================================================
 -- สิทธิการใช้งานหน้าจอ
 -- ----------------------------------------------------------------------------
 -- หนึ่งแถวคือหนึ่งหน้าจอ ไม่มีแถว = ยังไม่ได้จำกัดสิทธิ ใช้ได้เต็มทุกอย่าง
@@ -1936,7 +2084,8 @@ begin
     'salespersons', 'sales_targets', 'print_forms', 'product_terms',
     'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds',
     'voc_channels', 'voc_records', 'voc_surveys', 'voc_survey_results',
-    'voc_actions', 'voc_levels'
+    'voc_actions', 'voc_levels',
+    'app_users', 'user_perms'
   ]
   loop
     seq := 'public.' || t || '_row_order_seq';
@@ -2010,6 +2159,8 @@ grant all privileges on table public.voc_surveys                to authenticated
 grant all privileges on table public.voc_survey_results         to authenticated;
 grant all privileges on table public.voc_actions                to authenticated;
 grant all privileges on table public.voc_levels                 to authenticated;
+grant all privileges on table public.app_users                to authenticated;
+grant all privileges on table public.user_perms               to authenticated;
 grant all privileges on table public.crm_deals          to authenticated;
 grant all privileges on table public.crm_activities     to authenticated;
 grant all privileges on table public.customer_kinds     to authenticated;
@@ -2019,6 +2170,7 @@ grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
 grant execute on function public.create_purchase(jsonb, jsonb) to authenticated;
 grant execute on function public.create_purchase_return(jsonb, jsonb) to authenticated;
 grant execute on function public.stock_of(text, text)         to authenticated;
+grant execute on function public.is_admin()                   to authenticated;
 
 -- ---------------------------------------------------------- Row Level Security
 -- อนุญาตเฉพาะผู้ใช้ที่ล็อกอินแล้วเท่านั้น (role = authenticated)
@@ -2039,7 +2191,8 @@ begin
     'salespersons', 'sales_targets', 'print_forms', 'product_terms',
     'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds',
     'voc_channels', 'voc_records', 'voc_surveys', 'voc_survey_results',
-    'voc_actions', 'voc_levels'
+    'voc_actions', 'voc_levels',
+    'app_users', 'user_perms'
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -2054,9 +2207,58 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 36 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 38 ตารางแล้ว';
 end
 $$;
+
+-- ------------------------------------------------- สิทธิของตารางที่คุมสิทธิ
+-- สามตารางนี้ใช้กติกาคนละแบบกับตารางข้อมูลทั่วไป
+--   อ่าน  ทุกคนที่ล็อกอินแล้ว (ตัวโปรแกรมต้องรู้ว่าตัวเองมีสิทธิอะไรบ้าง
+--         และหน้าจอกำหนดสิทธิต้องเห็นรายชื่อผู้ใช้)
+--   เขียน เฉพาะแอดมิน ไม่งั้นใครก็ยกสิทธิให้ตัวเองได้ด้วยการยิง API ตรง ๆ
+--         ซึ่งทำให้การกำหนดสิทธิไม่มีความหมายเลย
+--
+-- ยกเว้นข้อเดียว: ผู้ใช้ลงทะเบียนตัวเองเข้า app_users ได้ (แต่เป็นบทบาท user เท่านั้น)
+-- เพื่อให้คนที่เพิ่งถูกสร้างบัญชีโผล่ในทะเบียนโดยไม่ต้องรอแอดมินมาเพิ่มให้
+do $perm_rls$
+declare
+  t  text;
+  nm text;
+begin
+  foreach t in array array['app_users', 'user_perms', 'screen_perms']
+  loop
+    execute format('alter table public.%I enable row level security', t);
+
+    -- ลบ policy เปิดกว้างของเดิมออกก่อน ไม่งั้นจะยังเขียนได้ทุกคนอยู่
+    nm := t || ': authenticated full access';
+    execute format('drop policy if exists %I on public.%I', nm, t);
+
+    nm := t || ': read';
+    execute format('drop policy if exists %I on public.%I', nm, t);
+    execute format(
+      'create policy %I on public.%I for select to authenticated using (true)', nm, t
+    );
+
+    nm := t || ': admin write';
+    execute format('drop policy if exists %I on public.%I', nm, t);
+    execute format(
+      'create policy %I on public.%I for all to authenticated '
+      'using (public.is_admin()) with check (public.is_admin())',
+      nm, t
+    );
+  end loop;
+
+  nm := 'app_users: register self';
+  execute format('drop policy if exists %I on public.app_users', nm);
+  execute format(
+    'create policy %I on public.app_users for insert to authenticated '
+    'with check (id = auth.uid() and role = ''user'')',
+    nm
+  );
+
+  raise notice 'ตั้งค่าสิทธิของตารางที่คุมสิทธิแล้ว (อ่านได้ทุกคน เขียนได้เฉพาะแอดมิน)';
+end
+$perm_rls$;
 
 -- ============================================================================
 -- สร้างผู้ใช้สำหรับเข้าระบบ
@@ -2118,6 +2320,7 @@ from (values
   ('salespersons'), ('sales_targets'), ('print_forms'), ('product_terms'),
   ('crm_leads'), ('crm_deals'), ('crm_activities'), ('customer_kinds'),
   ('voc_channels'), ('voc_records'), ('voc_surveys'), ('voc_survey_results'),
-  ('voc_actions'), ('voc_levels')
+  ('voc_actions'), ('voc_levels'),
+  ('app_users'), ('user_perms')
 ) as x(name)
 order by x.name;

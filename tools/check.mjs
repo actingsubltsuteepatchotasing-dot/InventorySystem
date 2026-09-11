@@ -1614,5 +1614,141 @@ function CRIT_BLOCKS(voc) {
   return out;
 }
 
+head("21. สิทธิรายผู้ใช้บังคับได้จริง ไม่ใช่แค่ซ่อนปุ่ม");
+{
+  /*
+   * สิทธิที่บังคับแค่ที่หน้าจอไม่ใช่สิทธิ — ใครก็ยิง API ตรง ๆ เพื่อยกสิทธิให้ตัวเองได้
+   * หมวดนี้จึงเฝ้าสามอย่าง:
+   *   1. ตัวตัดสินสิทธิฝั่งเว็บรู้จักผู้ใช้จริง ไม่ใช่ตัดสินจากค่ารวมของทั้งระบบอย่างเดียว
+   *   2. ฐานข้อมูลมีกติกาของตัวเองว่าตารางที่คุมสิทธิ เขียนได้เฉพาะแอดมิน
+   *   3. สองฝั่งตัดสิน "ใครเป็นแอดมิน" ด้วยกติกาเดียวกัน รวมถึงข้อยกเว้นตอนยังไม่มีแอดมิน
+   *      ถ้าสองฝั่งคิดไม่ตรงกัน จะได้ปุ่มที่กดได้แต่ฐานข้อมูลปฏิเสธ ซึ่งอธิบายกับคนใช้ไม่ได้
+   */
+  const dbSrc = read("lib/db.js");
+  const storeSrc = read("lib/store.js");
+  const permScreen = read("components/views/Permissions.js");
+  const shellSrc = read("components/Shell.js");
+  const schema = read("supabase/schema.sql");
+  let n = 0;
+
+  /* ---------------- ตัวตัดสินสิทธิต้องรู้จักผู้ใช้ ---------------- */
+  if (!/export function permOf\(db, screenId, userId\)/.test(dbSrc)) {
+    bad("permOf ยังไม่รับรหัสผู้ใช้ สิทธิจะเป็นของทั้งระบบเหมือนเดิม");
+    n++;
+  }
+  if (!/db\.userPerms/.test(dbSrc)) {
+    bad("permOf ไม่ได้ดูสิทธิรายคน (userPerms)");
+    n++;
+  }
+  if (!/perm: \(screenId\) => permOf\(db, screenId, user && user\.id\)/.test(storeSrc)) {
+    bad("store ไม่ได้ส่งรหัสผู้ใช้เข้า permOf — สิทธิรายคนจะไม่มีผลกับหน้าจอไหนเลย");
+    n++;
+  }
+
+  /* ---------------- หน้ากำหนดสิทธิต้องกันคนที่ไม่ใช่แอดมิน ---------------- */
+  if (!/inv\.isAdmin/.test(permScreen)) {
+    bad("หน้ากำหนดสิทธิไม่ได้เช็คว่าเป็นแอดมิน");
+    n++;
+  }
+  if (!/inv\.isAdmin/.test(shellSrc)) {
+    bad("เมนูไม่ได้ซ่อนหน้ากำหนดสิทธิจากคนที่ไม่ใช่แอดมิน");
+    n++;
+  }
+
+  /* ---------------- ฐานข้อมูลต้องบังคับเอง ---------------- */
+  if (!/create or replace function public\.is_admin\(\)/.test(schema)) {
+    bad("schema.sql ไม่มีฟังก์ชัน is_admin() ฐานข้อมูลจะแยกแอดมินไม่ออก");
+    n++;
+  }
+  if (!/security definer/.test(schema.slice(schema.indexOf("function public.is_admin()")))) {
+    bad("is_admin() ไม่ได้เป็น security definer จะอ่าน app_users ไม่ได้ตอน RLS ทำงาน");
+    n++;
+  }
+  if (!/using \(public\.is_admin\(\)\) with check \(public\.is_admin\(\)\)/.test(schema)) {
+    bad("ไม่มี policy ที่จำกัดการเขียนตารางสิทธิไว้เฉพาะแอดมิน");
+    n++;
+  }
+  // สามตารางที่คุมสิทธิต้องอยู่ในกลุ่มที่ใช้ policy แบบเขียนได้เฉพาะแอดมิน
+  const permRls = schema.slice(schema.indexOf("$perm_rls$"));
+  ["app_users", "user_perms", "screen_perms"].forEach((t) => {
+    if (!permRls.includes("'" + t + "'")) {
+      bad("ตาราง " + t + " ไม่ได้อยู่ในกลุ่มที่เขียนได้เฉพาะแอดมิน");
+      n++;
+    }
+  });
+  // policy เปิดกว้างของเดิมต้องถูกลบออก ไม่งั้นยังเขียนได้ทุกคนอยู่
+  if (!permRls.includes("authenticated full access")) {
+    bad("ไม่ได้ลบ policy เปิดกว้างของเดิมออกจากตารางที่คุมสิทธิ");
+    n++;
+  }
+  if (!/grant execute on function public\.is_admin\(\)/.test(schema)) {
+    bad("ไม่ได้ GRANT สิทธิเรียก is_admin() ให้ authenticated");
+    n++;
+  }
+
+  /* ---------------- ข้อยกเว้นตอนยังไม่มีแอดมินต้องตรงกันสองฝั่ง ---------------- */
+  const webBootstrap = /if \(!users\.some\(\(u\) => u\.role === "admin" && u\.active\)\) return true;/.test(dbSrc);
+  const sqlBootstrap = /not exists \(select 1 from public\.app_users where role = 'admin' and active\)/.test(schema);
+  if (!webBootstrap || !sqlBootstrap) {
+    bad(
+      "กติกา ยังไม่มีแอดมิน = ทุกคนเป็นแอดมิน ไม่ได้เขียนไว้ครบทั้งสองฝั่ง" +
+        (webBootstrap ? "" : " · ขาดฝั่งเว็บ") +
+        (sqlBootstrap ? "" : " · ขาดฝั่งฐานข้อมูล")
+    );
+    n++;
+  }
+
+  /* ---------------- ตารางใหม่ต้องต่อครบทุกชั้น ---------------- */
+  const api = read("lib/api.js");
+  const backup = read("components/views/Backup.js");
+  [
+    ["app_users", "appUsers"],
+    ["user_perms", "userPerms"],
+  ].forEach(([table, key]) => {
+    if (!new RegExp("create table if not exists public\\." + table + "\\b").test(schema)) {
+      bad("schema.sql ยังไม่มีตาราง " + table);
+      n++;
+    }
+    if (!new RegExp("grant all privileges on table public\\." + table + "\\b").test(schema)) {
+      bad("schema.sql ยังไม่ได้ GRANT ตาราง " + table);
+      n++;
+    }
+    if (!api.includes('"' + table + '"')) {
+      bad("lib/api.js ยังไม่รู้จักตาราง " + table);
+      n++;
+    }
+    if (!new RegExp("^  " + key + ": \\[\\]", "m").test(storeSrc)) {
+      bad("lib/store.js ไม่มีค่าตั้งต้นของ " + key);
+      n++;
+    }
+    if (!new RegExp('key: "' + key + '"').test(backup)) {
+      bad("หน้าสำรองข้อมูลยังไม่มี " + key + " (กู้คืนแล้วสิทธิจะหายเงียบ ๆ)");
+      n++;
+    }
+  });
+
+  // ผู้ใช้ต้องลงทะเบียนตัวเองได้ ไม่งั้นคนที่ trigger ไม่ทำงานจะไม่โผล่ในทะเบียน
+  if (!/export async function ensureAppUser/.test(api)) {
+    bad("lib/api.js ไม่มี ensureAppUser — ผู้ใช้ใหม่อาจไม่โผล่ในทะเบียน");
+    n++;
+  }
+  if (!/api\.ensureAppUser\(user\)/.test(storeSrc)) {
+    bad("store ไม่ได้เรียก ensureAppUser ตอนเข้าระบบ");
+    n++;
+  }
+  // ลงทะเบียนตัวเองได้เฉพาะบทบาทผู้ใช้ทั่วไป ไม่งั้นใครก็ยกตัวเองเป็นแอดมินได้
+  if (!/with check \(id = auth\.uid\(\) and role = ''user''\)/.test(schema)) {
+    bad("policy ลงทะเบียนตัวเองไม่ได้จำกัดบทบาทไว้ที่ user — ยกตัวเองเป็นแอดมินได้");
+    n++;
+  }
+
+  if (!n) {
+    ok(
+      "สิทธิรายผู้ใช้ต่อครบ · permOf รู้จักผู้ใช้ · หน้าจอและเมนูกันคนที่ไม่ใช่แอดมิน · " +
+        "ฐานข้อมูลบังคับเองด้วย policy · ข้อยกเว้นตอนยังไม่มีแอดมินตรงกันทั้งสองฝั่ง"
+    );
+  }
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);

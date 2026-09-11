@@ -68,6 +68,8 @@ const PARTS = [
   { key: "vocResults", name: "ผลการประเมิน" },
   { key: "vocActions", name: "แผนปรับปรุงและนวัตกรรม" },
   { key: "vocLevels", name: "ผลการยืนยันจุดตรวจตามเกณฑ์" },
+  { key: "appUsers", name: "ผู้ใช้ในระบบและบทบาท" },
+  { key: "userPerms", name: "สิทธิรายผู้ใช้" },
 ];
 
 const stamp = () =>
