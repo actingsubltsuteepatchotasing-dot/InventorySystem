@@ -433,6 +433,36 @@ head("6. ไฟล์ schema.sql");
   } else {
     ok("ทุกตารางอยู่ในรายชื่อเปิด RLS (" + tables.length + " ตาราง)");
   }
+
+  /*
+   * สิทธิ์ของ sequence — ขาดแล้ว insert ไม่ได้เลยทั้งระบบ
+   *
+   * ทุกตารางมีคอลัมน์ row_order ที่ตั้งค่าเริ่มต้นเป็น nextval(...)
+   * ตอน insert Postgres ต้องเรียก nextval ซึ่งขอสิทธิ์บน sequence แยกจากตาราง
+   * grant all privileges on table ... ไม่ครอบคลุมถึง sequence
+   *
+   * อาการที่ได้คือ 42501 permission denied for sequence ... ซึ่งชี้ไปผิดที่
+   * อ่านแล้วนึกว่าเป็นเรื่องสิทธิ์ของตาราง ทั้งที่ตารางได้สิทธิ์ครบแล้ว
+   * เจอมาแล้วตอนเพิ่มตาราง user_perms จึงเฝ้าไว้
+   */
+  const seqGrant = sql.indexOf("grant usage, select on all sequences in schema public");
+  const rowOrderAt = sql.indexOf("$row_order$");
+  if (seqGrant < 0) {
+    bad(
+      "schema.sql ไม่ได้ GRANT สิทธิ์ sequence ให้ authenticated — " +
+        "จะ insert ไม่ได้เลยทุกตาราง เพราะคอลัมน์ row_order ต้องเรียก nextval"
+    );
+  } else if (rowOrderAt > seqGrant) {
+    bad(
+      "GRANT สิทธิ์ sequence อยู่ก่อนบล็อกที่สร้าง sequence — " +
+        "all sequences จะยังไม่เห็นตัวที่เพิ่งสร้าง"
+    );
+  } else if (!sql.includes("has_sequence_privilege")) {
+    // ตารางตรวจผลท้ายไฟล์ต้องรายงานเรื่องนี้ด้วย ไม่งั้นขึ้นว่าผ่านทั้งที่ใช้งานไม่ได้
+    bad("ตารางตรวจผลท้าย schema.sql ไม่ได้ตรวจสิทธิ์ sequence");
+  } else {
+    ok("GRANT สิทธิ์ sequence ครบและอยู่หลังบล็อกที่สร้าง sequence");
+  }
 }
 
 /* ------------------------------------------------------------------ 7 */

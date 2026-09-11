@@ -2165,6 +2165,23 @@ grant all privileges on table public.crm_deals          to authenticated;
 grant all privileges on table public.crm_activities     to authenticated;
 grant all privileges on table public.customer_kinds     to authenticated;
 
+-- ---------------------------------------------------------- สิทธิ์ของ sequence
+-- ทุกตารางมีคอลัมน์ row_order ที่ตั้งค่าเริ่มต้นเป็น nextval(...)
+-- ตอน insert Postgres จึงต้องเรียก nextval ซึ่งขอสิทธิ์บน "sequence" แยกอีกชั้น
+--
+-- grant all privileges on table ... ไม่ครอบคลุมถึง sequence
+-- ขาดบรรทัดนี้แล้วจะ insert ไม่ได้เลย พร้อม error ที่ชี้ไปผิดที่:
+--   42501 permission denied for sequence <ตาราง>_row_order_seq
+-- ซึ่งอ่านแล้วนึกว่าเป็นเรื่องสิทธิ์ของตาราง ทั้งที่ตารางได้สิทธิ์ครบแล้ว
+--
+-- ต้องมาหลังบล็อก row_order เสมอ เพราะ "all sequences" นับเฉพาะที่มีอยู่ ณ ตอนรัน
+grant usage, select on all sequences in schema public to authenticated;
+
+-- ตารางที่เพิ่มทีหลังจะได้สิทธิ์นี้เองโดยไม่ต้องมารันซ้ำ
+-- (มีผลกับ sequence ที่ถูกสร้างโดย role ที่รันคำสั่งนี้เท่านั้น จึงไม่ได้แทนบรรทัดบน)
+alter default privileges in schema public
+  grant usage, select on sequences to authenticated;
+
 grant execute on function public.create_sale(jsonb, jsonb)    to authenticated;
 grant execute on function public.create_invoice(jsonb, jsonb) to authenticated;
 grant execute on function public.create_purchase(jsonb, jsonb) to authenticated;
@@ -2308,6 +2325,10 @@ select
       select count(*) from pg_policies p
       where p.schemaname = 'public' and p.tablename = x.name
     ) = 0 then 'ไม่ผ่าน — ไม่มี RLS policy'
+    -- sequence ของ row_order ต้องได้สิทธิ์ด้วย ไม่งั้น insert ไม่ผ่านทั้งที่ตารางครบ
+    when to_regclass('public.' || x.name || '_row_order_seq') is not null
+      and not has_sequence_privilege('authenticated', 'public.' || x.name || '_row_order_seq', 'USAGE')
+      then 'ไม่ผ่าน — sequence ยังไม่ได้ GRANT'
     else 'ผ่าน'
   end                                             as "ผล"
 from (values
