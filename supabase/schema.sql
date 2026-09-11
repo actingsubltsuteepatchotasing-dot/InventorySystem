@@ -1932,6 +1932,244 @@ create unique index if not exists voc_levels_check_key on public.voc_levels (che
 create index if not exists voc_levels_crit_idx on public.voc_levels (crit, level);
 
 -- ============================================================================
+-- ใบเสนอราคา
+-- ----------------------------------------------------------------------------
+-- ด้านหน้าของ invoices: เสนอราคาก่อน ลูกค้าตอบรับแล้วค่อยออกใบขาย
+--
+-- ต่างจากใบขายตรงที่ "ไม่ขยับสต็อกเลย" จึงไม่มีคลัง ไม่มีช่องเก็บ ไม่มีการตัดของ
+--   การเสนอราคาคือคำสัญญาเรื่องราคา ไม่ใช่การส่งมอบของ
+--   ถ้าใบเสนอราคาจองของไว้ ของที่ยังไม่มีใครซื้อจะถูกล็อกจนขายไม่ได้
+--   และใบที่ลูกค้าเงียบหายไปจะล็อกของค้างไว้ตลอดกาลโดยไม่มีใครรู้
+--
+-- ชื่อ/ที่อยู่/เลขผู้เสียภาษีของลูกค้าคัดลอกมาเก็บในใบ (snapshot) เหตุผลเดียวกับใบขาย
+-- เอกสารต้องคงข้อความเดิม ณ วันที่ออก
+--
+-- valid_days + valid_to เก็บทั้งคู่ ไม่ได้คำนวณสดตอนแสดงผล
+--   valid_days คือสิ่งที่คนกรอก (ยืนราคา 30 วัน) ส่วน valid_to คือวันที่จริง
+--   ถ้าเก็บแต่จำนวนวันแล้วคำนวณสด วันหมดอายุจะขยับตามทุกครั้งที่แก้วันที่เอกสาร
+--   ซึ่งไม่ถูก เพราะใบที่ส่งให้ลูกค้าไปแล้วระบุวันหมดอายุไว้ตายตัว
+create table if not exists public.quotes (
+  id            text primary key,
+  doc_no        text not null,
+  date          date not null,
+  customer_id   text references public.customers (id) on delete set null,
+  cust_code     text not null default '',
+  cust_name     text not null default '',
+  cust_address  text not null default '',
+  cust_province text not null default '',
+  cust_tax_id   text not null default '',
+  cust_branch   text not null default '',
+  cust_kind     text not null default '',
+
+  sales_id      text references public.salespersons (id) on delete set null,
+  sales_code    text not null default '',
+  sales_name    text not null default '',
+
+  valid_days    integer not null default 30,
+  valid_to      date,
+  terms         text not null default '',
+
+  vat_rate      numeric not null default 7,
+  items_total   numeric not null default 0,
+  bill_discount numeric not null default 0,
+  base          numeric not null default 0,
+  vat           numeric not null default 0,
+  total         numeric not null default 0,
+  note          text not null default '',
+
+  status        text not null default 'DRAFT',
+  -- ใบขายที่ออกจากใบเสนอราคานี้ ไว้ตามรอยว่าปิดการขายได้จากใบไหน
+  invoice_id    text references public.invoices (id) on delete set null,
+
+  user_name     text not null default '',
+  ts            bigint not null,
+  created_at    timestamptz not null default now(),
+
+  constraint quotes_vat_rate check (vat_rate >= 0 and vat_rate <= 100),
+  constraint quotes_valid_days check (valid_days >= 0 and valid_days <= 3650),
+  constraint quotes_status check (status in ('DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'INVOICED'))
+);
+
+create unique index if not exists quotes_doc_no_key on public.quotes (doc_no);
+create index if not exists quotes_ts_idx     on public.quotes (ts);
+create index if not exists quotes_status_idx on public.quotes (status);
+create index if not exists quotes_cust_idx   on public.quotes (customer_id);
+
+-- บรรทัดในใบเสนอราคา
+-- ----------------------------------------------------------------------------
+-- ไม่มี wh_id / loc_id ต่างจาก invoice_items โดยตั้งใจ (ดูเหตุผลข้างบน)
+-- ตอนแปลงเป็นใบขาย หน้าขายจะให้เลือกคลังและช่องเก็บเอง เพราะคนขายเท่านั้นที่รู้ว่า
+-- จะหยิบของจากที่ไหน และของอาจย้ายที่ไปแล้วตั้งแต่วันที่เสนอราคา
+create table if not exists public.quote_items (
+  id         text primary key,
+  quote_id   text not null references public.quotes (id) on delete cascade,
+  product_id text not null references public.products (id) on delete restrict,
+  qty        numeric not null,
+  price      numeric not null default 0,
+  disc_pct   numeric not null default 0,
+  disc_amt   numeric not null default 0,
+  amount     numeric not null default 0,
+  note       text not null default '',
+  seq        int not null default 0,
+  created_at timestamptz not null default now(),
+
+  constraint quote_items_qty_positive check (qty > 0),
+  constraint quote_items_disc_pct check (disc_pct >= 0 and disc_pct <= 100),
+  constraint quote_items_disc_amt check (disc_amt >= 0)
+);
+
+create index if not exists quote_items_quote_idx on public.quote_items (quote_id);
+
+-- ============================================================================
+-- งานผ่านไลน์ (LINE) — 4 ตาราง
+-- ----------------------------------------------------------------------------
+-- ลูกค้าจำนวนมากสั่งของทางไลน์ แล้วพนักงานพิมพ์ซ้ำเข้าระบบเอง
+-- ซึ่งพิมพ์ตก พิมพ์ผิด และตามไม่ได้ว่าใบไหนมาจากข้อความไหน
+--
+--   line_messages    ข้อความดิบที่รับมา — เก็บไว้เป็นหลักฐาน ไม่แก้ไขอีกเลย
+--   line_orders      คำสั่งซื้อหนึ่งเรื่อง ที่เกิดจากข้อความหนึ่งหรือหลายข้อความ
+--   line_order_items รายการสินค้าที่อ่านได้จากข้อความ พร้อมบอกว่าจับคู่ด้วยวิธีไหน
+--   line_aliases     คำที่ลูกค้าใช้เรียกสินค้า -> สินค้าจริงในทะเบียน
+--
+-- ทำไมต้องเก็บข้อความดิบไว้ต่างหาก ไม่แปลงเป็นรายการแล้วทิ้ง:
+--   เวลามีข้อโต้แย้งว่า "สั่ง 10 ไม่ใช่ 100" ต้องย้อนกลับไปดูข้อความจริงได้
+--   และตัวแปลงข้อความจะเก่งขึ้นเรื่อย ๆ ข้อความเดิมต้องแปลงใหม่ได้เมื่อสอนคำเพิ่ม
+--
+-- ทำไมไม่ยัดรวมกับ crm_activities ที่มีอยู่แล้ว:
+--   ตารางนั้นบันทึก "การติดต่อหนึ่งครั้ง" ไว้ดูประวัติ ไม่มีโครงของรายการสินค้า
+--   และไม่ได้ผูกกับเอกสารที่ออกตามมา ซึ่งเป็นหัวใจทั้งหมดของหมวดนี้
+
+-- ข้อความดิบจากไลน์
+-- ----------------------------------------------------------------------------
+-- msg_id เป็นรหัสข้อความของไลน์เอง ตั้ง unique ไว้กันบันทึกซ้ำ
+--   ไลน์ส่ง webhook ซ้ำได้เมื่อฝั่งเราตอบช้าหรือพลาด (at-least-once delivery)
+--   ถ้าไม่กันไว้ ข้อความเดียวจะกลายเป็นคำสั่งซื้อสองใบ
+--   ข้อความที่พิมพ์เองหรือมาจากไฟล์ไม่มีรหัสนี้ จึงยอมให้ว่างได้ และ unique
+--   แบบมีเงื่อนไข (where msg_id <> '') เพื่อไม่ให้ค่าว่างชนกันเอง
+create table if not exists public.line_messages (
+  id          text primary key,
+  msg_id      text not null default '',
+  source      text not null default 'MANUAL',
+  source_kind text not null default 'user',
+  source_id   text not null default '',
+  sender_id   text not null default '',
+  sender_name text not null default '',
+  kind        text not null default 'TEXT',
+  text        text not null default '',
+  file_url    text not null default '',
+  date        date not null,
+  order_id    text,
+  note        text not null default '',
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint line_messages_source check (source in ('WEBHOOK', 'IMPORT', 'MANUAL')),
+  constraint line_messages_kind check (kind in ('TEXT', 'IMAGE', 'FILE', 'STICKER', 'OTHER'))
+);
+
+create unique index if not exists line_messages_msg_key
+  on public.line_messages (msg_id) where msg_id <> '';
+create index if not exists line_messages_ts_idx    on public.line_messages (ts);
+create index if not exists line_messages_date_idx  on public.line_messages (date);
+create index if not exists line_messages_order_idx on public.line_messages (order_id);
+create index if not exists line_messages_src_idx   on public.line_messages (source_id);
+
+-- คำสั่งซื้อจากไลน์
+-- ----------------------------------------------------------------------------
+-- customer_id เป็น set null และไม่บังคับ เพราะคนที่ทักมาในไลน์ส่วนใหญ่
+-- ยังไม่อยู่ในทะเบียนลูกค้า (เหตุผลเดียวกับ crm_leads) จับคู่ทีหลังได้
+--
+-- quote_id / invoice_id ชี้ไปเอกสารที่ออกจากคำสั่งซื้อนี้ เป็น set null ทั้งคู่
+-- ลบเอกสารทิ้งแล้วคำสั่งซื้อต้องยังอยู่ ไม่ใช่หายตามไปด้วย
+create table if not exists public.line_orders (
+  id          text primary key,
+  code        text not null,
+  date        date not null,
+  source      text not null default 'MANUAL',
+  source_id   text not null default '',
+  party_name  text not null default '',
+  customer_id text references public.customers (id) on delete set null,
+  status      text not null default 'NEW',
+  raw_text    text not null default '',
+  note        text not null default '',
+  owner       text not null default '',
+  quote_id    text references public.quotes (id) on delete set null,
+  invoice_id  text references public.invoices (id) on delete set null,
+  user_name   text not null default '',
+  ts          bigint not null,
+  created_at  timestamptz not null default now(),
+
+  constraint line_orders_source check (source in ('WEBHOOK', 'IMPORT', 'MANUAL')),
+  constraint line_orders_status
+    check (status in ('NEW', 'REVIEW', 'CONFIRMED', 'QUOTED', 'INVOICED', 'CANCEL'))
+);
+
+create unique index if not exists line_orders_code_key on public.line_orders (lower(code));
+create index if not exists line_orders_status_idx on public.line_orders (status);
+create index if not exists line_orders_date_idx   on public.line_orders (date);
+create index if not exists line_orders_cust_idx   on public.line_orders (customer_id);
+
+-- รายการสินค้าที่อ่านได้จากข้อความ
+-- ----------------------------------------------------------------------------
+-- product_id เป็น null ได้ = อ่านแล้วยังไม่รู้ว่าเป็นสินค้าตัวไหน
+--   จงใจเก็บบรรทัดที่จับคู่ไม่ได้ไว้ ไม่ทิ้ง เพราะรายการพวกนี้คือ "งานที่ต้องทำ"
+--   ของหน้าคำเรียกสินค้า และเป็นตัวบอกว่าตัวแปลงยังอ่อนตรงไหน
+--
+-- raw เก็บข้อความต้นฉบับของบรรทัดนั้นเสมอ ต่อให้จับคู่ได้แล้ว
+--   เวลาลูกค้าทักมาว่าได้ของผิด ต้องเปิดดูได้ว่าเขาพิมพ์มาว่าอะไรกันแน่
+--
+-- matched_by บอกวิธีจับคู่ (รหัส / บาร์โค๊ด / คำเรียก / ชื่อ / คนเลือกเอง)
+--   ใช้แสดงบนหน้าจอว่าบรรทัดไหนควรตรวจให้ดี และใช้วัดว่าตัวแปลงแม่นขึ้นไหม
+create table if not exists public.line_order_items (
+  id         text primary key,
+  order_id   text not null references public.line_orders (id) on delete cascade,
+  seq        int not null default 0,
+  raw        text not null default '',
+  product_id text references public.products (id) on delete set null,
+  qty        numeric not null default 0,
+  unit       text not null default '',
+  price      numeric,
+  matched_by text not null default '',
+  score      numeric not null default 0,
+  note       text not null default '',
+  created_at timestamptz not null default now(),
+
+  constraint line_order_items_qty check (qty >= 0),
+  constraint line_order_items_matched
+    check (matched_by in ('', 'code', 'barcode', 'alias', 'name', 'pick'))
+);
+
+create index if not exists line_order_items_order_idx on public.line_order_items (order_id);
+create index if not exists line_order_items_prod_idx  on public.line_order_items (product_id);
+
+-- คำเรียกสินค้าของลูกค้า
+-- ----------------------------------------------------------------------------
+-- ลูกค้าไม่ได้เรียกสินค้าด้วยชื่อในทะเบียน เขาเรียก "หมอนเด้ง" "ยางถ้วย" "ปุ๋ยสูตร 15"
+-- ตารางนี้คือสิ่งที่ทำให้ระบบแม่นขึ้นเรื่อย ๆ โดยไม่ต้องแก้โค้ด
+--
+-- word ห้ามซ้ำ เพราะคำเดียวชี้ไปสองสินค้าแปลว่าตัวแปลงต้องเดา ซึ่งเดาผิดแน่
+-- ถ้าคำหนึ่งกำกวมจริง ๆ ต้องแก้ที่ต้นทาง (ตั้งคำให้ยาวและชัดขึ้น) ไม่ใช่ปล่อยให้ซ้ำ
+--
+-- hits นับว่าคำนี้ถูกใช้จับคู่ไปกี่ครั้ง ไว้ดูว่าคำไหนคุ้มที่จะเก็บไว้
+create table if not exists public.line_aliases (
+  id         text primary key,
+  word       text not null,
+  product_id text not null references public.products (id) on delete cascade,
+  hits       integer not null default 0,
+  active     boolean not null default true,
+  note       text not null default '',
+  user_name  text not null default '',
+  ts         bigint not null,
+  created_at timestamptz not null default now(),
+
+  constraint line_aliases_word_len check (char_length(word) between 2 and 100)
+);
+
+create unique index if not exists line_aliases_word_key on public.line_aliases (lower(word));
+create index if not exists line_aliases_prod_idx on public.line_aliases (product_id);
+
+-- ============================================================================
 -- ผู้ใช้ในระบบ และสิทธิรายผู้ใช้
 -- ----------------------------------------------------------------------------
 -- เดิมสิทธิเป็นของ "ทั้งระบบ" — ตั้งครั้งเดียวมีผลกับทุกคนเหมือนกันหมด
@@ -2129,6 +2367,8 @@ begin
     'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds',
     'voc_channels', 'voc_records', 'voc_surveys', 'voc_survey_results',
     'voc_actions', 'voc_levels',
+    'quotes', 'quote_items',
+    'line_messages', 'line_orders', 'line_order_items', 'line_aliases',
     'app_users', 'user_perms'
   ]
   loop
@@ -2203,6 +2443,12 @@ grant all privileges on table public.voc_surveys                to authenticated
 grant all privileges on table public.voc_survey_results         to authenticated;
 grant all privileges on table public.voc_actions                to authenticated;
 grant all privileges on table public.voc_levels                 to authenticated;
+grant all privileges on table public.quotes                    to authenticated;
+grant all privileges on table public.quote_items               to authenticated;
+grant all privileges on table public.line_messages             to authenticated;
+grant all privileges on table public.line_orders               to authenticated;
+grant all privileges on table public.line_order_items          to authenticated;
+grant all privileges on table public.line_aliases              to authenticated;
 grant all privileges on table public.app_users                to authenticated;
 grant all privileges on table public.user_perms               to authenticated;
 grant all privileges on table public.crm_deals          to authenticated;
@@ -2253,6 +2499,8 @@ begin
     'crm_leads', 'crm_deals', 'crm_activities', 'customer_kinds',
     'voc_channels', 'voc_records', 'voc_surveys', 'voc_survey_results',
     'voc_actions', 'voc_levels',
+    'quotes', 'quote_items',
+    'line_messages', 'line_orders', 'line_order_items', 'line_aliases',
     'app_users', 'user_perms'
   ]
   loop
@@ -2268,7 +2516,7 @@ begin
     );
   end loop;
 
-  raise notice 'ตั้งค่า RLS ครบ 38 ตารางแล้ว';
+  raise notice 'ตั้งค่า RLS ครบ 44 ตารางแล้ว';
 end
 $$;
 
@@ -2386,6 +2634,8 @@ from (values
   ('crm_leads'), ('crm_deals'), ('crm_activities'), ('customer_kinds'),
   ('voc_channels'), ('voc_records'), ('voc_surveys'), ('voc_survey_results'),
   ('voc_actions'), ('voc_levels'),
+  ('quotes'), ('quote_items'),
+  ('line_messages'), ('line_orders'), ('line_order_items'), ('line_aliases'),
   ('app_users'), ('user_perms')
 ) as x(name)
 order by x.name;

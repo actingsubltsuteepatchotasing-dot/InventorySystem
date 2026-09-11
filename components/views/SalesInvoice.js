@@ -22,6 +22,7 @@ import {
   lineAmount,
   nextDocNo,
 } from "@/lib/db";
+import { takeDraft } from "@/lib/handoff";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
@@ -108,6 +109,46 @@ export default function SalesInvoice() {
   }
 
   const [rows, setRows] = useState(() => [blankRow()]);
+
+  /*
+   * รับร่างที่ส่งมาจากหน้าอื่น (ใบเสนอราคา หรือคำสั่งซื้อจากไลน์)
+   *
+   * เติมแค่ลูกค้า สินค้า จำนวน และราคา ส่วนคลังกับช่องเก็บใช้ที่เก็บประจำของสินค้า
+   * เป็นค่าตั้งต้น แล้วให้คนขายตรวจเองทุกบรรทัด เพราะคนที่หยิบของเท่านั้นที่รู้ว่า
+   * จะหยิบจากที่ไหน และของอาจย้ายที่ไปแล้วตั้งแต่วันที่เสนอราคา
+   *
+   * อ่านครั้งเดียวตอน mount และร่างหายทันทีที่อ่าน (ดู lib/handoff.js)
+   * ไม่งั้นกลับเข้าหน้านี้อีกรอบจะเจอร่างเดิมโผล่มาทับสิ่งที่กำลังกรอกอยู่
+   */
+  useEffect(() => {
+    const draft = takeDraft("invoice");
+    if (!draft) return;
+
+    if (draft.customerId) setCustId(draft.customerId);
+    if (draft.note) setNote(draft.note);
+
+    const lines = (draft.lines || []).filter((l) => l.productId);
+    if (!lines.length || !db.warehouses.length) return;
+
+    setRows([
+      ...lines.map((l) => {
+        const def = defaultBinOf(db, l.productId);
+        const whId = def ? def.whId : db.warehouses[0].id;
+        return {
+          key: uid(),
+          productId: l.productId,
+          whId,
+          locId: def ? def.locId : firstLocOf(db, whId),
+          qty: String(l.qty || ""),
+          price: String(l.price === undefined || l.price === null ? "" : l.price),
+          discPct: l.discPct ? String(l.discPct) : "",
+          discAmt: l.discAmt ? String(l.discAmt) : "",
+        };
+      }),
+      blankRow(),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isFilled = (r) => !!r.productId && parseFloat(r.qty) > 0;
 

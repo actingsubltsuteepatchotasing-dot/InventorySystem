@@ -15,6 +15,12 @@ import { InstallButton } from "./PWA";
 import { ThemePicker } from "./Theme";
 import { SetupBanner } from "./SetupNotice";
 import Dashboard from "./views/Dashboard";
+import Quotes from "./views/Quotes";
+import LineInbox from "./views/LineInbox";
+import LineOrders from "./views/LineOrders";
+import LineAliases from "./views/LineAliases";
+import LineReports from "./views/LineReports";
+import LineSetup from "./views/LineSetup";
 import WarehouseSummary from "./views/WarehouseSummary";
 import TxnScreen from "./views/TxnScreen";
 import AdjustScreen from "./views/AdjustScreen";
@@ -98,7 +104,18 @@ const NAV = [
     items: [
       { id: "pos", Icon: IcCart, title: "ขายสินค้า (POS)", sub: "ยิงบาร์โค๊ด ขาย และออกใบเสร็จ" },
       { id: "invoice", Icon: IcReport, title: "ขายสินค้าและบริการ", sub: "ออกใบกำกับภาษีเต็มรูปแบบ" },
+      { id: "quote", Icon: IcReport, title: "ใบเสนอราคา", sub: "เสนอราคาก่อนขาย แปลงเป็นใบขายได้" },
       { id: "targets", Icon: IcChart, title: "กำหนดเป้าขาย", sub: "ตั้งเป้าและเทียบกับยอดจริง" },
+    ],
+  },
+  {
+    group: "งานผ่านไลน์",
+    items: [
+      { id: "lineinbox", Icon: IcDownload, title: "กล่องข้อความจากไลน์", sub: "ข้อความที่ลูกค้าทักเข้ามา" },
+      { id: "lineorder", Icon: IcCart, title: "คำสั่งซื้อจากไลน์", sub: "ตรวจรายการแล้วออกเอกสาร" },
+      { id: "linealias", Icon: IcBox, title: "คำเรียกสินค้าของลูกค้า", sub: "สอนระบบว่าคำไหนคือสินค้าตัวไหน" },
+      { id: "linereport", Icon: IcChart, title: "รายงานงานผ่านไลน์", sub: "ปริมาณงาน อัตราปิด และของที่ถูกถาม" },
+      { id: "linesetup", Icon: IcData, title: "ตั้งค่าการเชื่อมต่อไลน์", sub: "เชื่อมบัญชีทางการเข้ากับระบบ" },
     ],
   },
   {
@@ -458,6 +475,12 @@ export default function Shell() {
           {activeView === "leads" && <Leads onNavigate={navigate} />}
           {activeView === "cust360" && <Customer360 onNavigate={navigate} />}
           {activeView === "dash" && <Dashboard onNavigate={navigate} />}
+          {activeView === "quote" && <Quotes onNavigate={navigate} />}
+          {activeView === "lineinbox" && <LineInbox onNavigate={navigate} />}
+          {activeView === "lineorder" && <LineOrders onNavigate={navigate} />}
+          {activeView === "linealias" && <LineAliases />}
+          {activeView === "linereport" && <LineReports onNavigate={navigate} />}
+          {activeView === "linesetup" && <LineSetup onNavigate={navigate} />}
           {activeView === "whsum" && <WarehouseSummary />}
           {activeView === "voc" && <VocDash onNavigate={navigate} />}
           {activeView === "vocchan" && <VocChannels />}

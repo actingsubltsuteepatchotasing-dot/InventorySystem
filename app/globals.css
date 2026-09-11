@@ -940,6 +940,19 @@ table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 
   word-break: break-all;
 }
 .setup-card .muted { color: var(--fg-faint); font-size: 13px; }
+/* กล่องข้อความสั้น ๆ ในเนื้อหน้า — บอกข้อควรรู้ที่ไม่ใช่ error และไม่ใช่ hint ใต้ช่องกรอก
+   แถบสีซ้ายบอกน้ำหนัก: ปกติเป็นสีหลัก ใส่ err เมื่อเป็นเรื่องที่ต้องแก้ก่อนใช้งานต่อ */
+.note {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand);
+  border-radius: 9px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+.note.err { border-left-color: var(--err); }
+
 .setup-tip {
   background: var(--surface-2);
   border: 1px solid var(--border);

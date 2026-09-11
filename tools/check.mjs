@@ -138,7 +138,22 @@ head("2. วงเล็บและปีกกาสมดุล");
         const prev = s.slice(0, i).replace(/\s+$/, "").slice(-1) || "(";
         if (/[=(,:[!&|?{;+]/.test(prev)) {
           i++;
-          while (i < s.length && s[i] !== "/") { if (s[i] === "\\") i++; i++; }
+          /*
+           * ต้องรู้ว่าอยู่ในวงเล็บเหลี่ยมของ regex หรือไม่
+           * เพราะ / ที่อยู่ในนั้นเป็นตัวอักษรธรรมดา ไม่ใช่ตัวปิด regex
+           * เช่น /(\d{4})[/-](\d{2})/ ถ้านับผิดจะไปจบ regex กลางคัน
+           * แล้วฟ้องว่า ] ไม่มีคู่ ทั้งที่โค้ดถูก — ฟ้องผิดแบบนี้ทำให้คนเลิกเชื่อผลตรวจ
+           */
+          let inClass = false;
+          while (i < s.length) {
+            const r = s[i];
+            if (r === "\\") { i += 2; continue; }
+            if (r === "\n") break;
+            if (r === "[") inClass = true;
+            else if (r === "]") inClass = false;
+            else if (r === "/" && !inClass) break;
+            i++;
+          }
           i++;
           continue;
         }
@@ -2008,6 +2023,150 @@ head("24. สรุปยอดคงเหลือรายคลังบว�
     ok(
       "ยอดยกมาคิดย้อนจากคงเหลือ ตารางจึงบวกลงเสมอ · คงเหลือมาจาก stockMap ตัวเดียวกับทั้งระบบ · " +
         "แถวรวมครบทุกช่องที่นับ (" + fields.length + " ช่อง) · หน้าจออ่านจากตัวคำนวณตัวเดียว"
+    );
+  }
+}
+
+/* ----------------------------------------------------------------- 25 */
+head("25. งานผ่านไลน์ต่อครบ และไม่มีทางลัดข้ามคน");
+{
+  /*
+   * หมวดนี้รับข้อมูลจากนอกระบบ (แชทของลูกค้า) แล้วเอาไปทำเอกสารที่มีผลทางการเงิน
+   * จุดที่พังแล้วเสียหายจริงมีสามจุด เฝ้าไว้ทั้งสามจุด:
+   *   1. ข้อความกลายเป็นเอกสารเองโดยไม่มีคนกดยืนยัน -> ส่งราคาผิดให้ลูกค้า
+   *   2. ใครก็ยิง webhook ปลอมเข้ามาได้ -> คำสั่งซื้อปลอมเต็มระบบ
+   *   3. กุญแจ service role หลุดไปฝั่งเบราว์เซอร์ -> ใครเปิดเว็บก็ลบฐานข้อมูลได้
+   */
+  const parse = read("lib/lineParse.js");
+  const orders = read("lib/lineOrders.js");
+  const hook = read("app/api/line/webhook/route.js");
+  const inbox = read("components/views/LineInbox.js");
+  const view = read("components/views/LineOrders.js");
+  const quotes = read("components/views/Quotes.js");
+  const dbSrc = read("lib/db.js");
+  const schema = read("supabase/schema.sql");
+  let n = 0;
+
+  // ---- ตัวแปลงและตัวสรุปมีครบ
+  ["parseOrderText", "mergeItems", "buildDict", "suggestProducts"].forEach((fn) => {
+    if (!new RegExp("export function " + fn + "\\b").test(parse)) {
+      bad("lib/lineParse.js ไม่มี " + fn);
+      n++;
+    }
+  });
+  ["lineSummary", "parseChatExport", "quoteTotals", "validUntil"].forEach((fn) => {
+    if (!new RegExp("export function " + fn + "\\b").test(orders)) {
+      bad("lib/lineOrders.js ไม่มี " + fn);
+      n++;
+    }
+  });
+
+  /*
+   * ---- ใบขายต้องไม่ถูกสร้างจากหน้าไลน์โดยตรง
+   * ใบขายตัดสต็อกจริงและต้องระบุคลัง/ช่องเก็บรายบรรทัด ซึ่งมีแต่คนขายที่รู้
+   * หน้าไลน์จึงส่ง "ร่าง" ไปหน้าขายเท่านั้น (putDraft) ไม่เรียก addInvoice เอง
+   */
+  [
+    ["components/views/LineOrders.js", view],
+    ["components/views/LineInbox.js", inbox],
+    ["components/views/Quotes.js", quotes],
+  ].forEach(([name, src]) => {
+    if (/inv\.addInvoice\(/.test(src)) {
+      bad(
+        name + " สร้างใบขายเองโดยตรง — ต้องส่งร่างไปหน้าขายให้เลือกคลังและช่องเก็บก่อน " +
+          "ไม่งั้นเท่ากับตัดสต็อกจากช่องที่ไม่มีใครยืนยัน"
+      );
+      n++;
+    }
+  });
+  if (!/putDraft\("invoice"/.test(view) || !/putDraft\("invoice"/.test(quotes)) {
+    bad("หน้าไลน์หรือหน้าใบเสนอราคาไม่ได้ส่งร่างไปหน้าขาย — ปุ่มออกใบขายจะพาไปหน้าว่าง");
+    n++;
+  }
+  if (!/takeDraft\("invoice"\)/.test(read("components/views/SalesInvoice.js"))) {
+    bad("หน้าขายสินค้าและบริการไม่ได้รับร่างที่ส่งมา — กดออกใบขายแล้วรายการจะไม่ขึ้น");
+    n++;
+  }
+
+  // ---- เลขที่ใบเสนอราคาต้องนับจากตารางใบเสนอราคา ไม่ใช่จากรายการเคลื่อนไหว
+  // ใบเสนอราคาไม่ขยับสต็อก จึงไม่มีแถวใน txns ให้นับ ถ้าไปนับจาก txns
+  // เลขจะเริ่มที่หนึ่งใหม่ทุกใบ แล้วใบที่สองบันทึกไม่ผ่านเพราะ unique
+  if (!/export function nextQuoteNo/.test(dbSrc) || !/db\.quotes \|\| \[\]/.test(dbSrc)) {
+    bad("ไม่มี nextQuoteNo ที่นับเลขจากตารางใบเสนอราคา — เลขที่ใบจะซ้ำกันทุกใบ");
+    n++;
+  }
+  if (/nextDocNo\(db, "QUOTE"/.test(quotes) || /nextDocNo\(db, "QUOTE"/.test(view)) {
+    bad("ออกเลขใบเสนอราคาด้วย nextDocNo ซึ่งนับจาก txns — ใบเสนอราคาไม่มีแถวใน txns");
+    n++;
+  }
+
+  // ---- ตัวรับข้อความต้องตรวจลายเซ็นของไลน์
+  if (!/x-line-signature/.test(hook) || !/createHmac\("sha256"/.test(hook)) {
+    bad("ตัวรับข้อความไม่ได้ตรวจลายเซ็นของไลน์ — ใครเดา URL ถูกก็ยัดคำสั่งซื้อปลอมได้");
+    n++;
+  }
+  // ต้องเป็นการ "เรียกใช้" จริง ไม่ใช่แค่มีคำนี้อยู่ในคอมเมนต์ที่อธิบายว่าทำไมต้องใช้
+  if (!/crypto\.timingSafeEqual\(/.test(hook)) {
+    bad(
+      "เทียบลายเซ็นแบบธรรมดา — เวลาที่ใช้เทียบบอกใบ้ว่าเดาถูกไปกี่ตัว ต้องใช้ timingSafeEqual"
+    );
+    n++;
+  }
+  // ต้องอ่าน body ดิบ ไม่ใช่ parse แล้ว stringify กลับ ไม่งั้นลายเซ็นไม่มีวันตรง
+  if (!/await request\.text\(\)/.test(hook)) {
+    bad("ตัวรับข้อความไม่ได้อ่าน body ดิบ — ลายเซ็นจะไม่ตรงทั้งที่คำขอถูกต้อง");
+    n++;
+  }
+
+  // ---- กุญแจต้องไม่หลุดไปฝั่งเบราว์เซอร์
+  if (/NEXT_PUBLIC_[A-Z_]*SERVICE/.test(hook) || /NEXT_PUBLIC_LINE/.test(hook)) {
+    bad("ชื่อตัวแปรความลับขึ้นต้นด้วย NEXT_PUBLIC_ — Next.js จะฝังค่าลงไปในไฟล์ที่เบราว์เซอร์โหลด");
+    n++;
+  }
+  /*
+   * ต้องดู process.env. นำหน้าด้วย ไม่ใช่แค่ชื่อค่าลอย ๆ
+   * เพราะหน้าตั้งค่าต้อง "พูดถึงชื่อ" ของค่าเหล่านี้เพื่อบอกคนตั้งค่าว่าต้องใส่อะไร
+   * ซึ่งไม่อันตราย ส่วนที่อันตรายคือการ "อ่านค่า" จากไฟล์ที่ถูกส่งไปรันในเบราว์เซอร์
+   */
+  FILES.filter((f) => f.startsWith("components") || f.startsWith("lib")).forEach((f) => {
+    const src = read(f);
+    if (/process\.env\.(SUPABASE_SERVICE_ROLE_KEY|LINE_CHANNEL_SECRET)/.test(src)) {
+      bad(f + " อ่านค่ากุญแจความลับ ทั้งที่ไฟล์นี้ถูกส่งไปรันในเบราว์เซอร์");
+      n++;
+    }
+  });
+
+  // ---- ตัวรับข้อความเขียนอย่างเดียว ไม่ลบไม่แก้
+  // ข้อความเป็นหลักฐาน คำขอจากภายนอกจึงไม่ควรมีสิทธิ์แตะของเดิม
+  if (/method: "DELETE"|method: "PATCH"|method: "PUT"/.test(hook)) {
+    bad("ตัวรับข้อความลบหรือแก้ข้อมูลได้ — ควรเขียนอย่างเดียว เพราะข้อความเป็นหลักฐาน");
+    n++;
+  }
+
+  // ---- คำเรียกสินค้าห้ามซ้ำ ทั้งฝั่งหน้าจอและฝั่งฐานข้อมูล
+  if (!/line_aliases_word_key[\s\S]{0,80}lower\(word\)/.test(schema)) {
+    bad("ฐานข้อมูลไม่ได้กันคำเรียกสินค้าซ้ำ — คำเดียวชี้สองสินค้าแล้วตัวแปลงต้องเดา");
+    n++;
+  }
+
+  // ---- ทุกหน้าจอของหมวดนี้ต้องกันไว้เมื่อยังไม่ได้อัปเดต schema
+  ["LineInbox", "LineOrders", "LineAliases", "LineReports", "LineSetup"].forEach((f) => {
+    const src = read("components/views/" + f + ".js");
+    if (!/inv\.lineReady/.test(src) || !/SetupNotice/.test(src)) {
+      bad("components/views/" + f + ".js ไม่ได้กันกรณีที่ยังไม่มีตารางของหมวดนี้");
+      n++;
+    }
+  });
+  if (!/inv\.quotesReady/.test(quotes)) {
+    bad("หน้าใบเสนอราคาไม่ได้กันกรณีที่ยังไม่มีตาราง");
+    n++;
+  }
+
+  if (!n) {
+    ok(
+      "ตัวแปลงและตัวสรุปครบ · ใบขายต้องผ่านหน้าขายเสมอ ไม่มีทางลัด · " +
+        "เลขใบเสนอราคานับจากตารางของตัวเอง · ตัวรับข้อความตรวจลายเซ็นและเขียนอย่างเดียว · " +
+        "กุญแจไม่หลุดไปเบราว์เซอร์ · ทุกหน้ากันกรณียังไม่ได้อัปเดต schema"
     );
   }
 }

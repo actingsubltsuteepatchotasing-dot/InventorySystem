@@ -70,6 +70,12 @@ const PARTS = [
   { key: "vocLevels", name: "ผลการยืนยันจุดตรวจตามเกณฑ์" },
   { key: "appUsers", name: "ผู้ใช้ในระบบและบทบาท" },
   { key: "userPerms", name: "สิทธิรายผู้ใช้" },
+  { key: "quotes", name: "ใบเสนอราคา" },
+  { key: "quoteItems", name: "รายการในใบเสนอราคา" },
+  { key: "lineMessages", name: "ข้อความจากไลน์" },
+  { key: "lineOrders", name: "คำสั่งซื้อจากไลน์" },
+  { key: "lineOrderItems", name: "รายการในคำสั่งซื้อจากไลน์" },
+  { key: "lineAliases", name: "คำเรียกสินค้าของลูกค้า" },
 ];
 
 const stamp = () =>
