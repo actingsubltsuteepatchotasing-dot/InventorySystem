@@ -306,7 +306,7 @@ declare
   v_bincode text;
 begin
   insert into public.sales (
-    id, doc_no, date, wh_id, loc_id, customer,
+    id, doc_no, date, wh_id, loc_id, customer_id, cust_code, customer,
     subtotal, discount, vat, total, paid, change_amt,
     pay_method, user_name, note, ts
   )
@@ -316,6 +316,9 @@ begin
     (p_sale ->> 'date')::date,
     p_sale ->> 'wh_id',
     nullif(p_sale ->> 'loc_id', ''),
+    -- เลือกรหัสลูกค้าจากทะเบียนหรือไม่เลือกก็ได้ ขายให้คนเดินเข้าร้านยังต้องขายได้
+    nullif(p_sale ->> 'customer_id', ''),
+    coalesce(p_sale ->> 'cust_code', ''),
     coalesce(p_sale ->> 'customer', ''),
     (p_sale ->> 'subtotal')::numeric,
     (p_sale ->> 'discount')::numeric,
@@ -435,6 +438,47 @@ create table if not exists public.customers (
 
 -- รหัสลูกค้าต้องไม่ซ้ำ เพราะเป็นตัวที่คนใช้อ้างถึงกันในเอกสาร
 create unique index if not exists customers_code_uniq on public.customers (code);
+
+-- ลูกค้าเริ่มต้นของหน้าขายสินค้า (POS)
+-- ----------------------------------------------------------------------------
+-- ร้านส่วนใหญ่ขายให้ "ลูกค้าทั่วไป" เป็นหลัก แต่บางที่ขายให้ลูกค้าประจำรายเดียวเกือบทั้งวัน
+-- ติ๊กไว้ที่ลูกค้ารายนั้นแล้วหน้า POS จะเลือกให้เองทุกบิล ไม่ต้องมานั่งเลือกซ้ำทุกครั้ง
+--
+-- เก็บเป็นธงบนตัวลูกค้า ไม่ได้เก็บเป็นค่าตั้งค่าแยกตาราง เพราะเป็นคุณสมบัติของลูกค้ารายนั้น
+-- และปุ่มที่คนกดก็อยู่ในหน้าลูกค้ารายนั้นอยู่แล้ว
+--
+-- จงใจไม่ทำ unique index ให้ติ๊กได้แค่รายเดียว ด้วยเหตุผลเดียวกับ print_forms.is_default:
+--   ตัวโปรแกรมปลดของรายอื่นให้เองตอนกดตั้ง (ดู upsertCustomer ใน lib/api.js)
+--   ถ้าบังคับที่ฐานข้อมูล วันที่กู้คืนไฟล์สำรองที่มีสองรายติ๊กไว้จะกู้ไม่ขึ้นทั้งไฟล์
+--   พร้อม error ที่ไม่มีใครเดาได้ว่าเกี่ยวกับหน้า POS
+--   ฝั่งอ่านเลือกรายที่รหัสน้อยสุดเสมอ (posCustomerOf ใน lib/db.js) ผลจึงไม่แกว่ง
+alter table public.customers add column if not exists pos_default boolean not null default false;
+
+create index if not exists customers_pos_default_idx
+  on public.customers (pos_default) where pos_default;
+
+-- ลูกค้าที่ผูกกับบิลขายหน้าร้าน
+-- ----------------------------------------------------------------------------
+-- เดิมบิล POS เก็บแค่ "ชื่อลูกค้า" เป็นข้อความอิสระ ซึ่งพิมพ์ผิดได้ ซ้ำได้ และเทียบกับ
+-- ทะเบียนลูกค้าไม่ได้เลย รายงานยอดขายรายลูกค้าจึงรวมชื่อที่สะกดต่างกันไม่ติด
+--
+-- cust_code เก็บรหัส ณ วันที่ขาย (snapshot) เหตุผลเดียวกับใบกำกับภาษี
+-- เอกสารต้องคงข้อความเดิม ต่อให้ทะเบียนลูกค้าถูกแก้รหัสทีหลัง
+-- ส่วน customer_id ไว้ตามกลับไปหาทะเบียน เป็น set null เพราะลบลูกค้าแล้วบิลเก่าต้องยังอยู่
+--
+-- ยังเก็บ customer (ชื่อ) ไว้เหมือนเดิม เพราะขายให้คนเดินเข้าร้านที่ไม่มีในทะเบียนก็ยังต้องได้
+alter table public.sales add column if not exists customer_id text;
+alter table public.sales add column if not exists cust_code   text not null default '';
+
+do $sale_cust$
+begin
+  alter table public.sales drop constraint if exists sales_customer_fk;
+  alter table public.sales add constraint sales_customer_fk
+    foreign key (customer_id) references public.customers (id) on delete set null;
+end
+$sale_cust$;
+
+create index if not exists sales_customer_idx on public.sales (customer_id);
 
 -- ============================================================================
 -- กลุ่มเอกสาร (การกำหนดเลขที่เอกสารแบบรันนิ่ง)

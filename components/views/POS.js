@@ -8,13 +8,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useInv } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { PAY_METHODS, VAT_RATE } from "@/lib/constants";
-import { bestBinFor, findByScan, firstLocOf, nextDocNo, saleTotals } from "@/lib/db";
+import { bestBinFor, findByScan, firstLocOf, nextDocNo, posCustomerOf, saleTotals } from "@/lib/db";
 import { resizeImage } from "@/lib/image";
 import { num, thDate, todayISO, uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { usePrint } from "../Print";
 import { IcBox, IcPlus, IcPrint, IcTrash } from "../Icons";
-import { Badge, Card, Empty, LocationSelect, QtyInput, TableWrap, WhLocFields } from "../ui";
+import { Badge, Card, Empty, LocationSelect, QtyInput, SearchSelect, TableWrap, WhLocFields } from "../ui";
 import { ReceiptBody } from "./printBodies";
 import SetupNotice from "../SetupNotice";
 
@@ -54,6 +54,14 @@ export default function POS() {
   const [scan, setScan] = useState("");
   const [search, setSearch] = useState("");
   const [lines, setLines] = useState([]);
+  /*
+   * ลูกค้าของบิลนี้ระบุได้สองแบบ
+   *   custId   เลือกรหัสจากทะเบียนลูกค้า ชื่อจะวิ่งตามรหัสเสมอ แก้ทับไม่ได้
+   *   customer พิมพ์ชื่อเอง ใช้กับคนที่เดินเข้าร้านแล้วไม่ได้อยู่ในทะเบียน
+   * เลือกรหัสแล้วช่องชื่อจะล็อก ไม่งั้นจะได้บิลที่รหัสกับชื่อเป็นคนละคน
+   * ซึ่งตอนทำรายงานยอดขายรายลูกค้าจะแยกไม่ออกว่าเชื่อช่องไหนดี
+   */
+  const [custId, setCustId] = useState("");
   const [customer, setCustomer] = useState("");
   const [discount, setDiscount] = useState("");
   const [payMethod, setPayMethod] = useState("CASH");
@@ -84,6 +92,33 @@ export default function POS() {
       // เก็บไม่ได้ก็ไม่เป็นไร แค่จำค่าข้ามครั้งไม่ได้
     }
   }, [billWidth]);
+
+  /* ------------------------------------------------------- ลูกค้าของบิล */
+
+  const custList = db.customers || [];
+  const cust = custId ? custList.find((c) => c.id === custId) || null : null;
+  /** ชื่อที่จะลงบิลจริง — มาจากทะเบียนถ้าเลือกรหัสไว้ ไม่งั้นใช้ที่พิมพ์เอง */
+  const custName = cust ? cust.name : customer.trim();
+
+  // ลูกค้าที่ถูกตั้งเป็นค่าเริ่มต้นไว้ที่หน้ารายละเอียดลูกค้า
+  const defCust = posCustomerOf(db);
+  const defCustId = defCust ? defCust.id : "";
+
+  /*
+   * เติมลูกค้าเริ่มต้นให้เองตอนเปิดหน้า และตอนมีคนเปลี่ยนรายที่ตั้งไว้
+   *
+   * ต้องจำว่าเติมค่าไหนไปแล้ว ไม่งั้นพอผู้ใช้เปลี่ยนกลับเป็น "ลูกค้าทั่วไป" เอง
+   * effect จะเติมรายเดิมกลับเข้าไปทันที จนเลือกเป็นลูกค้าทั่วไปไม่ได้เลย
+   */
+  const appliedDef = useRef(null);
+  useEffect(() => {
+    if (appliedDef.current === defCustId) return;
+    appliedDef.current = defCustId;
+    if (defCustId) {
+      setCustId(defCustId);
+      setCustomer("");
+    }
+  }, [defCustId]);
 
   const cashierName = user && user.email ? user.email : "";
   const totals = saleTotals(lines, discount, VAT_RATE);
@@ -205,6 +240,9 @@ export default function POS() {
 
   function clearAll() {
     setLines([]);
+    // บิลถัดไปเริ่มที่ลูกค้าเริ่มต้นอีกครั้ง ไม่ใช่ว่างเปล่า
+    // ร้านที่ตั้งค่านี้ไว้คือร้านที่ขายให้ลูกค้ารายนั้นเป็นหลัก
+    setCustId(defCustId);
     setCustomer("");
     setDiscount("");
     setPaid("");
@@ -271,7 +309,11 @@ export default function POS() {
       date,
       whId,
       locId,
-      customer: customer.trim(),
+      // เก็บทั้งรหัสและชื่อ ณ วันที่ขาย เอกสารต้องคงข้อความเดิม
+      // ต่อให้ทะเบียนลูกค้าถูกแก้หรือถูกลบทีหลัง บิลเก่าต้องยังอ่านได้เหมือนเดิม
+      customerId: cust ? cust.id : "",
+      custCode: cust ? cust.code : "",
+      customer: custName,
       subtotal: totals.subtotal,
       discount: totals.discount,
       vat: totals.vat,
@@ -396,14 +438,53 @@ export default function POS() {
               }}
             />
             <div className="field">
-              <label className="lbl" htmlFor="pos_cust">ชื่อลูกค้า (ไม่บังคับ)</label>
-              <input
-                className="inp"
-                id="pos_cust"
-                value={customer}
-                onChange={(e) => setCustomer(e.target.value)}
-                placeholder="ลูกค้าทั่วไป"
+              <label className="lbl" htmlFor="pos_cust_code">รหัสลูกค้า (ไม่บังคับ)</label>
+              {/* พิมพ์ค้นได้จากรหัส ชื่อ จังหวัด เบอร์โทร หรือเลขผู้เสียภาษี
+                  เหมือนหน้าขายสินค้าและบริการ คนที่ใช้หน้านั้นเป็นแล้วใช้หน้านี้ได้ทันที */}
+              <SearchSelect
+                id="pos_cust_code"
+                value={custId}
+                onChange={(v) => {
+                  setCustId(v);
+                  // เปลี่ยนรหัสแล้วต้องล้างชื่อที่พิมพ์ค้างไว้
+                  // ไม่งั้นพอปลดกลับเป็นลูกค้าทั่วไป ชื่อของรายก่อนหน้าจะโผล่กลับมาเอง
+                  setCustomer("");
+                }}
+                options={custList.map((c) => ({
+                  value: c.id,
+                  code: c.code,
+                  label: c.name,
+                  meta: c.province,
+                  search: c.taxId + " " + c.phone,
+                }))}
+                emptyLabel="— ลูกค้าทั่วไป —"
+                notFound="ไม่พบลูกค้าที่ตรงกับ"
               />
+              {defCust ? (
+                <span className="hint">
+                  ค่าเริ่มต้น <b>{defCust.code} · {defCust.name}</b> — เปลี่ยนได้ที่หน้ารายละเอียดลูกค้า
+                </span>
+              ) : (
+                <span className="hint">
+                  ตั้งลูกค้าเริ่มต้นของหน้านี้ได้ที่เมนู <b>รายละเอียดลูกค้า</b>
+                </span>
+              )}
+            </div>
+            <div className="field">
+              <label className="lbl" htmlFor="pos_cust">ชื่อลูกค้า</label>
+              {cust ? (
+                /* เลือกรหัสไว้แล้ว ชื่อมาจากทะเบียนเสมอ พิมพ์ทับไม่ได้
+                   ไม่งั้นจะได้บิลที่รหัสกับชื่อเป็นคนละคน */
+                <input className="inp" id="pos_cust" value={cust.name} readOnly />
+              ) : (
+                <input
+                  className="inp"
+                  id="pos_cust"
+                  value={customer}
+                  onChange={(e) => setCustomer(e.target.value)}
+                  placeholder="ลูกค้าทั่วไป"
+                />
+              )}
             </div>
           </div>
 

@@ -1744,6 +1744,7 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
           // เพราะคนมักจำได้ว่า "บิลที่ขายน้ำยางข้น" มากกว่าจำเลขที่บิล
           return filter.match(
             s.docNo,
+            s.custCode,
             s.customer,
             s.date,
             thDate(s.date),
@@ -1769,9 +1770,10 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
         <ExportPair
           disabled={!bills.length}
           toast={toast}
-          onExport={(save) => save(["วันที่", "เลขที่บิล", "คลัง", "ลูกค้า", "ยอดรวม", "ส่วนลด", "VAT", "ยอดสุทธิ", "วิธีชำระ", "ผู้ขาย"],
+          onExport={(save) => save(["วันที่", "เลขที่บิล", "คลัง", "รหัสลูกค้า", "ลูกค้า", "ยอดรวม", "ส่วนลด", "VAT", "ยอดสุทธิ", "วิธีชำระ", "ผู้ขาย"],
               bills.map((b) => [
-                b.date, b.docNo, inv.whLocName(b.whId, b.locId), b.customer || "ลูกค้าทั่วไป",
+                b.date, b.docNo, inv.whLocName(b.whId, b.locId),
+                b.custCode || "", b.customer || "ลูกค้าทั่วไป",
                 b.subtotal, b.discount, b.vat, b.total, payName(b.payMethod), b.user,
               ]),
               "บิลขาย.csv")}
@@ -1809,7 +1811,12 @@ function BillsReport({ inv, db, filter, FilterBar, print, toast }) {
                   <td>{thDate(b.date)}</td>
                   <td className="code-cell">{b.docNo}</td>
                   <td style={{ fontSize: 13 }}>{inv.whLocName(b.whId, b.locId)}</td>
-                  <td>{b.customer || "ลูกค้าทั่วไป"}</td>
+                  <td>
+                    {/* บิลที่เลือกรหัสลูกค้าไว้ ให้เห็นรหัสด้วย จะได้ตามกลับไปหาทะเบียนได้ */}
+                    {b.custCode ? <code>{b.custCode}</code> : null}
+                    {b.custCode ? " " : ""}
+                    {b.customer || "ลูกค้าทั่วไป"}
+                  </td>
                   <td className="num">{items.length}</td>
                   <td className="num">
                     <b>{num(b.total, 2)}</b>

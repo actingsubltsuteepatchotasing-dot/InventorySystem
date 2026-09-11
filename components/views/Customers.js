@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useInv } from "@/lib/store";
 import { BRANCH_KINDS } from "@/lib/constants";
 import { filterValues, optionsFor } from "@/lib/customerKinds";
-import { nextCustCode } from "@/lib/db";
+import { nextCustCode, posCustomerOf } from "@/lib/db";
 import { uid } from "@/lib/format";
 import { useToast } from "../Toast";
 import { IcPlus, IcTrash } from "../Icons";
@@ -37,6 +37,8 @@ const blank = (code) => ({
   kind: "",
   taxId: "",
   branch: "",
+  // ลูกค้าใหม่ไม่ได้เป็นค่าเริ่มต้นของหน้าขายสินค้า (POS) จนกว่าจะกดตั้งเอง
+  posDefault: false,
 });
 
 export default function Customers() {
@@ -70,6 +72,9 @@ export default function Customers() {
   }, []);
 
   const all = db.customers || [];
+
+  /** รายที่ถูกตั้งเป็นลูกค้าเริ่มต้นของหน้าขายสินค้า (POS) อยู่ตอนนี้ */
+  const posDefault = posCustomerOf(db);
 
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -165,6 +170,9 @@ export default function Customers() {
         kind: form.kind || "",
         taxId,
         branch: String(form.branch || "").trim(),
+        salesId: form.salesId || "",
+        // ตั้งเป็นค่าเริ่มต้นของหน้า POS ได้ทีละรายเดียว รายอื่นถูกปลดให้เองตอนบันทึก
+        posDefault: !!form.posDefault,
       });
       toast("บันทึกลูกค้า " + name + " แล้ว", "ok");
       setForm(null);
@@ -263,6 +271,14 @@ export default function Customers() {
                   </td>
                   <td>
                     <b>{c.name}</b>
+                    {/* เห็นได้จากตารางเลยว่ารายไหนเป็นค่าเริ่มต้นของหน้า POS
+                        ไม่ต้องเปิดทีละรายไปหา */}
+                    {c.posDefault ? (
+                      <>
+                        {" "}
+                        <Badge kind="ok">ค่าเริ่มต้น POS</Badge>
+                      </>
+                    ) : null}
                   </td>
                   <td>{c.address || "—"}</td>
                   <td>{c.subdistrict || "—"}</td>
@@ -538,6 +554,38 @@ export default function Customers() {
                 onChange={(e) => set("phone", e.target.value)}
                 placeholder="เช่น 081-234-5678"
               />
+            </div>
+
+            {/* ลูกค้าเริ่มต้นของหน้าขายสินค้า (POS)
+                ติ๊กไว้ที่รายไหน หน้า POS จะเลือกรายนั้นให้เองทุกบิล ไม่ต้องเลือกซ้ำทั้งวัน
+                มีผลหลังกดบันทึก เหมือนช่องอื่นในฟอร์มนี้ ไม่ใช่กดแล้วเปลี่ยนทันที
+                ซึ่งจะกลายเป็นปุ่มเดียวในหน้าที่ไม่ต้องบันทึก และคนกดยกเลิกจะงงว่าทำไมยังเปลี่ยน */}
+            <div className="field span2">
+              <label className="lbl">ค่าเริ่มต้นของหน้าขายสินค้า (POS)</label>
+              <div className="row" style={{ gap: 10 }}>
+                <button
+                  type="button"
+                  className={form.posDefault ? "btn btn-p btn-sm" : "btn btn-o btn-sm"}
+                  onClick={() => set("posDefault", !form.posDefault)}
+                  disabled={!perm.edit}
+                  aria-pressed={form.posDefault ? "true" : "false"}
+                >
+                  {form.posDefault
+                    ? "เป็นลูกค้าเริ่มต้นของหน้า POS"
+                    : "ตั้งเป็นลูกค้าเริ่มต้นของหน้า POS"}
+                </button>
+                {form.posDefault && posDefault && posDefault.id !== form.id ? (
+                  <span className="hint">
+                    บันทึกแล้วจะแทนที่ <b>{posDefault.code} · {posDefault.name}</b> ที่ตั้งไว้เดิม
+                  </span>
+                ) : (
+                  <span className="hint">
+                    {form.posDefault
+                      ? "กดอีกครั้งเพื่อเลิกเป็นค่าเริ่มต้น แล้วหน้า POS จะกลับไปเริ่มที่ลูกค้าทั่วไป"
+                      : "ตั้งได้ทีละรายเดียว หน้า POS จะเลือกรายนี้ให้เองทุกบิล"}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </Modal>

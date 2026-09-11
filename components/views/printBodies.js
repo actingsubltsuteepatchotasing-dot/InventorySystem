@@ -127,7 +127,11 @@ export function ReceiptBody({ inv, sale, items }) {
         </div>
         <div>
           <span>ลูกค้า</span>
-          <b>{sale.customer || "ลูกค้าทั่วไป"}</b>
+          {/* ขายให้ลูกค้าในทะเบียน ให้ใบเสร็จบอกรหัสด้วย ลูกค้าจะได้อ้างถึงตัวเองได้ถูก
+              ตอนโทรมาสอบถามทีหลัง และฝ่ายบัญชีตามกลับไปหาทะเบียนได้ */}
+          <b>
+            {(sale.custCode ? sale.custCode + " · " : "") + (sale.customer || "ลูกค้าทั่วไป")}
+          </b>
         </div>
         <div>
           <span>ผู้ขาย</span>
