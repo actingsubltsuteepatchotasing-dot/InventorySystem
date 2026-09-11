@@ -12,6 +12,7 @@ import { useToast } from "../Toast";
 import { IcTrash } from "../Icons";
 import { optionsFor, TERM_DIMS } from "@/lib/productTerms";
 import { Barcode, LocationSelect, QtyInput, SearchSelect, WarehouseSelect } from "../ui";
+import StockBins from "./StockBins";
 
 export default function ProductForm({ productId, onClose }) {
   const inv = useInv();
@@ -54,6 +55,12 @@ export default function ProductForm({ productId, onClose }) {
 
   // ยอดคงเหลือรวมทุกคลัง ใช้ทั้งตอนปิดปุ่มลบและตอนขึ้นข้อความบอกเหตุผล
   const stockLeft = productId ? inv.stockTotal(productId) : 0;
+
+  // ยอดคงเหลือแยกรายคลังและรายช่องเก็บ — คิดที่เดียวกับหน้ารายละเอียดสินค้า
+  const bins = useMemo(
+    () => (productId ? inv.stockByBin(productId) : []),
+    [db.warehouses, db.locations, db.placements, db.txns, inv, productId]
+  );
 
   const cats = useMemo(() => Array.from(new Set(db.products.map((p) => p.cat))), [db.products]);
 
@@ -350,6 +357,21 @@ export default function ProductForm({ productId, onClose }) {
             เมื่อเลือกสินค้ารายการนี้ และหน้า POS จะหยิบจากช่องนี้ก่อนถ้ามีของ
           </span>
         </div>
+
+        {/* ยอดคงเหลือแยกรายคลังและรายช่องเก็บ
+            อยู่ในฟอร์มแก้ไขด้วย เพราะคนที่เข้ามาแก้ข้อมูลสินค้ามักต้องรู้ว่า
+            ของอยู่ที่ไหนบ้างก่อนตัดสินใจ (เช่น จะตั้งช่องเก็บประจำที่ไหน
+            หรือจะลบสินค้าได้หรือยัง) ไม่ควรต้องปิดฟอร์มไปเปิดหน้ารายละเอียดก่อน
+            แสดงอย่างเดียว แก้ไม่ได้ — การย้ายของทำที่หน้าผังที่เก็บสินค้า */}
+        {!isNew ? (
+          <div className="field span2">
+            <label className="lbl">ยอดคงเหลือแยกตามคลังและที่เก็บ</label>
+            <StockBins rows={bins} unit={form.unit} />
+            <span className="hint">
+              แสดงอย่างเดียว · ย้ายของระหว่างช่องเก็บได้ที่เมนู <b>ผังที่เก็บสินค้า</b>
+            </span>
+          </div>
+        ) : null}
 
         <div className="field span2">
           <label className="lbl">ตัวอย่างบาร์โค๊ด</label>

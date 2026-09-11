@@ -10,6 +10,7 @@ import Modal from "../Modal";
 import { usePrint } from "../Print";
 import { IcBox } from "../Icons";
 import { Barcode, Empty, Row2, TableWrap } from "../ui";
+import StockBins from "./StockBins";
 import { LabelSheetBody } from "./printBodies";
 
 export default function ProductDetail({ productId, onClose, onEdit }) {
@@ -19,20 +20,10 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
   const print = usePrint();
   const p = inv.prod(productId);
 
+  // ยอดคงเหลือแยกรายคลังและรายช่องเก็บ — คิดที่เดียวกับฟอร์มแก้ไขสินค้า
   const byWh = useMemo(
-    () =>
-      db.warehouses
-        .map((w) => ({
-          w,
-          q: inv.stockOf(productId, w.id),
-          // สินค้ารายการเดียวอาจกระจายอยู่หลายช่องในคลังเดียวกัน
-          bins: inv
-            .locsOf(w.id)
-            .map((l) => ({ loc: l, qty: inv.placedIn(productId, l.id) }))
-            .filter((b) => b.qty > 0),
-        }))
-        .filter((x) => x.q !== 0),
-    [db.warehouses, db.locations, db.placements, inv, productId]
+    () => inv.stockByBin(productId),
+    [db.warehouses, db.locations, db.placements, db.txns, inv, productId]
   );
 
   const history = useMemo(
@@ -126,37 +117,8 @@ export default function ProductDetail({ productId, onClose, onEdit }) {
         </div>
       </div>
 
-      <h4 style={{ margin: "20px 0 9px", fontSize: 14.5 }}>ยอดคงเหลือแยกตามคลัง</h4>
-      {byWh.length ? (
-        <TableWrap>
-          <thead>
-            <tr>
-              <th>คลัง</th>
-              <th>จังหวัด</th>
-              <th>ที่เก็บ</th>
-              <th className="num">คงเหลือ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {byWh.map((x) => (
-              <tr key={x.w.id}>
-                <td>{x.w.name}</td>
-                <td>{x.w.province}</td>
-                <td style={{ fontSize: 13 }}>
-                  {x.bins.length
-                    ? x.bins.map((b) => b.loc.code + " (" + num(b.qty, 0) + ")").join(", ")
-                    : "ยังไม่ระบุที่เก็บ"}
-                </td>
-                <td className="num">
-                  <b>{num(x.q, 0)}</b>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </TableWrap>
-      ) : (
-        <Empty>ไม่มียอดคงเหลือ</Empty>
-      )}
+      <h4 style={{ margin: "20px 0 9px", fontSize: 14.5 }}>ยอดคงเหลือแยกตามคลังและที่เก็บ</h4>
+      <StockBins rows={byWh} unit={p.unit} />
 
       <h4 style={{ margin: "20px 0 9px", fontSize: 14.5 }}>ประวัติการเคลื่อนไหวล่าสุด</h4>
       {history.length ? (
