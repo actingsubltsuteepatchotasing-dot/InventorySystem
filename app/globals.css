@@ -721,6 +721,7 @@ table { border-collapse: collapse; width: 100%; }
 .kpi.warn .ic { background: var(--warn-bg); color: var(--warn); }
 .kpi.err .ic { background: var(--err-bg); color: var(--err); }
 .kpi.info .ic { background: var(--info-bg); color: var(--info); }
+.kpi.ok .ic { background: var(--ok-bg); color: var(--ok); }
 
 /* ---------- Tables ---------- */
 .tbl-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
@@ -740,6 +741,8 @@ table.tbl th {
 table.tbl td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 table.tbl tbody tr:last-child td { border-bottom: 0; }
 table.tbl tbody tr:hover { background: var(--surface-2); }
+/* แถวที่กดเปิดรายละเอียดอยู่ ต้องเห็นได้ว่าตารางข้างล่างเป็นของแถวไหน */
+table.tbl tbody tr.sel td { background: var(--brand-50); }
 table.tbl tfoot td { background: var(--brand-50); font-weight: 700; border-top: 2px solid var(--brand-100); }
 .code-cell { font-family: var(--mono); font-size: 12.5px; }
 .empty { text-align: center; padding: 34px 16px; color: var(--fg-faint); font-size: 14px; }

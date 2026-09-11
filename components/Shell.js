@@ -15,6 +15,7 @@ import { InstallButton } from "./PWA";
 import { ThemePicker } from "./Theme";
 import { SetupBanner } from "./SetupNotice";
 import Dashboard from "./views/Dashboard";
+import WarehouseSummary from "./views/WarehouseSummary";
 import TxnScreen from "./views/TxnScreen";
 import AdjustScreen from "./views/AdjustScreen";
 import Products from "./views/Products";
@@ -70,6 +71,7 @@ const NAV = [
       { id: "guide", Icon: IcReport, title: "วิธีการใช้งาน", sub: "แต่ละหน้าจอทำงานยังไง เชื่อมกันตรงไหน" },
       { id: "quick", Icon: IcChart, title: "Quick View (มือถือ)", sub: "ยอดขายเทียบเป้า ดูเร็วบนมือถือ" },
       { id: "dash", Icon: IcDash, title: "แดชบอร์ด", sub: "ภาพรวมสินค้าคงคลัง" },
+      { id: "whsum", Icon: IcData, title: "สรุปยอดคงเหลือรายคลัง", sub: "ยอดยกมา เข้า ออก คงเหลือ ของแต่ละคลัง" },
     ],
   },
   {
@@ -456,6 +458,7 @@ export default function Shell() {
           {activeView === "leads" && <Leads onNavigate={navigate} />}
           {activeView === "cust360" && <Customer360 onNavigate={navigate} />}
           {activeView === "dash" && <Dashboard onNavigate={navigate} />}
+          {activeView === "whsum" && <WarehouseSummary />}
           {activeView === "voc" && <VocDash onNavigate={navigate} />}
           {activeView === "vocchan" && <VocChannels />}
           {activeView === "vocrec" && <VocRecords />}
