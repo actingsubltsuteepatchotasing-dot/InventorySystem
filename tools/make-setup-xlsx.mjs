@@ -981,9 +981,162 @@ const DIAGRAM = (() => {
     });
   });
 
+  /* ------------------------------------ แผงหน้าเว็บที่ต้องเข้าไปทำ */
+
+  /*
+   * เส้นทางการกดจริงของแต่ละบริการ
+   *
+   * ผังบอกได้ว่า "ต้องไปทำที่ Supabase" แต่พอเปิดเว็บจริงขึ้นมา
+   * หน้าจอมีเมนูเป็นสิบ แล้วไม่รู้ว่าอันไหน · เมนูของบริการพวกนี้ยังเปลี่ยนชื่อ
+   * และย้ายที่เป็นระยะด้วย คนที่ทำครั้งแรกจึงเสียเวลาไปกับการหาเมนูมากกว่าการทำงานจริง
+   *
+   * แผงนี้เขียนเส้นทางแบบ "เมนู > เมนูย่อย > ปุ่ม" และบอกว่าในหน้านั้นต้องกรอกอะไร
+   * เรียงตามลำดับที่ต้องทำจริง ไม่ได้เรียงตามลำดับเมนูบนหน้าจอ
+   */
+  const PAGES = [
+    {
+      tone: "grey",
+      name: "GitHub",
+      url: "github.com",
+      steps: [
+        {
+          path: "มุมขวาบน เครื่องหมาย + > New repository",
+          do: "ตั้งชื่อ repo · เลือก Private · ไม่ต้องติ๊ก Add a README · กด Create repository",
+          out: "ได้: ที่อยู่ repo ที่ขึ้นมาในหน้าถัดไป คัดลอกเก็บไว้",
+        },
+        {
+          path: "หน้า repo > ดูรายการไฟล์ในหน้าแรก",
+          do: "ไล่ดูว่ามีไฟล์อะไรขึ้นไปบ้าง",
+          out: "ต้องไม่เห็นไฟล์ .env.local ถ้าเห็น ให้ไปสร้าง anon key ใหม่ทันที",
+          warn: true,
+        },
+        {
+          path: "Settings > Collaborators (ถ้าทำงานหลายคน)",
+          do: "เชิญเพื่อนร่วมงานด้วยบัญชี GitHub ของเขา",
+          out: "ได้: คนอื่น push โค้ดขึ้น repo เดียวกันได้",
+        },
+      ],
+    },
+    {
+      tone: "green",
+      name: "Vercel",
+      url: "vercel.com",
+      steps: [
+        {
+          path: "หน้าแรก > Add New > Project",
+          do: "หา repo ที่เพิ่ง push แล้วกด Import · Framework ขึ้น Next.js เอง ไม่ต้องแก้ · Root Directory ปล่อยเป็น ./",
+          out: "ได้: โปรเจกต์ที่ผูกกับ repo แล้ว",
+        },
+        {
+          path: "Settings > Environment Variables",
+          do: "ช่อง Key ใส่ NEXT_PUBLIC_SUPABASE_URL · ช่อง Value วางค่าที่คัดลอกมา · ติ๊กครบ Production, Preview, Development · Save",
+          out: "ทำซ้ำอีกรอบกับ NEXT_PUBLIC_SUPABASE_ANON_KEY",
+          warn: true,
+        },
+        {
+          path: "Deployments > จุดสามจุดของรายการบนสุด > Redeploy",
+          do: "กดยืนยัน ไม่ต้องติ๊ก Use existing Build Cache · รอจนสถานะขึ้น Ready",
+          out: "ไม่กดขั้นนี้ ค่าที่เพิ่งใส่จะยังไม่มีผล",
+          warn: true,
+        },
+        {
+          path: "Settings > Domains (เฉพาะถ้าใช้โดเมนของตัวเอง)",
+          do: "ใส่ชื่อโดเมน แล้วทำตามที่ Vercel บอกให้ตั้งค่า DNS",
+          out: "ได้: เว็บเปิดด้วยโดเมนของกิจการ",
+        },
+      ],
+    },
+    {
+      tone: "blue",
+      name: "Supabase",
+      url: "supabase.com",
+      steps: [
+        {
+          path: "Dashboard > New project",
+          do: "ตั้งชื่อ · ตั้ง Database Password แล้วเก็บไว้ให้ดี · Region เลือก Southeast Asia (Singapore) · รอประมาณ 2 นาที",
+          out: "Region เลือกผิดแล้วย้ายทีหลังไม่ได้ ต้องสร้างโปรเจกต์ใหม่",
+          warn: true,
+        },
+        {
+          path: "SQL Editor > New query",
+          do: "เปิดไฟล์ supabase/schema.sql คัดลอกทั้งไฟล์ วางลงไป แล้วกด Run (หรือ Ctrl+Enter)",
+          out: "ท้ายผลลัพธ์ต้องมีตารางสรุป ขึ้น ผ่าน ครบทุกแถว",
+          warn: true,
+        },
+        {
+          path: "Authentication > Users > Add user > Create new user",
+          do: "กรอกอีเมลและรหัสผ่าน แล้วติ๊ก Auto Confirm User ก่อนกดสร้าง",
+          out: "ไม่ติ๊ก จะล็อกอินไม่ได้เลย แก้ทีหลังได้ที่ผู้ใช้คนนั้น > Confirm email",
+          warn: true,
+        },
+        {
+          path: "Authentication > Sign In / Providers > Email",
+          do: "ปิด Confirm email · เปิด Allow new users to sign up ชั่วคราวถ้าจะเพิ่มผู้ใช้จากในโปรแกรม",
+          out: "เพิ่มผู้ใช้ครบแล้วให้กลับมาปิด Allow new users to sign up",
+          warn: true,
+        },
+        {
+          path: "Project Settings > API",
+          do: "คัดลอก Project URL และ Project API keys > anon public (ตัวที่เขียนว่า public เท่านั้น)",
+          out: "service_role ที่อยู่หน้าเดียวกัน ใช้เฉพาะงานไลน์ ห้ามใส่ช่อง anon",
+          warn: true,
+        },
+        {
+          path: "Project Settings > General",
+          do: "ดูสถานะโปรเจกต์ · ถ้าขึ้นว่า Paused ให้กด Restore",
+          out: "โปรเจกต์ฟรีที่ไม่มีคนใช้เกิน 7 วันจะถูก pause เอง",
+        },
+        {
+          path: "Table Editor (ไว้ดูข้อมูลจริง)",
+          do: "เลือกตารางทางซ้าย แล้วดูข้อมูลในตารางนั้นได้เลย",
+          out: "ได้: ใช้ไล่หาสาเหตุว่าข้อมูลเข้าไปจริงหรือไม่",
+        },
+      ],
+    },
+  ];
+
+  const PAGE_Y = 580;
+  const PAGE_H = 420;
+
+  all.push({
+    kind: "label", x: 30, y: PAGE_Y, w: FULL_W, h: 26, align: "l",
+    lines: [
+      {
+        t: "หน้าเว็บที่ต้องเข้าไปทำ — เส้นทางการกดทีละขั้น (เรียงตามลำดับที่ต้องทำ ไม่ใช่ตามลำดับเมนูบนหน้าจอ)",
+        bold: true, size: 1250, color: "1B3D2A", align: "l",
+      },
+    ],
+  });
+
+  PAGES.forEach((pg, i) => {
+    const t = TONE[pg.tone];
+    const lines = [
+      { t: pg.name, bold: true, size: 1300, color: t.stroke, align: "l" },
+      { t: pg.url, size: 900, color: CMD, font: MONO, align: "l" },
+      { t: "", size: 400, align: "l" },
+    ];
+    pg.steps.forEach((st, n) => {
+      lines.push({ t: n + 1 + ". " + st.path, bold: true, size: 900, color: t.stroke, align: "l" });
+      lines.push({ t: "    " + st.do, size: 850, color: t.color, align: "l" });
+      lines.push({
+        t: "    " + st.out,
+        size: 850,
+        color: st.warn ? WARN : t.note,
+        bold: !!st.warn,
+        align: "l",
+      });
+      if (n < pg.steps.length - 1) lines.push({ t: "", size: 400, align: "l" });
+    });
+
+    all.push({
+      kind: "box", x: COL[i], y: PAGE_Y + 32, w: BOX_W, h: PAGE_H,
+      fill: "FFFFFF", stroke: t.stroke, lines,
+    });
+  });
+
   /* ----------------------------------------------------- แถบเตือนสองข้อ */
   all.push({
-    kind: "box", x: 30, y: 582, w: FULL_W, h: 36, fill: "FBF0E0", stroke: "B26A00",
+    kind: "box", x: 30, y: 1026, w: FULL_W, h: 36, fill: "FBF0E0", stroke: "B26A00",
     lines: [
       {
         t: "สองข้อที่คนพลาดบ่อยที่สุด:  Supabase ต้องมาก่อน Vercel เพราะขั้น Vercel ต้องใช้ค่าที่ได้จาก Supabase   ·   " +
@@ -993,7 +1146,7 @@ const DIAGRAM = (() => {
     ],
   });
 
-  const TOP = 638;
+  const TOP = 1082;
 
   /* ---------------------------------------------------- คอลัมน์ที่ 1 */
   const colA = column(0, TOP, "A. ของไหลไปทางไหน", "รายละเอียดของแต่ละบริการดูที่แผงด้านบน", [
