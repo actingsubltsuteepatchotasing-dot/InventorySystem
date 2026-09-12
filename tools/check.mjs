@@ -2171,5 +2171,101 @@ head("25. งานผ่านไลน์ต่อครบ และไม่
   }
 }
 
+/* ----------------------------------------------------------------- 26 */
+head("26. คู่มือติดตั้งตรงกับของจริง");
+{
+  /*
+   * คู่มือติดตั้งที่ข้อมูลไม่ตรงกับโค้ด แย่กว่าไม่มีคู่มือเลย
+   * เพราะคนทำตามจนสุดทางแล้วระบบยังไม่ทำงาน โดยไม่รู้ว่าตัวเองพลาดหรือคู่มือผิด
+   * และคนเขียนคู่มือไม่มีทางรู้ตัวเอง เพราะคู่มือไม่ได้ถูกรัน
+   * ตัวตรวจนี้จึงเทียบตัวเลขและรายชื่อในคู่มือกับของจริงทุกครั้งที่รัน
+   */
+  const guide = read("Docs/คู่มือการติดตั้ง.md");
+  const example = read(".env.local.example");
+  const schema = read("supabase/schema.sql");
+  const me = read("tools/check.mjs");
+  let n = 0;
+
+  /*
+   * ---- ตัวแปรทุกตัวที่โค้ดอ่านจริง ต้องมีในไฟล์ตัวอย่าง
+   * ยกเว้นตัวที่ Vercel ตั้งให้เอง ซึ่งคนใช้ไม่ต้องไปตั้งและตั้งไม่ได้ด้วย
+   */
+  const BUILTIN = ["VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL"];
+  const envVars = [
+    ...new Set(
+      FILES.concat(walk("app"))
+        .flatMap((f) => [...read(f).matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((m) => m[1]))
+    ),
+  ].filter((v) => !BUILTIN.includes(v));
+
+  envVars.forEach((v) => {
+    if (!example.includes(v)) {
+      bad(".env.local.example ไม่มี " + v + " ทั้งที่โค้ดอ่านค่านี้");
+      n++;
+    }
+  });
+
+  // ---- ค่าที่ขาดไม่ได้ ต้องอยู่ในคู่มือด้วย ไม่ใช่แค่ในไฟล์ตัวอย่าง
+  ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"].forEach((v) => {
+    if (!guide.includes(v)) {
+      bad("คู่มือติดตั้งไม่ได้บอกค่า " + v + " ซึ่งขาดไม่ได้");
+      n++;
+    }
+  });
+
+  // ---- จำนวนตารางที่คู่มือบอก ต้องตรงกับตารางตรวจผลท้าย schema.sql
+  const listed = (/from \(values([\s\S]*?)\) as x\(name\)/.exec(schema) || ["", ""])[1];
+  const tableCount = (listed.match(/\('[a-z_]+'\)/g) || []).length;
+  // ตรวจทั้งคู่มือและ README เพราะสองไฟล์นี้เคยบอกจำนวนไม่ตรงกันมาแล้ว
+  // (README ค้างอยู่ที่ 30 ตารางนานมาก เพราะไม่มีอะไรคอยเทียบให้)
+  [
+    ["Docs/คู่มือการติดตั้ง.md", guide],
+    ["README.md", read("README.md")],
+  ].forEach(([name, src]) => {
+    const said = /สร้างตารางทั้ง (\d+) ตาราง/.exec(src);
+    if (!said) {
+      bad(name + " ไม่ได้บอกจำนวนตาราง");
+      n++;
+    } else if (Number(said[1]) !== tableCount) {
+      bad(name + " บอกว่ามี " + said[1] + " ตาราง แต่ schema.sql ตรวจ " + tableCount + " ตาราง");
+      n++;
+    }
+  });
+
+  // ---- จำนวนหมวดที่ตรวจ ต้องตรงกับที่คู่มือบอก
+  const catCount = (me.match(/^head\("\d+\./gm) || []).length;
+  const saidCats = /ตรวจ (\d+) หมวด/.exec(guide);
+  if (!saidCats) {
+    bad("คู่มือติดตั้งไม่ได้บอกจำนวนหมวดที่ตรวจ");
+    n++;
+  } else if (Number(saidCats[1]) !== catCount) {
+    bad("คู่มือบอกว่าตรวจ " + saidCats[1] + " หมวด แต่มีจริง " + catCount + " หมวด");
+    n++;
+  }
+
+  /*
+   * ---- สามอย่างที่ขาดแล้วติดตั้งไม่สำเร็จ ต้องเตือนไว้ในคู่มือ
+   * ทั้งสามข้อนี้เป็นสาเหตุที่พบบ่อยที่สุดของ "ทำตามครบแล้วแต่ใช้ไม่ได้"
+   */
+  [
+    ["Auto Confirm User", "ไม่ติ๊กแล้วล็อกอินไม่ได้เลย"],
+    ["Redeploy", "ตัวแปร NEXT_PUBLIC_ ถูกฝังตอน build ไม่ใส่แล้ว deploy ใหม่จะไม่มีผล"],
+    ["schema.sql", "ไม่รันแล้วไม่มีตารางให้ใช้"],
+  ].forEach(([word, why]) => {
+    if (!guide.includes(word)) {
+      bad("คู่มือติดตั้งไม่ได้พูดถึง " + word + " — " + why);
+      n++;
+    }
+  });
+
+  if (!n) {
+    ok(
+      "คู่มือติดตั้งตรงกับของจริง · ตัวแปรครบ " + envVars.length + " ตัวในไฟล์ตัวอย่าง · " +
+        "จำนวนตาราง (" + tableCount + ") และหมวดที่ตรวจ (" + catCount + ") ตรงกัน · " +
+        "เตือนครบทั้งสามข้อที่พลาดบ่อยที่สุด"
+    );
+  }
+}
+
 console.log("\n" + (failed ? "พบปัญหา " + failed + " จุด" : "ตรวจผ่านทั้งหมด"));
 process.exit(failed ? 1 : 0);
