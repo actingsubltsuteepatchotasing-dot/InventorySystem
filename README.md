@@ -15,6 +15,7 @@ One for All Ultra (OFAU) — หนึ่งเดียวเพื่อทุ
 > [Docs/คู่มือการติดตั้ง.md](Docs/%E0%B8%84%E0%B8%B9%E0%B9%88%E0%B8%A1%E0%B8%B7%E0%B8%AD%E0%B8%81%E0%B8%B2%E0%B8%A3%E0%B8%95%E0%B8%B4%E0%B8%94%E0%B8%95%E0%B8%B1%E0%B9%89%E0%B8%87.md)
 > ซึ่งไล่ทีละขั้นตั้งแต่สร้างโฟลเดอร์ ทำฐานข้อมูล ไปจนตั้งค่าใน Vercel
 > พร้อมตารางไล่สาเหตุตอนล็อกอินไม่ได้
+> และ [Docs/เช็คลิสต์การติดตั้ง.xlsx](Docs/%E0%B9%80%E0%B8%8A%E0%B9%87%E0%B8%84%E0%B8%A5%E0%B8%B4%E0%B8%AA%E0%B8%95%E0%B9%8C%E0%B8%81%E0%B8%B2%E0%B8%A3%E0%B8%95%E0%B8%B4%E0%B8%94%E0%B8%95%E0%B8%B1%E0%B9%89%E0%B8%87.xlsx) สำหรับติ๊กว่าทำถึงขั้นไหนแล้ว
 
 **1. สร้างตาราง** — Supabase Dashboard > SQL Editor > New query
 วางไฟล์ [`supabase/schema.sql`](supabase/schema.sql) ทั้งไฟล์ > Run
